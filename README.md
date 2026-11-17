@@ -34,27 +34,20 @@ on triangular P1 meshes using:
 - Neumann outward-flux integration on validated exterior edges.
 - Robin boundary integration with non-negative transfer coefficients and ambient values.
 - Mixed Dirichlet-Neumann and Dirichlet-Robin benchmarks.
+- L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
-### Quantitative verification
-- Linear harmonic patch test with nonzero boundary values.
-- Variable diffusivity and source verification.
-- Reversed triangle orientation and invalid-geometry tests.
-- Manufactured quartic solution on 4×4, 8×8, and 16×16 meshes.
-- Nodal maximum error, L2 error, H1 seminorm, and H1 norm.
-- Duffy-transformed 5×5 Gauss-Legendre integration for error norms.
-
-### Linear solver
+### Linear solver capabilities
 - CSR sparse matrix-vector products.
 - Conjugate Gradient for symmetric positive-definite systems.
+- BiCGSTAB for general nonsymmetric systems.
 - Optional Jacobi diagonal preconditioning.
-- Validation of positive finite Jacobi diagonal entries.
+- Explicit breakdown and convergence reporting.
 - True-residual recomputation before reporting convergence.
-- Explicit breakdown and convergence diagnostics.
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The 2D implementation does not yet support pure Neumann nullspace handling, anisotropic diffusion tensors, P2 elements, adaptive meshing, or a general DOF manager.
+The current prototype does not yet support GMRES, incomplete Cholesky, pure Neumann nullspace handling, anisotropic diffusion tensors, P2 elements, adaptive meshing, or a general DOF manager.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.

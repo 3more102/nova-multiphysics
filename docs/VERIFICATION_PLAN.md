@@ -11,9 +11,12 @@
 - Verify CSR duplicate triplet accumulation and matrix-vector products.
 - Verify dimension and index errors.
 - Verify CG solution and residual reduction for known SPD systems.
-- Verify failure reporting for non-positive curvature.
-- Verify Jacobi preconditioner rejection of non-positive or non-finite diagonal entries.
-- Compare preconditioned and unpreconditioned iteration counts on a scaled SPD diagonal system.
+- Verify Jacobi CG rejection of non-positive or non-finite diagonal entries.
+- Compare Jacobi-preconditioned and unpreconditioned CG on a scaled SPD diagonal system.
+- Verify BiCGSTAB on a known nonsymmetric system with a hand-computed solution.
+- Verify BiCGSTAB with Jacobi preconditioning.
+- Verify BiCGSTAB rejects zero Jacobi diagonal entries.
+- Verify breakdown and iteration-limit states are not reported as convergence.
 - Verify reported convergence against the recomputed true residual.
 
 ## Gate 2: one-dimensional Poisson FEM

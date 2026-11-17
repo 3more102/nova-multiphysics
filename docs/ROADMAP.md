@@ -42,29 +42,27 @@ Remaining:
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.
 
-Acceptance: verified 1D and 2D scalar diffusion with mesh-convergence studies, boundary-condition coverage, and reusable function-space/assembly interfaces.
-
 ## M2 — Solver infrastructure
 
 **In progress.**
 
 Implemented:
 - Unpreconditioned Conjugate Gradient.
-- Optional Jacobi diagonal preconditioning.
-- Explicit validation of Jacobi diagonal entries.
+- Optional Jacobi diagonal preconditioning for CG.
+- BiCGSTAB for general nonsymmetric systems.
+- Optional Jacobi diagonal preconditioning for BiCGSTAB.
+- Explicit preconditioner validation and breakdown diagnostics.
 - True-residual recomputation before convergence is accepted.
-- Regression tests on a scaled SPD diagonal system.
+- Regression tests for SPD and nonsymmetric systems.
 
 Remaining:
-- Incomplete Cholesky preconditioning.
-- GMRES and BiCGSTAB for nonsymmetric systems.
+- Incomplete Cholesky preconditioning for SPD systems.
+- GMRES for nonsymmetric systems.
 - Sparse matrix block operations.
 - Newton nonlinear solver.
 - Line search and damping.
 - Residual and Jacobian diagnostics.
 - Solver configuration and reproducible logs.
-
-Acceptance: verified linear and nonlinear benchmark suite with documented convergence and breakdown behavior.
 
 ## M3 — General scalar physics
 - Thermal conduction.
@@ -72,8 +70,6 @@ Acceptance: verified linear and nonlinear benchmark suite with documented conver
 - Temperature-dependent material properties.
 - Stationary and transient scalar diffusion.
 - Parameter sweeps.
-
-Acceptance: energy balance, manufactured solutions, and transient convergence tests.
 
 ## M4 — Structural mechanics
 - Vector-valued H1 spaces.
@@ -83,8 +79,6 @@ Acceptance: energy balance, manufactured solutions, and transient convergence te
 - Stress and strain recovery.
 - Rigid-body and patch tests.
 
-Acceptance: canonical elasticity benchmarks and reaction-force balance.
-
 ## M5 — Electromagnetics and optics
 - Complex-valued algebra.
 - H(curl) function spaces.
@@ -93,8 +87,6 @@ Acceptance: canonical elasticity benchmarks and reaction-force balance.
 - Eigenvalue formulations.
 - Boundary conditions and absorbing layers.
 
-Acceptance: waveguide and cavity benchmarks with mesh-convergence evidence.
-
 ## M6 — Multiphysics framework
 - Shared model and field registry.
 - Segregated coupling.
@@ -102,16 +94,12 @@ Acceptance: waveguide and cavity benchmarks with mesh-convergence evidence.
 - Nonlinear material coupling.
 - Coupled electrothermal and thermoelastic examples.
 
-Acceptance: coupled benchmarks with independent energy and residual checks.
-
 ## M7 — Geometry, meshing, and visualization
 - CAD import and geometry model.
 - Mesh generation and quality inspection.
 - 2D and 3D results visualization.
 - Derived quantities and export.
 - Project persistence.
-
-Acceptance: end-to-end desktop-independent workflow for representative models.
 
 ## M8 — Desktop and commercial platform
 - Qt desktop application.
@@ -122,8 +110,6 @@ Acceptance: end-to-end desktop-independent workflow for representative models.
 - Python automation.
 - Licensing, installer, update, diagnostics, and support workflows.
 
-Acceptance: usability-tested release candidate with documented validation scope.
-
 ## M9 — Scale and advanced capabilities
 - Parallel assembly and solution.
 - Adaptive mesh refinement.
@@ -131,5 +117,3 @@ Acceptance: usability-tested release candidate with documented validation scope.
 - GPU acceleration where justified.
 - Optimization and sensitivity analysis.
 - Remote and batch execution.
-
-Acceptance: published scaling, accuracy, and reproducibility reports.
