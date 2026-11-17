@@ -8,9 +8,9 @@
 - Mesh and DOF identifiers are stable within a model revision; persistent project IDs are managed separately.
 - A physics interface must document the units and sign convention of every field, source, flux, and boundary quantity.
 
-## Weak-form convention
+## Scalar diffusion weak form
 
-For the scalar diffusion equation
+For
 
 \[
 -\nabla\cdot(k\nabla u)=f \quad \text{in }\Omega,
@@ -26,7 +26,25 @@ with Dirichlet data on \(\Gamma_D\) and prescribed outward flux on \(\Gamma_N\),
 \int_{\Gamma_N} q_n v\,d\Gamma,
 \]
 
-where \(q_n = -k\nabla u\cdot n\) is defined as the outward physical flux. Individual physics modules must preserve this convention or explicitly declare a different one.
+where \(q_n=-k\nabla u\cdot n\) is the outward physical flux. The current 2D implementation supports only volumetric source terms and nodal Dirichlet conditions; the Neumann term is documented for the future boundary-facet implementation.
+
+## Reference triangle and P1 basis
+
+The reference triangle has vertices \((r,s)=(0,0),(1,0),(0,1)\). Its linear shape functions are
+
+\[
+N_1=1-r-s,\qquad N_2=r,\qquad N_3=s.
+\]
+
+The current triangle integration rule uses three symmetric points:
+
+\[
+(1/6,1/6),\quad(2/3,1/6),\quad(1/6,2/3),
+\]
+
+each with reference weight \(1/6\). The weights sum to the reference-triangle area \(1/2\) and integrate polynomials through degree two exactly.
+
+Physical gradients are obtained from the element Jacobian. The signed determinant is retained in the gradient transformation; its absolute value is used for physical integration weights. Both triangle orientations are accepted, while degenerate and near-degenerate triangles are rejected.
 
 ## Sparse matrix convention
 
@@ -50,7 +68,7 @@ A solver result must expose convergence status, iteration count, initial residua
 
 ## Boundary conditions
 
-The first Poisson benchmark applies strong Dirichlet constraints through row-and-column elimination with right-hand-side correction. More general constraint systems, periodic constraints, multipoint constraints, and Lagrange multipliers will be designed separately.
+The current 1D and 2D prototype paths apply strong Dirichlet constraints through row-and-column elimination with right-hand-side correction. General constraint systems, periodic constraints, multipoint constraints, Neumann and Robin boundary integration, and Lagrange multipliers remain future work.
 
 ## Reproducibility
 

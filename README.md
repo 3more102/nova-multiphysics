@@ -10,25 +10,37 @@ NOVA is an independent, C++20 multiphysics simulation platform under development
 
 NOVA is being developed as a commercial, general-purpose computer-aided engineering (CAE) platform with an independently developed numerical core.
 
-### Initial engineering priorities
+## Current numerical prototype
 
-1. Establish a reproducible C++20 build and test environment.
-2. Implement numerical primitives and a small, auditable FEM foundation.
-3. Verify each numerical method against analytical solutions and independent benchmarks.
-4. Add physics interfaces through a stable module contract.
-5. Build geometry, meshing, solver orchestration, visualization, and desktop workflows around the numerical core.
+The repository now includes two small, auditable FEM verification paths.
 
-## Current prototype scope
+### 1D Poisson
 
-The first milestone focuses on a one-dimensional Poisson boundary-value problem:
-
-\[
+[
 -\frac{d}{dx}\left(k\frac{du}{dx}\right)=f(x), \qquad x\in(0,L)
-\]
+]
 
-with prescribed Dirichlet boundary values. The benchmark uses constant \(k\), a uniform mesh, linear P1 elements, Gaussian quadrature, and a conjugate-gradient solver for the resulting symmetric positive-definite system.
+- Uniform 1D mesh.
+- Linear P1 elements.
+- Two-point Gauss quadrature.
+- Strong endpoint Dirichlet conditions.
+- CSR assembly and conjugate-gradient solution.
 
-This deliberately narrow benchmark is the first verification gate. It is not a claim of general-purpose FEM capability.
+### 2D scalar diffusion
+
+[
+-\nabla\cdot(k\nabla u)=f \quad \text{in }\Omega
+]
+
+- Triangular P1 mesh.
+- Degree-two reference-triangle quadrature.
+- Jacobian-based physical basis gradients.
+- Positive scalar isotropic diffusivity.
+- Volumetric source integration.
+- Strong nodal Dirichlet elimination.
+- Harmonic patch benchmark with a known linear solution.
+
+The 2D implementation is deliberately limited: it does not yet support Neumann/Robin conditions, pure Neumann systems, anisotropic diffusion, P2 elements, automatic meshing, or demonstrated mesh-convergence rates. These are planned engineering tasks, not existing features.
 
 ## Planned architecture
 
@@ -48,25 +60,17 @@ NOVA-Multiphysics/
 ├── CMakeLists.txt
 ├── CMakePresets.json
 ├── README.md
-├── LICENSE
-├── .gitignore
 ├── .github/workflows/ci.yml
 ├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── NUMERICAL_CONVENTIONS.md
-│   ├── ROADMAP.md
-│   └── VERIFICATION_PLAN.md
 ├── examples/
-│   └── poisson_1d/
+│   ├── poisson_1d/
+│   └── diffusion_2d/
 ├── include/nova/
-│   ├── core/
 │   ├── linalg/
-│   ├── fem/
-│   └── physics/
+│   └── fem/
 ├── src/
 │   ├── linalg/
-│   ├── fem/
-│   └── physics/
+│   └── fem/
 └── tests/
 ```
 
@@ -91,6 +95,15 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
+
+Run the examples:
+
+```bash
+./build/nova_poisson_1d
+./build/nova_diffusion_2d
+```
+
+On Windows, use the corresponding executable paths under the build directory (or the Release subdirectory for multi-configuration generators).
 
 ## Engineering principles
 

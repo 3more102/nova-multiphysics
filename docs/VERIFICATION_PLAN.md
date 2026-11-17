@@ -14,11 +14,9 @@ NOVA must establish numerical correctness before expanding feature breadth. Each
 
 ## Gate 1: sparse linear algebra
 
-- Verify CSR row offsets and sorted column indices.
-- Verify duplicate triplet accumulation.
-- Verify matrix-vector products against hand calculations.
+- Verify CSR duplicate triplet accumulation and matrix-vector products.
 - Verify dimension and index errors.
-- Verify conjugate-gradient residual reduction for known SPD systems.
+- Verify conjugate-gradient solution and residual reduction for known SPD systems.
 - Verify failure reporting for non-positive curvature.
 
 ## Gate 2: one-dimensional Poisson FEM
@@ -31,21 +29,41 @@ Benchmark:
 - Element family: linear P1 segments.
 - Mesh: uniform subdivisions.
 
-Verification:
-- Compare computed nodal values with the analytical solution.
-- Check the algebraic residual.
-- Verify expected convergence under mesh refinement using an appropriate norm.
-- Test nonzero Dirichlet values with a zero-source linear solution.
-- Test invalid mesh sizes and material coefficients.
+Automated verification currently covers:
+- Nodal values against the analytical quadratic solution.
+- Nonzero Dirichlet values with a zero-source linear solution.
+- Invalid mesh size rejection.
+
+Remaining:
+- Explicit algebraic residual assertion.
+- L2 and H1 mesh-refinement convergence rates.
+- Variable-coefficient manufactured solutions.
 
 ## Gate 3: two-dimensional scalar diffusion
 
-- Unit square with a manufactured analytical solution.
-- Triangular P1 and P2 elements.
-- Dirichlet and Neumann boundary conditions.
-- Element orientation and Jacobian checks.
-- L2 and H1 error convergence studies.
-- Mesh-quality sensitivity.
+Implemented prototype:
+- Triangular P1 mesh representation and geometric validation.
+- Degree-two reference-triangle quadrature.
+- Jacobian-based physical basis gradients.
+- Isotropic positive scalar diffusivity.
+- Volumetric source integration.
+- Strong nodal Dirichlet elimination.
+- Linear harmonic patch test on a four-triangle unit-square mesh.
+- Reversed element orientation, degenerate element, and duplicate constraint tests.
+
+Current limitations:
+- No Neumann or Robin boundary conditions.
+- No pure Neumann nullspace handling.
+- No anisotropic diffusion tensor.
+- No P2 elements or automatic mesh generator.
+- No demonstrated L2/H1 convergence-rate study yet.
+
+Required next verification:
+- Manufactured quadratic solution on a sequence of refined meshes.
+- L2 and H1 error calculations and observed convergence rates.
+- Nonconstant diffusivity benchmark.
+- Boundary flux and energy-balance checks when Neumann conditions are added.
+- Mesh distortion and conditioning sensitivity.
 
 ## Gate 4: thermal and structural modules
 

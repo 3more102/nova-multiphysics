@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(NOVA_Multiphysics
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "Independent multiphysics simulation platform"
     LANGUAGES CXX
 )
@@ -22,7 +22,9 @@ endfunction()
 add_library(nova_core
     src/linalg/csr_matrix.cpp
     src/linalg/conjugate_gradient.cpp
+    src/fem/mesh2d.cpp
     src/fem/poisson_1d.cpp
+    src/fem/diffusion_2d.cpp
 )
 add_library(NOVA::Core ALIAS nova_core)
 target_compile_features(nova_core PUBLIC cxx_std_20)
@@ -40,6 +42,10 @@ if(NOVA_BUILD_EXAMPLES)
     add_executable(nova_poisson_1d examples/poisson_1d/main.cpp)
     target_link_libraries(nova_poisson_1d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_poisson_1d)
+
+    add_executable(nova_diffusion_2d examples/diffusion_2d/main.cpp)
+    target_link_libraries(nova_diffusion_2d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_diffusion_2d)
 endif()
 
 if(NOVA_BUILD_TESTS)
@@ -49,6 +55,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_csr_matrix.cpp
         tests/test_conjugate_gradient.cpp
         tests/test_poisson_1d.cpp
+        tests/test_diffusion_2d.cpp
     )
     target_include_directories(nova_tests PRIVATE tests)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)

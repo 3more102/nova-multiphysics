@@ -1,30 +1,42 @@
 # NOVA Development Roadmap
 
-This roadmap is capability-based. A milestone is complete only when its acceptance tests and documentation are satisfied.
+This roadmap is capability-based. A milestone is complete only when its acceptance tests and documentation are satisfied. A checked-in prototype is not automatically a completed milestone.
 
 ## M0 — Engineering foundation
 
+<status>Implemented; CI verified on Windows and Linux.</status>
+
 - C++20 and CMake project.
 - CSR sparse matrix.
-- Conjugate-gradient solver.
+- Unpreconditioned conjugate-gradient solver.
 - 1D P1 Poisson FEM benchmark.
-- Unit tests and continuous integration.
+- Automated tests and continuous integration.
 
-Acceptance: reproducible build and passing analytical benchmark tests on Windows and Linux.
+Acceptance achieved for the current foundation: reproducible configure/build/test workflow on Windows and Linux.
 
 ## M1 — FEM kernel
 
-- Mesh and element abstractions.
-- Reference segment and triangle elements.
-- Basis functions and derivatives.
-- Gaussian quadrature.
-- Jacobian mappings.
-- H1 function spaces.
-- DOF manager.
-- Generic element and global assembly.
-- Strong Dirichlet constraints.
+<status>In progress.</status>
 
-Acceptance: verified 1D and 2D scalar diffusion with convergence studies.
+Implemented:
+- Triangle mesh data model and geometric validation.
+- Linear P1 reference-triangle basis functions.
+- Degree-two triangle Gaussian quadrature.
+- Physical gradients from the triangle Jacobian.
+- 2D scalar isotropic diffusion assembly on triangular meshes.
+- Strong nodal Dirichlet elimination.
+- Linear harmonic patch benchmark and orientation/degeneracy tests.
+
+Remaining:
+- Reusable element and integration interfaces shared across physics.
+- Explicit H1 function-space abstraction and DOF manager.
+- General boundary-facet representation and Neumann conditions.
+- P2 triangle elements.
+- Manufactured-solution L2/H1 convergence studies.
+- Mesh refinement and element-quality metrics.
+- Generic residual and tangent assembly interfaces.
+
+Acceptance: verified 1D and 2D scalar diffusion with mesh-convergence studies, boundary-condition coverage, and reusable function-space/assembly interfaces.
 
 ## M2 — Solver infrastructure
 

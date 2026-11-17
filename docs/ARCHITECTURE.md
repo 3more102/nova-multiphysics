@@ -4,7 +4,7 @@
 
 NOVA is intended to become a commercial, general-purpose multiphysics CAE application. The architecture must support independent evolution of the desktop application, model representation, geometry and mesh services, numerical engine, physics modules, and results system.
 
-The initial implementation is intentionally smaller than the target architecture. The first code milestone establishes a testable numerical library and a verified scalar FEM benchmark.
+The current implementation is an early numerical prototype. Its 1D and 2D scalar FEM cases are verification steps, not evidence of production readiness or broad multiphysics capability.
 
 ## 2. Target subsystem boundaries
 
@@ -63,7 +63,7 @@ The numerical core is a proprietary engineering focus. Its algorithms require do
 
 Each physics interface declares its fields, variables, constitutive data, constraints, and contributions to residual and Jacobian assembly. Physics modules must not bypass shared DOF, units, material, or solver services.
 
-Initial scalar modules will use H1-conforming spaces. Electromagnetics will require compatible vector spaces such as Nedelec elements; mixed formulations must be supported explicitly rather than forced into a scalar interface.
+Initial scalar modules use nodal P1 H1-like fields. The current 2D diffusion implementation is a focused triangle-P1 path, not yet a general function-space framework. Electromagnetics will require compatible vector spaces such as Nedelec elements; mixed formulations must be supported explicitly rather than forced into a scalar interface.
 
 ### Multiphysics framework
 
@@ -84,13 +84,16 @@ The long-term desktop product should execute simulations in a separate process. 
 
 ## 3. Current code boundaries
 
-The first prototype currently contains:
+The prototype currently contains:
 - CSR sparse matrix storage and matrix-vector multiplication.
-- An unpreconditioned conjugate-gradient solver.
-- A one-dimensional P1 finite-element Poisson benchmark.
-- A small automated test harness.
+- An unpreconditioned conjugate-gradient solver for SPD systems.
+- A 1D P1 finite-element Poisson benchmark.
+- A validated 2D triangle mesh data structure.
+- P1 reference-triangle shape functions and degree-two quadrature.
+- A 2D isotropic scalar diffusion assembler with strong nodal Dirichlet constraints.
+- Automated numerical and input-validation tests.
 
-These components are a foundation, not a complete production solver.
+The 2D diffusion path currently lacks Neumann/Robin conditions, anisotropic tensors, P2 elements, a general DOF manager, and mesh convergence studies. These are explicit follow-up tasks.
 
 ## 4. Dependency policy
 
