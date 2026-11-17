@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(NOVA_Multiphysics
-    VERSION 0.7.0
+    VERSION 0.8.0
     DESCRIPTION "Independent multiphysics simulation platform"
     LANGUAGES CXX
 )
@@ -29,6 +29,7 @@ add_library(nova_core
     src/fem/poisson_1d.cpp
     src/fem/diffusion_2d.cpp
     src/fem/error_norms_2d.cpp
+    src/fem/nonlinear_diffusion_1d.cpp
 )
 
 add_library(NOVA::Core ALIAS nova_core)
@@ -51,6 +52,10 @@ if(NOVA_BUILD_EXAMPLES)
     add_executable(nova_diffusion_2d examples/diffusion_2d/main.cpp)
     target_link_libraries(nova_diffusion_2d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_diffusion_2d)
+
+    add_executable(nova_nonlinear_diffusion_1d examples/nonlinear_diffusion_1d/main.cpp)
+    target_link_libraries(nova_nonlinear_diffusion_1d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_nonlinear_diffusion_1d)
 endif()
 
 if(NOVA_BUILD_TESTS)
@@ -66,6 +71,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_diffusion_2d.cpp
         tests/test_error_norms_2d.cpp
         tests/test_mesh_topology_2d.cpp
+        tests/test_nonlinear_diffusion_1d.cpp
     )
     target_include_directories(nova_tests PRIVATE tests)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)

@@ -17,7 +17,6 @@ NOVA is an independent C++20 multiphysics simulation platform under development.
 - Analytical quadratic benchmark.
 
 ### 2D scalar diffusion
-
 The prototype solves
 
 \[
@@ -37,19 +36,33 @@ on triangular P1 meshes using:
 - L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
+### Nonlinear 1D diffusion
+The prototype also includes a nonlinear P1 finite-element benchmark:
+
+\[
+-\frac{d}{dx}\left[(1+u^2)\frac{du}{dx}\right]=f(x).
+\]
+
+- Nonlinear residual and consistent tangent/Jacobian assembly.
+- Three-point Gauss quadrature.
+- Strong endpoint Dirichlet constraints.
+- Newton iterations with Armijo backtracking.
+- Manufactured solution \(u(x)=\sin(\pi x)\).
+- Mesh-refinement checks at 8, 16, and 32 elements.
+
 ### Linear and nonlinear solver capabilities
 - CSR sparse matrix-vector products.
 - Conjugate Gradient for symmetric positive-definite systems.
 - BiCGSTAB and restarted GMRES for general nonsymmetric systems.
 - Optional Jacobi diagonal preconditioning for all three iterative linear solvers.
-- Newton nonlinear solver with Armijo backtracking line search.
-- GMRES or BiCGSTAB for Newton linearized systems.
-- Explicit breakdown, line-search, and convergence reporting.
+- Newton nonlinear solver with GMRES or BiCGSTAB linear subsolves.
+- Armijo backtracking, including rejection of non-finite trial residuals.
+- Explicit breakdown and convergence reporting.
 - True-residual recomputation before linear convergence is accepted.
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support incomplete Cholesky, pure Neumann nullspace handling, anisotropic diffusion tensors, P2 elements, adaptive meshing, or a general DOF manager.
+The current prototype does not yet support incomplete Cholesky, pure Neumann nullspace handling, anisotropic diffusion tensors, P2 elements, adaptive meshing, or a general DOF manager. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
@@ -75,6 +88,7 @@ Run the examples:
 ~~~bash
 ./build/nova_poisson_1d
 ./build/nova_diffusion_2d
+./build/nova_nonlinear_diffusion_1d
 ~~~
 
 On Windows, use the corresponding executable paths under the build directory (or the Release subdirectory for multi-configuration generators).

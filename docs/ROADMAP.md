@@ -30,7 +30,8 @@ Implemented:
 - Triangle orientation-independent integration.
 - Harmonic patch and manufactured quartic-solution benchmarks.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
-- Nodal and integral-norm mesh-refinement regression tests.
+- Nonlinear 1D P1 diffusion residual and consistent Jacobian assembly.
+- Manufactured nonlinear diffusion benchmark with Newton solution and mesh-refinement regression tests.
 
 Remaining:
 - Reusable element and integration interfaces shared across physics.

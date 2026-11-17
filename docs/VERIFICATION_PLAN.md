@@ -21,7 +21,7 @@
 - Verify breakdown and iteration-limit states are not reported as convergence.
 - Verify reported convergence against the recomputed true residual.
 
-## Gate 2: one-dimensional Poisson FEM
+## Gate 2: one-dimensional linear Poisson FEM
 - Domain: x in [0, 1].
 - Equation: -u'' = 2.
 - Boundary values: u(0) = u(1) = 0.
@@ -59,14 +59,17 @@ Required next verification:
 - Add boundary flux and energy-balance checks for more general Neumann and Robin problems.
 - Evaluate distorted meshes and conditioning sensitivity.
 
-## Gate 4: nonlinear solver
+## Gate 4: nonlinear solver and nonlinear FEM
 - Scalar square-root residual (F(x)=x^2-2) with analytical root (sqrt{2}).
-- Verify convergence from a moderate initial guess.
+- Verify Newton convergence from a moderate initial guess.
 - Verify Armijo backtracking from a deliberately large Newton step.
 - Verify non-finite trial residuals are rejected and backtracked.
 - Verify both GMRES and BiCGSTAB linearized-solver paths.
 - Verify singular Jacobian failure is reported without false convergence.
 - Verify residual/Jacobian dimension mismatch rejection.
+- Verify nonlinear P1 diffusion for (-d[(1+u^2)u']/dx=f(x)) against the manufactured solution (u=sin(pi x)).
+- Verify decreasing nodal error for 8-, 16-, and 32-element meshes.
+- Verify nonzero endpoint Dirichlet values.
 
 ## Gate 5: thermal and structural modules
 

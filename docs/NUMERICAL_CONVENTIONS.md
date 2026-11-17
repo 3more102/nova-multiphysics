@@ -82,7 +82,32 @@ A backtracking line search tests \(x_{k+1}=x_k+\lambda\Delta x_k\) and accepts a
 
 where \(0<c<1\) is the Armijo constant and \(\lambda\) is reduced by one half after a rejected trial. The nonlinear iteration is successful only when the residual norm reaches the configured tolerance. A small step without residual convergence is reported as stagnation, not success.
 
-The current Newton kernel obtains residual and sparse Jacobian values from caller-provided callbacks. Automatic differentiation, finite-difference Jacobians, nonlinear constitutive models, and multiphysics residual assembly are not yet implemented.
+## Nonlinear 1D diffusion verification
+
+The current nonlinear FEM benchmark uses the constitutive coefficient
+
+\[
+k(u)=1+u^2,\qquad k'(u)=2u.
+\]
+
+For a P1 field \(u_h\), the element residual is assembled from
+
+\[
+R_i^e=\int_{\Omega_e} k(u_h)u_h' N_i'\,dx
+-\int_{\Omega_e}fN_i\,dx,
+\]
+
+and the consistent tangent is
+
+\[
+J_{ij}^e=\int_{\Omega_e}
+\left[k'(u_h)N_j u_h' N_i'
++k(u_h)N_j'N_i'\right]dx.
+\]
+
+Three-point Gauss-Legendre quadrature is used on each line element. The manufactured solution \(u(x)=\sin(\pi x)\) defines the source through \(f=-d[k(u)u']/dx\). Endpoint Dirichlet values are imposed strongly.
+
+The nonlinear FEM benchmark is a verification example; it is not yet a general nonlinear constitutive-material API.
 
 ## Reproducibility
 
