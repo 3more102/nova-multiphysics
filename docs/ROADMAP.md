@@ -25,6 +25,8 @@ Implemented:
 - 2D scalar isotropic diffusion assembly.
 - Spatially varying positive scalar diffusivity and volumetric source.
 - Strong nodal Dirichlet elimination.
+- Neumann outward-flux integration on validated exterior edges.
+- Mixed Dirichlet-Neumann boundary benchmark.
 - Triangle orientation-independent integration.
 - Harmonic patch and manufactured quartic-solution benchmarks.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
@@ -33,7 +35,7 @@ Implemented:
 Remaining:
 - Reusable element and integration interfaces shared across physics.
 - Explicit general H1 function-space abstraction and DOF manager.
-- General boundary-facet representation and Neumann/Robin conditions.
+- Robin boundary conditions and pure-Neumann nullspace handling.
 - P2 triangle elements.
 - Mesh refinement and element-quality metrics.
 - Generic residual and tangent assembly interfaces.

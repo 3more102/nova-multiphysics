@@ -93,6 +93,7 @@ StructuredRectangleMesh2D make_rectangle_mesh_2d(
     result.mesh.nodes.reserve(nodes_x * nodes_y);
     result.mesh.elements.reserve(2 * elements_x * elements_y);
     result.boundary_nodes.reserve(2 * nodes_x + 2 * nodes_y - 4);
+    result.boundary_edges.reserve(2 * elements_x + 2 * elements_y);
 
     const double step_x =
         (x_max - x_min) / static_cast<double>(elements_x);
@@ -131,6 +132,25 @@ StructuredRectangleMesh2D make_rectangle_mesh_2d(
                 lower_left, upper_right, upper_left
             });
         }
+    }
+
+    // Counter-clockwise boundary edge ordering.
+    for (std::size_t i = 0; i < elements_x; ++i) {
+        result.boundary_edges.push_back({i, i + 1});
+    }
+    for (std::size_t j = 0; j < elements_y; ++j) {
+        const std::size_t right_bottom = j * nodes_x + elements_x;
+        result.boundary_edges.push_back({
+            right_bottom, right_bottom + nodes_x
+        });
+    }
+    for (std::size_t i = 0; i < elements_x; ++i) {
+        const std::size_t top_right = elements_y * nodes_x + elements_x - i;
+        result.boundary_edges.push_back({top_right, top_right - 1});
+    }
+    for (std::size_t j = 0; j < elements_y; ++j) {
+        const std::size_t left_top = (elements_y - j) * nodes_x;
+        result.boundary_edges.push_back({left_top, left_top - nodes_x});
     }
 
     result.mesh.validate();

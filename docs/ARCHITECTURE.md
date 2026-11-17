@@ -44,7 +44,7 @@ Responsibilities:
 
 External CAD and mesh libraries may be used after commercial license review. NOVA must own its internal mesh representation and the contracts that connect mesh data to the numerical core.
 
-The current prototype includes a validated 2D triangle mesh and a structured rectangular-grid generator. It does not yet include general CAD geometry, unstructured meshing, boundary-facet markers, or mesh refinement.
+The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, and boundary-edge topology for structured rectangles. It does not yet include general CAD geometry, unstructured meshing, general physical groups, or mesh refinement.
 
 ### Numerical core
 
@@ -93,12 +93,12 @@ The prototype currently contains:
 - A 1D P1 finite-element Poisson benchmark.
 - A validated 2D triangle mesh and structured rectangular mesh generator.
 - P1 reference-triangle basis functions and positive degree-four quadrature.
-- A 2D isotropic scalar diffusion assembler with spatially varying scalar diffusivity and strong nodal Dirichlet constraints.
+- A 2D isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric source, strong nodal Dirichlet constraints, and Neumann edge fluxes.
 - A harmonic patch test and manufactured-solution nodal convergence test.
 - L2 and H1 error-norm calculations for nodal P1 fields.
 - Automated numerical and input-validation tests.
 
-The 2D diffusion path currently lacks Neumann/Robin conditions, anisotropic tensors, P2 elements, a general DOF manager, and adaptive meshing. These are explicit follow-up tasks.
+The 2D diffusion path currently lacks Robin conditions, pure-Neumann nullspace handling, anisotropic tensors, P2 elements, a general DOF manager, and adaptive meshing. These are explicit follow-up tasks.
 
 ## 4. Dependency policy
 

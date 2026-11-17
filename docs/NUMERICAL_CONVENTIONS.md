@@ -25,7 +25,7 @@ with Dirichlet data on \(\Gamma_D\) and prescribed outward flux on \(\Gamma_N\),
 \int_{\Gamma_N}q_n v\,d\Gamma,
 \]
 
-where \(q_n=-k\nabla u\cdot n\) is the outward physical flux. The current 2D implementation supports volumetric source terms and nodal Dirichlet conditions; natural boundary integration is future work.
+where \(q_n=-k\nabla u\cdot n\) is the outward physical flux. The 2D implementation adds the corresponding negative boundary-load contribution to the assembled right-hand side.
 
 ## Reference triangle and P1 basis
 
@@ -38,6 +38,16 @@ N_1=1-r-s,\qquad N_2=r,\qquad N_3=s.
 The assembly rule uses six positive symmetric points and integrates polynomials through degree four exactly.
 
 Physical gradients are obtained from the element Jacobian. The signed determinant is retained in the gradient transformation; its absolute value is used for physical integration weights. Both triangle orientations are accepted, while degenerate and near-degenerate triangles are rejected using a scale-aware test.
+
+## Boundary-edge integration
+
+The Neumann implementation uses two-point Gauss quadrature on a linear edge. The condition supplies outward physical flux \(q_n\), not the inward normal derivative. For an edge parameter \(t\in[0,1]\), the linear edge basis is \(N_0=1-t\), \(N_1=t\), and the load contribution is
+
+\[
+-\int_{\Gamma_N}q_n N_i\,d\Gamma.
+\]
+
+Only edges incident to exactly one triangle are accepted as Neumann boundary edges. Interior edges and duplicate conditions are rejected.
 
 ## Error-norm quadrature
 
@@ -91,7 +101,7 @@ A solver result exposes convergence status, iteration count, initial residual, f
 
 ## Boundary conditions
 
-The current 1D and 2D prototype paths apply strong Dirichlet constraints through row-and-column elimination with right-hand-side correction. General constraint systems, periodic constraints, multipoint constraints, Neumann and Robin boundary integration, and Lagrange multipliers remain future work.
+The current 1D and 2D prototype paths apply strong Dirichlet constraints through row-and-column elimination with right-hand-side correction. The 2D path additionally supports prescribed Neumann outward flux on exterior linear edges. Robin conditions, pure-Neumann nullspace handling, periodic constraints, multipoint constraints, and Lagrange multipliers remain future work.
 
 ## Reproducibility
 
