@@ -59,7 +59,17 @@ Required next verification:
 - Add boundary flux and energy-balance checks for more general Neumann and Robin problems.
 - Evaluate distorted meshes and conditioning sensitivity.
 
-## Gate 4: thermal and structural modules
+## Gate 4: nonlinear solver
+- Scalar square-root residual (F(x)=x^2-2) with analytical root (sqrt{2}).
+- Verify convergence from a moderate initial guess.
+- Verify Armijo backtracking from a deliberately large Newton step.
+- Verify non-finite trial residuals are rejected and backtracked.
+- Verify both GMRES and BiCGSTAB linearized-solver paths.
+- Verify singular Jacobian failure is reported without false convergence.
+- Verify residual/Jacobian dimension mismatch rejection.
+
+## Gate 5: thermal and structural modules
+
 Thermal:
 - One-dimensional conduction.
 - Layered conduction.
@@ -72,7 +82,7 @@ Structural:
 - Rigid-body mode checks.
 - Reaction-force equilibrium.
 
-## Gate 5: multiphysics coupling
+## Gate 6: multiphysics coupling
 - Electrothermal Joule-heating benchmark.
 - Segregated versus monolithic comparison on a controlled problem.
 - Coupling residual and energy-balance checks.

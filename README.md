@@ -37,14 +37,15 @@ on triangular P1 meshes using:
 - L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
-### Linear solver capabilities
+### Linear and nonlinear solver capabilities
 - CSR sparse matrix-vector products.
 - Conjugate Gradient for symmetric positive-definite systems.
 - BiCGSTAB and restarted GMRES for general nonsymmetric systems.
-- Optional Jacobi diagonal preconditioning for all three iterative solvers.
-- Explicit breakdown and convergence reporting.
-- True-residual recomputation before reporting convergence.
-- GMRES restart length to bound Krylov-subspace memory.
+- Optional Jacobi diagonal preconditioning for all three iterative linear solvers.
+- Newton nonlinear solver with Armijo backtracking line search.
+- GMRES or BiCGSTAB for Newton linearized systems.
+- Explicit breakdown, line-search, and convergence reporting.
+- True-residual recomputation before linear convergence is accepted.
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 

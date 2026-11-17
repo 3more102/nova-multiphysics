@@ -50,19 +50,18 @@ Implemented:
 - Optional Jacobi diagonal preconditioning for CG.
 - BiCGSTAB for nonsymmetric systems.
 - Optional Jacobi preconditioning for BiCGSTAB.
-- Restarted GMRES for nonsymmetric systems.
-- Right Jacobi preconditioning for GMRES.
-- Modified Gram-Schmidt Arnoldi orthogonalization with a second reorthogonalization pass.
-- Givens rotations for the GMRES least-squares problem.
-- True-residual recomputation before convergence is accepted.
-- Input validation, breakdown diagnostics, and iteration-limit tests.
+- Restarted GMRES with modified Gram-Schmidt reorthogonalization and Givens rotations.
+- Optional right Jacobi preconditioning for GMRES.
+- Newton nonlinear solver with GMRES or BiCGSTAB linear subsolves.
+- Armijo backtracking line search, including rejection of non-finite trial residuals.
+- True-residual recomputation before linear convergence is accepted.
+- Input validation, breakdown diagnostics, and nonlinear regression tests.
 
 Remaining:
 - Incomplete Cholesky preconditioning.
 - Sparse matrix block operations.
-- Newton nonlinear solver.
-- Line search and damping.
-- Residual and Jacobian diagnostics.
+- Inexact Newton forcing terms and nonlinear convergence diagnostics.
+- Continuation and parameter-dependent nonlinear studies.
 - Solver configuration and reproducible logs.
 
 ## M3 — General scalar physics

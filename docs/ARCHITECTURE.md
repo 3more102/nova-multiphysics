@@ -4,11 +4,12 @@
 
 NOVA is intended to become a commercial, general-purpose multiphysics CAE application. The architecture must support independent evolution of the desktop application, model representation, geometry and mesh services, numerical engine, physics modules, and results system.
 
-The current implementation is an early numerical prototype. Its 1D and 2D scalar FEM cases are verification steps, not evidence of production readiness or broad multiphysics capability.
+The current implementation is an early numerical prototype. Its 1D and 2D scalar FEM cases and nonlinear scalar benchmark are verification steps, not evidence of production readiness or broad multiphysics capability.
 
 ## 2. Target subsystem boundaries
 
 ### Desktop application
+
 Responsibilities:
 - Model Builder and project navigation.
 - Geometry and mesh interaction.
@@ -19,6 +20,7 @@ Responsibilities:
 The desktop application must not own numerical algorithms. It submits immutable or versioned model snapshots to a solver process.
 
 ### Model and project layer
+
 Responsibilities:
 - Persistent identifiers for model entities.
 - Parameters, units, variables, and expressions.
@@ -31,6 +33,7 @@ Responsibilities:
 A geometry edit must not silently invalidate unrelated assignments. Entity references need persistent IDs and explicit remapping rules.
 
 ### Geometry and mesh services
+
 Responsibilities:
 - CAD import and construction.
 - Topology and entity classification.
@@ -44,6 +47,7 @@ External CAD and mesh libraries may be used after commercial license review. NOV
 The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, and boundary-edge topology for structured rectangles. It does not yet include general CAD geometry, unstructured meshing, general physical groups, or adaptive mesh refinement.
 
 ### Numerical core
+
 Responsibilities:
 - Reference elements and basis functions.
 - Function spaces and field layouts.
@@ -64,6 +68,7 @@ Each physics interface declares its fields, variables, constitutive data, constr
 Initial scalar modules use nodal P1 H1-like fields. The current 2D diffusion implementation is a focused triangle-P1 path with Dirichlet, Neumann, and Robin boundary contributions, not yet a general function-space framework. Electromagnetics will require compatible vector spaces such as Nedelec elements; mixed formulations must be supported explicitly rather than forced into a scalar interface.
 
 ### Multiphysics framework
+
 Two coupling strategies are required:
 - Segregated: solve one field or physics block at a time, with controlled field updates.
 - Monolithic: assemble a global coupled residual and Jacobian and solve for all dependent fields together.
@@ -71,11 +76,13 @@ Two coupling strategies are required:
 The coupling layer owns dependency graphs, block structure, convergence criteria, relaxation, and field transfer.
 
 ### Results and visualization
+
 The results subsystem stores mesh identity, field values, units, study metadata, solver diagnostics, and derived quantities. Visualization must consume results without mutating solver state.
 
 The current numerical prototype also provides elementwise L2 and H1 error measurements against analytical fields. These are verification utilities, not yet a general adaptive error-estimation framework.
 
 ### Solver process
+
 The long-term desktop product should execute simulations in a separate process. A versioned job manifest and result format will allow cancellation, progress reporting, remote execution, and future HPC integration.
 
 ## 3. Current code boundaries
@@ -84,6 +91,7 @@ The prototype currently contains:
 - CSR sparse matrix storage and matrix-vector multiplication.
 - Conjugate Gradient with optional Jacobi diagonal preconditioning and true-residual convergence verification.
 - BiCGSTAB and restarted GMRES for general nonsymmetric systems, with optional Jacobi diagonal preconditioning.
+- A Newton nonlinear solver with GMRES or BiCGSTAB linear subsolves and Armijo backtracking.
 - A 1D P1 finite-element Poisson benchmark.
 - A validated 2D triangle mesh and structured rectangular mesh generator.
 - P1 reference-triangle basis functions and positive degree-four quadrature.
@@ -92,9 +100,10 @@ The prototype currently contains:
 - L2 and H1 error-norm calculations for nodal P1 fields.
 - Automated numerical and input-validation tests.
 
-The 2D diffusion path currently lacks pure Neumann nullspace handling, anisotropic tensors, P2 elements, a general DOF manager, and adaptive meshing. These are explicit follow-up tasks.
+The 2D diffusion path currently lacks pure Neumann nullspace handling, anisotropic tensors, P2 elements, a general DOF manager, and adaptive meshing. The nonlinear solver is currently a generic callback-driven Newton kernel; it is not yet connected to a built-in nonlinear material or multiphysics model.
 
 ## 4. Dependency policy
+
 Every dependency must be evaluated for:
 - Commercial redistribution rights.
 - License compatibility and notice obligations.

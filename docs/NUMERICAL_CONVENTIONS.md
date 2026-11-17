@@ -58,12 +58,32 @@ Conjugate Gradient is intended for symmetric positive-definite systems. BiCGSTAB
 
 Supported preconditioners:
 - **None:** no preconditioning.
-- **Jacobi:** diagonal preconditioning \(M^{-1}=\operatorname{diag}(A)^{-1}\). CG requires every diagonal entry to be finite and strictly positive. BiCGSTAB and GMRES require finite nonzero entries.
+- **Jacobi:** diagonal preconditioning \(M^{-1}=\operatorname{diag}(A)^{-1}\). CG requires every diagonal entry to be finite and strictly positive. BiCGSTAB and GMRES require every diagonal entry to be finite and nonzero.
 
-GMRES uses right Jacobi preconditioning, modified Gram-Schmidt Arnoldi orthogonalization with a second reorthogonalization pass, and Givens rotations. Its restart length limits Krylov-subspace memory.
+GMRES uses right Jacobi preconditioning, modified Gram-Schmidt Arnoldi orthogonalization with a second reorthogonalization pass, and Givens rotations. Its restart length limits the Krylov subspace memory.
 
-Before returning success, the iterative solvers recompute the true residual \(b-Ax\). A recursive or projected residual that meets tolerance is not sufficient if the recomputed residual does not.
+Before returning success, the iterative linear solvers recompute the true residual \(b-Ax\). A recursive or projected residual that meets tolerance is not sufficient if the recomputed residual does not.
+
+## Nonlinear Newton convention
+
+The Newton kernel solves \(F(x)=0\) using the Jacobian \(J(x)=dF/dx\) and a linear correction
+
+\[
+J(x_k)\,\Delta x_k=-F(x_k).
+\]
+
+A backtracking line search tests \(x_{k+1}=x_k+\lambda\Delta x_k\) and accepts a finite trial when
+
+\[
+\|F(x_k+\lambda\Delta x_k)\|_2
+\leq
+(1-c\lambda)\|F(x_k)\|_2,
+\]
+
+where \(0<c<1\) is the Armijo constant and \(\lambda\) is reduced by one half after a rejected trial. The nonlinear iteration is successful only when the residual norm reaches the configured tolerance. A small step without residual convergence is reported as stagnation, not success.
+
+The current Newton kernel obtains residual and sparse Jacobian values from caller-provided callbacks. Automatic differentiation, finite-difference Jacobians, nonlinear constitutive models, and multiphysics residual assembly are not yet implemented.
 
 ## Reproducibility
 
-Every benchmark must record the NOVA revision, compiler, build configuration, mesh, element order, material coefficients, units, boundary conditions, solver type, preconditioner, tolerances, GMRES restart length, norm definitions, and reference solution.
+Every benchmark must record the NOVA revision, compiler, build configuration, mesh, element order, material coefficients, units, boundary conditions, solver type, preconditioner, tolerances, GMRES restart length, nonlinear line-search parameters, norm definitions, and reference solution.

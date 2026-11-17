@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(NOVA_Multiphysics
-    VERSION 0.6.0
+    VERSION 0.7.0
     DESCRIPTION "Independent multiphysics simulation platform"
     LANGUAGES CXX
 )
@@ -24,6 +24,7 @@ add_library(nova_core
     src/linalg/conjugate_gradient.cpp
     src/linalg/bicgstab.cpp
     src/linalg/gmres.cpp
+    src/nonlinear/newton_solver.cpp
     src/fem/mesh2d.cpp
     src/fem/poisson_1d.cpp
     src/fem/diffusion_2d.cpp
@@ -60,6 +61,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_conjugate_gradient.cpp
         tests/test_bicgstab.cpp
         tests/test_gmres.cpp
+        tests/test_newton_solver.cpp
         tests/test_poisson_1d.cpp
         tests/test_diffusion_2d.cpp
         tests/test_error_norms_2d.cpp
