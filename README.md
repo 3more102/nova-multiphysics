@@ -32,15 +32,16 @@ The repository now includes two small, auditable FEM verification paths.
 -\nabla\cdot(k\nabla u)=f \quad \text{in }\Omega
 ]
 
-- Triangular P1 mesh.
-- Degree-two reference-triangle quadrature.
+- Triangular P1 mesh and structured rectangular mesh generator.
+- Positive six-point degree-four reference-triangle quadrature.
 - Jacobian-based physical basis gradients.
-- Positive scalar isotropic diffusivity.
+- Positive scalar isotropic diffusivity, including spatially varying coefficients.
 - Volumetric source integration.
 - Strong nodal Dirichlet elimination.
-- Harmonic patch benchmark with a known linear solution.
+- Linear harmonic patch benchmark.
+- Manufactured quartic solution with a second-order nodal-error refinement test.
 
-The 2D implementation is deliberately limited: it does not yet support Neumann/Robin conditions, pure Neumann systems, anisotropic diffusion, P2 elements, automatic meshing, or demonstrated mesh-convergence rates. These are planned engineering tasks, not existing features.
+The 2D implementation is deliberately limited: it does not yet support Neumann/Robin conditions, pure Neumann systems, anisotropic diffusion, P2 elements, adaptive meshing, L2/H1 error norms, or a general DOF manager. These are planned engineering tasks, not existing features.
 
 ## Planned architecture
 

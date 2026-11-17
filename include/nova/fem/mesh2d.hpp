@@ -21,4 +21,20 @@ struct TriangleMesh2D {
     void validate() const;
 };
 
+struct StructuredRectangleMesh2D {
+    TriangleMesh2D mesh;
+    std::vector<std::size_t> boundary_nodes;
+};
+
+// Creates a uniform rectangular grid split into two P1 triangles per cell.
+// The rectangle is [x_min,x_max] x [y_min,y_max].
+[[nodiscard]] StructuredRectangleMesh2D make_rectangle_mesh_2d(
+    double x_min,
+    double x_max,
+    double y_min,
+    double y_max,
+    std::size_t elements_x,
+    std::size_t elements_y
+);
+
 } // namespace nova::fem

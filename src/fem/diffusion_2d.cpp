@@ -64,7 +64,6 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
         const double determinant =
             (p1.x - p0.x) * (p2.y - p0.y) -
             (p2.x - p0.x) * (p1.y - p0.y);
-        const double area = 0.5 * std::abs(determinant);
 
         const std::array<PhysicalGradient, 3> gradients{{
             {(p1.y - p2.y) / determinant, (p2.x - p1.x) / determinant},
@@ -75,7 +74,7 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
         std::array<std::array<double, 3>, 3> local_matrix{};
         std::array<double, 3> local_rhs{};
 
-        for (const TriangleQuadraturePoint& quadrature : triangle_degree_two_quadrature) {
+        for (const TriangleQuadraturePoint& quadrature : triangle_degree_four_quadrature) {
             const std::array<double, 3> shape =
                 triangle_p1_shape_values(quadrature.r, quadrature.s);
 
@@ -96,7 +95,8 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
                 throw std::invalid_argument("Source function returned a non-finite value.");
             }
 
-            const double physical_weight = std::abs(determinant) * quadrature.weight;
+            const double physical_weight =
+                std::abs(determinant) * quadrature.weight;
 
             for (std::size_t i = 0; i < 3; ++i) {
                 local_rhs[i] += source_value * shape[i] * physical_weight;

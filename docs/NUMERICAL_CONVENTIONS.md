@@ -26,7 +26,7 @@ with Dirichlet data on \(\Gamma_D\) and prescribed outward flux on \(\Gamma_N\),
 \int_{\Gamma_N} q_n v\,d\Gamma,
 \]
 
-where \(q_n=-k\nabla u\cdot n\) is the outward physical flux. The current 2D implementation supports only volumetric source terms and nodal Dirichlet conditions; the Neumann term is documented for the future boundary-facet implementation.
+where \(q_n=-k\nabla u\cdot n\) is the outward physical flux. The current 2D implementation supports volumetric source terms and nodal Dirichlet conditions; the Neumann term is documented for the future boundary-facet implementation.
 
 ## Reference triangle and P1 basis
 
@@ -36,13 +36,7 @@ The reference triangle has vertices \((r,s)=(0,0),(1,0),(0,1)\). Its linear shap
 N_1=1-r-s,\qquad N_2=r,\qquad N_3=s.
 \]
 
-The current triangle integration rule uses three symmetric points:
-
-\[
-(1/6,1/6),\quad(2/3,1/6),\quad(1/6,2/3),
-\]
-
-each with reference weight \(1/6\). The weights sum to the reference-triangle area \(1/2\) and integrate polynomials through degree two exactly.
+The current integration rule uses six positive symmetric points with reference weights approximately \(0.111690794839005\) (three points) and \(0.054975871827661\) (three points). The weights sum to the reference-triangle area \(1/2\) and the rule integrates polynomials through degree four exactly. This is sufficient for the current P1 scalar diffusion stiffness and for polynomial source terms through the corresponding assembled integrand degree.
 
 Physical gradients are obtained from the element Jacobian. The signed determinant is retained in the gradient transformation; its absolute value is used for physical integration weights. Both triangle orientations are accepted, while degenerate and near-degenerate triangles are rejected.
 

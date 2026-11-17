@@ -20,19 +20,22 @@ Acceptance achieved for the current foundation: reproducible configure/build/tes
 
 Implemented:
 - Triangle mesh data model and geometric validation.
+- Structured rectangular mesh generator with two P1 triangles per cell.
 - Linear P1 reference-triangle basis functions.
-- Degree-two triangle Gaussian quadrature.
+- Positive six-point degree-four triangle quadrature.
 - Physical gradients from the triangle Jacobian.
 - 2D scalar isotropic diffusion assembly on triangular meshes.
 - Strong nodal Dirichlet elimination.
-- Linear harmonic patch benchmark and orientation/degeneracy tests.
+- Linear harmonic patch benchmark.
+- Manufactured quartic solution with second-order nodal-error convergence tests.
+- Element orientation, degeneracy, topology, and constraint validation tests.
 
 Remaining:
 - Reusable element and integration interfaces shared across physics.
 - Explicit H1 function-space abstraction and DOF manager.
-- General boundary-facet representation and Neumann conditions.
+- General boundary-facet representation and Neumann/Robin conditions.
 - P2 triangle elements.
-- Manufactured-solution L2/H1 convergence studies.
+- L2/H1 error norms and convergence studies.
 - Mesh refinement and element-quality metrics.
 - Generic residual and tangent assembly interfaces.
 

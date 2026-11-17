@@ -43,25 +43,31 @@ Remaining:
 
 Implemented prototype:
 - Triangular P1 mesh representation and geometric validation.
-- Degree-two reference-triangle quadrature.
+- Structured rectangular mesh generator.
+- Positive six-point degree-four reference-triangle quadrature.
 - Jacobian-based physical basis gradients.
-- Isotropic positive scalar diffusivity.
+- Positive scalar isotropic diffusivity, including spatially varying coefficients.
 - Volumetric source integration.
 - Strong nodal Dirichlet elimination.
-- Linear harmonic patch test on a four-triangle unit-square mesh.
+- Linear harmonic patch test.
+- Manufactured solution:
+  [
+  u(x,y)=x(1-x)y(1-y),qquad
+  f(x,y)=2[x(1-x)+y(1-y)]
+  ]
+  on the unit square with zero Dirichlet boundary values.
+- Automated maximum-nodal-error refinement comparison on 4x4, 8x8, and 16x16 rectangular subdivisions. The test requires the error to decrease by more than a factor of 3.5 at each refinement, consistent with second-order nodal convergence for this benchmark.
 - Reversed element orientation, degenerate element, and duplicate constraint tests.
 
 Current limitations:
 - No Neumann or Robin boundary conditions.
 - No pure Neumann nullspace handling.
 - No anisotropic diffusion tensor.
-- No P2 elements or automatic mesh generator.
-- No demonstrated L2/H1 convergence-rate study yet.
+- No P2 elements.
+- No L2/H1 error norms or automatic adaptive refinement.
 
 Required next verification:
-- Manufactured quadratic solution on a sequence of refined meshes.
 - L2 and H1 error calculations and observed convergence rates.
-- Nonconstant diffusivity benchmark.
 - Boundary flux and energy-balance checks when Neumann conditions are added.
 - Mesh distortion and conditioning sensitivity.
 

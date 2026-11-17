@@ -4,7 +4,7 @@
 
 namespace nova::fem {
 
-// Three-point degree-two quadrature on the reference triangle
+// Six-point positive degree-four quadrature on the reference triangle
 // with vertices (0,0), (1,0), and (0,1). Weights sum to 1/2.
 struct TriangleQuadraturePoint {
     double r{};
@@ -12,11 +12,21 @@ struct TriangleQuadraturePoint {
     double weight{};
 };
 
-inline constexpr std::array<TriangleQuadraturePoint, 3>
-triangle_degree_two_quadrature{{
-    {1.0 / 6.0, 1.0 / 6.0, 1.0 / 6.0},
-    {2.0 / 3.0, 1.0 / 6.0, 1.0 / 6.0},
-    {1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0}
+inline constexpr double triangle_q4_a = 0.445948490915965;
+inline constexpr double triangle_q4_b = 0.108103018168070;
+inline constexpr double triangle_q4_c = 0.091576213509771;
+inline constexpr double triangle_q4_d = 0.816847572980459;
+inline constexpr double triangle_q4_w1 = 0.111690794839005;
+inline constexpr double triangle_q4_w2 = 0.054975871827661;
+
+inline constexpr std::array<TriangleQuadraturePoint, 6>
+triangle_degree_four_quadrature{{
+    {triangle_q4_a, triangle_q4_a, triangle_q4_w1},
+    {triangle_q4_b, triangle_q4_a, triangle_q4_w1},
+    {triangle_q4_a, triangle_q4_b, triangle_q4_w1},
+    {triangle_q4_c, triangle_q4_c, triangle_q4_w2},
+    {triangle_q4_d, triangle_q4_c, triangle_q4_w2},
+    {triangle_q4_c, triangle_q4_d, triangle_q4_w2}
 }};
 
 // Linear P1 shape functions in barycentric coordinates.
