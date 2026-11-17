@@ -53,11 +53,11 @@ The 2D implementation is deliberately limited: it does not yet support Neumann/R
 
 Example:
 
-\`\`\`cpp
+```cpp
 nova::linalg::SolverOptions options;
 options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
 const auto result = nova::linalg::solve_conjugate_gradient(matrix, rhs, options);
-\`\`\`
+```
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
@@ -74,7 +74,7 @@ Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplet
 
 ## Repository layout
 
-\`\`\`text
+```text
 NOVA-Multiphysics/
 ├── CMakeLists.txt
 ├── CMakePresets.json
@@ -91,7 +91,7 @@ NOVA-Multiphysics/
 │   ├── linalg/
 │   └── fem/
 └── tests/
-\`\`\`
+```
 
 ## Build
 
@@ -101,26 +101,26 @@ Requirements:
 
 Configure and build:
 
-\`\`\`bash
+```bash
 cmake --preset default
 cmake --build --preset default
 ctest --preset default
-\`\`\`
+```
 
 If your generator does not support build presets, use:
 
-\`\`\`bash
+```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-\`\`\`
+```
 
 Run the examples:
 
-\`\`\`bash
+```bash
 ./build/nova_poisson_1d
 ./build/nova_diffusion_2d
-\`\`\`
+```
 
 On Windows, use the corresponding executable paths under the build directory (or the Release subdirectory for multi-configuration generators).
 
