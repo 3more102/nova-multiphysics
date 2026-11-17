@@ -12,7 +12,7 @@ NOVA is being developed as a commercial, general-purpose computer-aided engineer
 
 ## Current numerical prototype
 
-The repository now includes two small, auditable FEM verification paths.
+The repository includes two auditable FEM verification paths.
 
 ### 1D Poisson
 
@@ -33,15 +33,17 @@ The repository now includes two small, auditable FEM verification paths.
 \]
 
 - Triangular P1 mesh and structured rectangular mesh generator.
+- Boundary-node and boundary-edge extraction for structured meshes.
 - Positive six-point degree-four reference-triangle quadrature.
 - Jacobian-based physical basis gradients.
 - Positive scalar isotropic diffusivity, including spatially varying coefficients.
 - Volumetric source integration.
 - Strong nodal Dirichlet elimination.
-- Linear harmonic patch benchmark.
+- Neumann outward-flux integration on validated exterior edges.
+- Linear harmonic and mixed Dirichlet-Neumann benchmarks.
 - Manufactured quartic solution with a second-order nodal-error refinement test.
 
-The 2D implementation is deliberately limited: it does not yet support Neumann/Robin conditions, pure Neumann systems, anisotropic diffusion, P2 elements, adaptive meshing, L2/H1 error norms, or a general DOF manager. These are planned engineering tasks, not existing features.
+The 2D implementation is deliberately limited: it does not yet support Robin conditions, pure Neumann systems, anisotropic diffusion, P2 elements, adaptive meshing, L2/H1 error norms, or a general DOF manager. These are planned engineering tasks, not existing features.
 
 ## Linear solver capabilities
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(NOVA_Multiphysics
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Independent multiphysics simulation platform"
     LANGUAGES CXX
 )

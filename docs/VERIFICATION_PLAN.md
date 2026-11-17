@@ -46,18 +46,26 @@ Remaining:
 
 Implemented prototype:
 - Triangular P1 mesh representation and geometric validation.
-- Structured rectangular mesh generator.
+- Structured rectangular mesh generator with boundary-node and boundary-edge lists.
 - Positive six-point degree-four reference-triangle quadrature.
 - Jacobian-based physical basis gradients.
 - Positive scalar isotropic diffusivity, including spatially varying coefficients.
 - Volumetric source integration.
 - Strong nodal Dirichlet elimination.
+- Neumann outward-flux integration on exterior linear edges using two-point Gauss quadrature.
 - Linear harmonic patch test.
-- Manufactured quartic solution with second-order maximum-nodal-error convergence on 4x4, 8x8, and 16x16 rectangular subdivisions.
-- Reversed element orientation, degenerate element, and duplicate constraint tests.
+- Mixed Dirichlet-Neumann test for u(x,y)=x with zero volume source.
+- Manufactured quartic solution:
+  \[
+  u(x,y)=x(1-x)y(1-y),\qquad
+  f(x,y)=2[x(1-x)+y(1-y)]
+  \]
+  on the unit square with zero Dirichlet boundary values.
+- Automated maximum-nodal-error refinement comparison on 4x4, 8x8, and 16x16 rectangular subdivisions. The test requires the error to decrease by more than a factor of 3.5 at each refinement, consistent with second-order nodal convergence for this benchmark.
+- Reversed element orientation, degenerate element, invalid Neumann edge, non-positive diffusivity, and duplicate constraint tests.
 
 Current limitations:
-- No Neumann or Robin boundary conditions.
+- No Robin boundary conditions.
 - No pure Neumann nullspace handling.
 - No anisotropic diffusion tensor.
 - No P2 elements.
@@ -65,7 +73,7 @@ Current limitations:
 
 Required next verification:
 - L2 and H1 error calculations and observed convergence rates.
-- Boundary flux and energy-balance checks when Neumann conditions are added.
+- Boundary flux and energy-balance checks for more general Neumann problems.
 - Mesh distortion and conditioning sensitivity.
 
 ## Gate 4: thermal and structural modules
