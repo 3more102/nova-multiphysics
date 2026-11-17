@@ -21,11 +21,16 @@ Acceptance achieved for the current foundation: reproducible configure/build/tes
 Implemented:
 - Triangle mesh data model and geometric validation.
 - Structured rectangular mesh generator with two P1 triangles per cell.
+- Boundary-edge topology for structured rectangular meshes.
 - Linear P1 reference-triangle basis functions.
 - Positive six-point degree-four triangle quadrature.
 - Physical gradients from the triangle Jacobian.
 - 2D scalar isotropic diffusion assembly on triangular meshes.
+- Spatially varying positive scalar diffusivity.
+- Volumetric source integration.
 - Strong nodal Dirichlet elimination.
+- Neumann outward-flux integration on validated exterior edges.
+- Mixed Dirichlet-Neumann boundary benchmark.
 - Linear harmonic patch benchmark.
 - Manufactured quartic solution with second-order nodal-error convergence tests.
 - Element orientation, degeneracy, topology, and constraint validation tests.
@@ -33,7 +38,7 @@ Implemented:
 Remaining:
 - Reusable element and integration interfaces shared across physics.
 - Explicit H1 function-space abstraction and DOF manager.
-- General boundary-facet representation and Neumann/Robin conditions.
+- Robin boundary conditions and pure-Neumann nullspace handling.
 - P2 triangle elements.
 - L2/H1 error norms and convergence studies.
 - Mesh refinement and element-quality metrics.

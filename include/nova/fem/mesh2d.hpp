@@ -12,6 +12,7 @@ struct Point2D {
 };
 
 using Triangle2D = std::array<std::size_t, 3>;
+using BoundaryEdge2D = std::array<std::size_t, 2>;
 
 struct TriangleMesh2D {
     std::vector<Point2D> nodes;
@@ -24,6 +25,7 @@ struct TriangleMesh2D {
 struct StructuredRectangleMesh2D {
     TriangleMesh2D mesh;
     std::vector<std::size_t> boundary_nodes;
+    std::vector<BoundaryEdge2D> boundary_edges;
 };
 
 // Creates a uniform rectangular grid split into two P1 triangles per cell.

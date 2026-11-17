@@ -3,9 +3,12 @@
 #include "nova/fem/triangle_p1.hpp"
 #include "nova/linalg/csr_matrix.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <map>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -17,6 +20,13 @@ struct PhysicalGradient {
     double x{};
     double y{};
 };
+
+[[nodiscard]] std::pair<std::size_t, std::size_t> canonical_edge(
+    const std::size_t first,
+    const std::size_t second
+) {
+    return std::minmax(first, second);
+}
 
 } // namespace
 
@@ -50,6 +60,40 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
             throw std::invalid_argument("A mesh node has more than one Dirichlet constraint.");
         }
         prescribed_values[constraint.node] = constraint.value;
+    }
+
+    // Build edge incidence so Neumann data can only be applied to true
+    // exterior edges, never to an interior edge shared by two elements.
+    std::map<std::pair<std::size_t, std::size_t>, std::size_t> edge_incidence;
+    for (const Triangle2D& element : problem.mesh.elements) {
+        ++edge_incidence[canonical_edge(element[0], element[1])];
+        ++edge_incidence[canonical_edge(element[1], element[2])];
+        ++edge_incidence[canonical_edge(element[2], element[0])];
+    }
+
+    std::set<std::pair<std::size_t, std::size_t>> prescribed_neumann_edges;
+    for (const NeumannBoundaryCondition2D& condition : problem.neumann_conditions) {
+        const std::size_t first = condition.edge[0];
+        const std::size_t second = condition.edge[1];
+
+        if (first >= node_count || second >= node_count) {
+            throw std::out_of_range("Neumann edge references a missing mesh node.");
+        }
+        if (first == second) {
+            throw std::invalid_argument("A Neumann edge must have two distinct nodes.");
+        }
+        if (!condition.outward_flux) {
+            throw std::invalid_argument("A Neumann boundary condition requires an outward-flux function.");
+        }
+
+        const auto key = canonical_edge(first, second);
+        const auto incidence = edge_incidence.find(key);
+        if (incidence == edge_incidence.end() || incidence->second != 1) {
+            throw std::invalid_argument("Neumann data must reference an exterior mesh edge.");
+        }
+        if (!prescribed_neumann_edges.insert(key).second) {
+            throw std::invalid_argument("A boundary edge has duplicate Neumann conditions.");
+        }
     }
 
     std::vector<linalg::Triplet> matrix_entries;
@@ -122,6 +166,39 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
                     local_matrix[i][j]
                 });
             }
+        }
+    }
+
+    // Two-point Gauss integration on [0,1] for linear boundary edges.
+    const double inverse_sqrt_three = 1.0 / std::sqrt(3.0);
+    const std::array<double, 2> edge_points{{
+        0.5 * (1.0 - inverse_sqrt_three),
+        0.5 * (1.0 + inverse_sqrt_three)
+    }};
+
+    for (const NeumannBoundaryCondition2D& condition : problem.neumann_conditions) {
+        const std::size_t first = condition.edge[0];
+        const std::size_t second = condition.edge[1];
+        const Point2D& p0 = problem.mesh.nodes[first];
+        const Point2D& p1 = problem.mesh.nodes[second];
+        const double edge_length = std::hypot(p1.x - p0.x, p1.y - p0.y);
+
+        if (!std::isfinite(edge_length) || edge_length <= 0.0) {
+            throw std::invalid_argument("Neumann edge length must be finite and positive.");
+        }
+
+        for (const double t : edge_points) {
+            const double x = (1.0 - t) * p0.x + t * p1.x;
+            const double y = (1.0 - t) * p0.y + t * p1.y;
+            const double flux = condition.outward_flux(x, y);
+
+            if (!std::isfinite(flux)) {
+                throw std::invalid_argument("Neumann outward-flux function returned a non-finite value.");
+            }
+
+            const double integration_weight = 0.5 * edge_length;
+            right_hand_side[first] -= flux * (1.0 - t) * integration_weight;
+            right_hand_side[second] -= flux * t * integration_weight;
         }
     }
 
