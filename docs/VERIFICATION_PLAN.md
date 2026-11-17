@@ -15,7 +15,8 @@
 - Compare Jacobi-preconditioned and unpreconditioned CG on a scaled SPD diagonal system.
 - Verify BiCGSTAB on a known nonsymmetric system with a hand-computed solution.
 - Verify BiCGSTAB with Jacobi preconditioning and zero-diagonal rejection.
-- Verify restarted GMRES on a known nonsymmetric system.
+- Verify restarted GMRES on a known nonsymmetric system with a full-size Krylov space.
+- Verify GMRES convergence across multiple restart cycles using a smaller Krylov subspace.
 - Verify GMRES with Jacobi preconditioning and restart-length validation.
 - Verify breakdown and iteration-limit states are not reported as convergence.
 - Verify reported convergence against the recomputed true residual.

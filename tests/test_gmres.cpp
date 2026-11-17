@@ -46,6 +46,25 @@ NOVA_TEST(gmres_solves_nonsymmetric_system) {
     NOVA_REQUIRE_NEAR(result.residual_norm, true_residual, 1.0e-14);
 }
 
+NOVA_TEST(gmres_restarts_krylov_subspace_and_converges) {
+    const auto matrix = make_nonsymmetric_matrix();
+    const std::vector<double> rhs{6.0, 3.0, 0.0};
+
+    nova::linalg::GmresOptions options;
+    options.restart = 2;
+    options.solver.max_iterations = 50;
+    options.solver.relative_tolerance = 1.0e-10;
+    options.solver.absolute_tolerance = 1.0e-12;
+
+    const auto result = nova::linalg::solve_gmres(matrix, rhs, options);
+
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.iterations > options.restart);
+    NOVA_REQUIRE_NEAR(result.solution[0], 1.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(result.solution[1], 2.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(result.solution[2], -1.0, 1.0e-8);
+}
+
 NOVA_TEST(gmres_supports_jacobi_preconditioning) {
     const auto matrix = make_nonsymmetric_matrix();
     const std::vector<double> rhs{6.0, 3.0, 0.0};
