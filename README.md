@@ -41,9 +41,10 @@ on triangular P1 meshes using:
 - CSR sparse matrix-vector products.
 - Conjugate Gradient for symmetric positive-definite systems.
 - BiCGSTAB and restarted GMRES for general nonsymmetric systems.
-- Optional Jacobi diagonal preconditioning.
+- Optional Jacobi diagonal preconditioning for all three iterative solvers.
 - Explicit breakdown and convergence reporting.
 - True-residual recomputation before reporting convergence.
+- GMRES restart length to bound Krylov-subspace memory.
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 

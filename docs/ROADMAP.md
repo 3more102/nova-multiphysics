@@ -8,7 +8,6 @@ A milestone is complete only when its acceptance tests, verification evidence, a
 
 - C++20 and CMake project.
 - CSR sparse matrix.
-- Conjugate-gradient solver.
 - 1D P1 Poisson FEM benchmark.
 - Automated tests and continuous integration.
 
@@ -47,17 +46,19 @@ Remaining:
 **In progress.**
 
 Implemented:
-- Unpreconditioned Conjugate Gradient.
+- Conjugate Gradient for symmetric positive-definite systems.
 - Optional Jacobi diagonal preconditioning for CG.
-- BiCGSTAB for general nonsymmetric systems.
-- Optional Jacobi diagonal preconditioning for BiCGSTAB.
-- Restarted GMRES with modified Gram-Schmidt reorthogonalization and Givens rotations.
-- Optional right Jacobi preconditioning for GMRES.
+- BiCGSTAB for nonsymmetric systems.
+- Optional Jacobi preconditioning for BiCGSTAB.
+- Restarted GMRES for nonsymmetric systems.
+- Right Jacobi preconditioning for GMRES.
+- Modified Gram-Schmidt Arnoldi orthogonalization with a second reorthogonalization pass.
+- Givens rotations for the GMRES least-squares problem.
 - True-residual recomputation before convergence is accepted.
-- Regression tests for SPD and nonsymmetric systems.
+- Input validation, breakdown diagnostics, and iteration-limit tests.
 
 Remaining:
-- Incomplete Cholesky preconditioning for SPD systems.
+- Incomplete Cholesky preconditioning.
 - Sparse matrix block operations.
 - Newton nonlinear solver.
 - Line search and damping.

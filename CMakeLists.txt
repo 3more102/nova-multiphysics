@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(NOVA_Multiphysics
-    VERSION 0.3.0
+    VERSION 0.6.0
     DESCRIPTION "Independent multiphysics simulation platform"
     LANGUAGES CXX
 )
@@ -63,6 +63,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_poisson_1d.cpp
         tests/test_diffusion_2d.cpp
         tests/test_error_norms_2d.cpp
+        tests/test_mesh_topology_2d.cpp
     )
     target_include_directories(nova_tests PRIVATE tests)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)

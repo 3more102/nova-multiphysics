@@ -30,7 +30,6 @@
 - Verify a nonzero Dirichlet linear solution with zero source.
 
 ## Gate 3: two-dimensional scalar diffusion
-
 Implemented regression cases:
 - Linear harmonic patch test with nonzero Dirichlet values.
 - Spatially varying positive diffusivity and source.
@@ -38,16 +37,15 @@ Implemented regression cases:
 - Degenerate and near-degenerate triangle rejection.
 - Duplicate Dirichlet constraint rejection.
 - Structured rectangular mesh topology, boundary-node and boundary-edge counts.
-- Mixed Dirichlet-Neumann test for u(x,y)=x with zero volume source.
-- Mixed Dirichlet-Robin test for u(x,y)=x with zero volume source.
-- Rejection of Neumann/Robin conditions on interior edges and negative Robin coefficients.
+- Mixed Dirichlet-Neumann and Dirichlet-Robin tests.
+- Rejection of Neumann/Robin conditions on interior edges.
+- Rejection of duplicate/conflicting natural conditions on one edge.
+- Rejection of negative Robin coefficients.
 - Manufactured quartic solution on 4×4, 8×8, and 16×16 meshes.
 - Nodal maximum-error refinement.
 - L2, H1-seminorm, and H1 error calculations.
 - Exact reproduction of a linear P1 field by the error-norm calculator.
 - Orientation-independent error-norm integration.
-
-The error-norm calculator integrates the squared value and gradient errors elementwise using a Duffy-transformed 5×5 Gauss-Legendre rule.
 
 Current limitations:
 - No pure Neumann nullspace handling.
@@ -56,12 +54,11 @@ Current limitations:
 - No automatic adaptive refinement.
 
 Required next verification:
-- Compare the error norms and observed convergence rates with an independent reference implementation.
+- Compare error norms and observed convergence rates with an independent reference implementation.
 - Add boundary flux and energy-balance checks for more general Neumann and Robin problems.
 - Evaluate distorted meshes and conditioning sensitivity.
 
 ## Gate 4: thermal and structural modules
-
 Thermal:
 - One-dimensional conduction.
 - Layered conduction.

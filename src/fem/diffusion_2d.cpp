@@ -88,7 +88,7 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
 
         const auto key = canonical_edge(first, second);
         const auto incidence = edge_incidence.find(key);
-        if (incidence == edge_incidence.end() || incidence->second != 1) {
+        if (incidence == edge_incidence.end() || incidence->second != 1U) {
             throw std::invalid_argument("Neumann data must reference an exterior mesh edge.");
         }
         if (!prescribed_natural_edges.insert(key).second) {
@@ -114,7 +114,7 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
 
         const auto key = canonical_edge(first, second);
         const auto incidence = edge_incidence.find(key);
-        if (incidence == edge_incidence.end() || incidence->second != 1) {
+        if (incidence == edge_incidence.end() || incidence->second != 1U) {
             throw std::invalid_argument("Robin data must reference an exterior mesh edge.");
         }
         if (!prescribed_natural_edges.insert(key).second) {
@@ -123,7 +123,19 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
     }
 
     std::vector<linalg::Triplet> matrix_entries;
-    matrix_entries.reserve(problem.mesh.elements.size() * 9);
+    const std::size_t maximum_entries = matrix_entries.max_size();
+    if (problem.mesh.elements.size() > maximum_entries / 9U) {
+        throw std::length_error("The requested 2D finite-element matrix is too large.");
+    }
+    const std::size_t volume_entry_count = problem.mesh.elements.size() * 9U;
+    if (problem.robin_conditions.size() >
+        (maximum_entries - volume_entry_count) / 8U) {
+        throw std::length_error("The Robin boundary matrix is too large.");
+    }
+    matrix_entries.reserve(
+        volume_entry_count + problem.robin_conditions.size() * 8U
+    );
+
     std::vector<double> right_hand_side(node_count, 0.0);
 
     for (const Triangle2D& element : problem.mesh.elements) {
@@ -184,6 +196,9 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
         for (std::size_t i = 0; i < 3; ++i) {
             const std::size_t global_i = element[i];
             right_hand_side[global_i] += local_rhs[i];
+            if (!std::isfinite(right_hand_side[global_i])) {
+                throw std::overflow_error("Finite-element load-vector accumulation overflowed.");
+            }
 
             for (std::size_t j = 0; j < 3; ++j) {
                 matrix_entries.push_back({
@@ -225,6 +240,11 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
             const double integration_weight = 0.5 * edge_length;
             right_hand_side[first] -= flux * (1.0 - t) * integration_weight;
             right_hand_side[second] -= flux * t * integration_weight;
+
+            if (!std::isfinite(right_hand_side[first]) ||
+                !std::isfinite(right_hand_side[second])) {
+                throw std::overflow_error("Neumann load-vector accumulation overflowed.");
+            }
         }
     }
 
@@ -262,6 +282,11 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
             right_hand_side[first] += transfer * ambient * shape[0] * weight;
             right_hand_side[second] += transfer * ambient * shape[1] * weight;
 
+            if (!std::isfinite(right_hand_side[first]) ||
+                !std::isfinite(right_hand_side[second])) {
+                throw std::overflow_error("Robin load-vector accumulation overflowed.");
+            }
+
             matrix_entries.push_back({
                 first, first, transfer * shape[0] * shape[0] * weight
             });
@@ -280,6 +305,9 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
     // Strong Dirichlet enforcement: remove constrained columns, correct
     // the free-node RHS, and replace constrained rows with identity rows.
     std::vector<linalg::Triplet> constrained_entries;
+    if (node_count > constrained_entries.max_size() - matrix_entries.size()) {
+        throw std::length_error("The constrained finite-element matrix is too large.");
+    }
     constrained_entries.reserve(matrix_entries.size() + node_count);
 
     for (const linalg::Triplet& entry : matrix_entries) {
@@ -289,6 +317,9 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
         if (!row_is_constrained && column_is_constrained) {
             right_hand_side[entry.row] -=
                 entry.value * prescribed_values[entry.column].value();
+            if (!std::isfinite(right_hand_side[entry.row])) {
+                throw std::overflow_error("Dirichlet RHS correction overflowed.");
+            }
         } else if (!row_is_constrained && !column_is_constrained) {
             constrained_entries.push_back(entry);
         }
