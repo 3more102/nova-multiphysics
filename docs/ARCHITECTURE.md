@@ -88,7 +88,7 @@ The long-term desktop product should execute simulations in a separate process. 
 
 The prototype currently contains:
 - CSR sparse matrix storage and matrix-vector multiplication.
-- An unpreconditioned conjugate-gradient solver for SPD systems.
+- Conjugate Gradient with optional Jacobi diagonal preconditioning and true-residual convergence verification.
 - A 1D P1 finite-element Poisson benchmark.
 - A validated 2D triangle mesh and structured rectangular mesh generator.
 - P1 reference-triangle basis functions and positive degree-four quadrature.

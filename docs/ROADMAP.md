@@ -4,19 +4,17 @@ This roadmap is capability-based. A milestone is complete only when its acceptan
 
 ## M0 — Engineering foundation
 
-<status>Implemented; CI verified on Windows and Linux.</status>
+Implemented; CI verified on Windows and Linux.
 
 - C++20 and CMake project.
 - CSR sparse matrix.
-- Unpreconditioned conjugate-gradient solver.
+- Conjugate-gradient solver.
 - 1D P1 Poisson FEM benchmark.
 - Automated tests and continuous integration.
 
-Acceptance achieved for the current foundation: reproducible configure/build/test workflow on Windows and Linux.
-
 ## M1 — FEM kernel
 
-<status>In progress.</status>
+In progress.
 
 Implemented:
 - Triangle mesh data model and geometric validation.
@@ -39,18 +37,27 @@ Remaining:
 - Mesh refinement and element-quality metrics.
 - Generic residual and tangent assembly interfaces.
 
-Acceptance: verified 1D and 2D scalar diffusion with mesh-convergence studies, boundary-condition coverage, and reusable function-space/assembly interfaces.
-
 ## M2 — Solver infrastructure
 
-- Preconditioned Krylov methods.
+In progress.
+
+Implemented:
+- Unpreconditioned Conjugate Gradient.
+- Optional Jacobi diagonal preconditioning.
+- Explicit validation of Jacobi diagonal entries.
+- True-residual recomputation before convergence is accepted.
+- Regression tests on a scaled SPD diagonal system.
+
+Remaining:
+- Incomplete Cholesky preconditioning.
+- GMRES and BiCGSTAB for nonsymmetric systems.
 - Sparse matrix block operations.
 - Newton nonlinear solver.
 - Line search and damping.
 - Residual and Jacobian diagnostics.
 - Solver configuration and reproducible logs.
 
-Acceptance: verified linear and nonlinear benchmark suite.
+Acceptance: verified linear and nonlinear benchmark suite with documented convergence and breakdown behavior.
 
 ## M3 — General scalar physics
 

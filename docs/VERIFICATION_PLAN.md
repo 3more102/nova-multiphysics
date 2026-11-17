@@ -16,8 +16,11 @@ NOVA must establish numerical correctness before expanding feature breadth. Each
 
 - Verify CSR duplicate triplet accumulation and matrix-vector products.
 - Verify dimension and index errors.
-- Verify conjugate-gradient solution and residual reduction for known SPD systems.
+- Verify CG solution and residual reduction for known SPD systems.
 - Verify failure reporting for non-positive curvature.
+- Verify Jacobi preconditioner rejection of non-positive or non-finite diagonal entries.
+- Compare preconditioned and unpreconditioned iteration counts on a scaled SPD diagonal system.
+- Verify reported convergence against the recomputed true residual.
 
 ## Gate 2: one-dimensional Poisson FEM
 
@@ -50,13 +53,7 @@ Implemented prototype:
 - Volumetric source integration.
 - Strong nodal Dirichlet elimination.
 - Linear harmonic patch test.
-- Manufactured solution:
-  [
-  u(x,y)=x(1-x)y(1-y),qquad
-  f(x,y)=2[x(1-x)+y(1-y)]
-  ]
-  on the unit square with zero Dirichlet boundary values.
-- Automated maximum-nodal-error refinement comparison on 4x4, 8x8, and 16x16 rectangular subdivisions. The test requires the error to decrease by more than a factor of 3.5 at each refinement, consistent with second-order nodal convergence for this benchmark.
+- Manufactured quartic solution with second-order maximum-nodal-error convergence on 4x4, 8x8, and 16x16 rectangular subdivisions.
 - Reversed element orientation, degenerate element, and duplicate constraint tests.
 
 Current limitations:

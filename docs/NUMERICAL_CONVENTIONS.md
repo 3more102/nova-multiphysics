@@ -36,7 +36,7 @@ The reference triangle has vertices \((r,s)=(0,0),(1,0),(0,1)\). Its linear shap
 N_1=1-r-s,\qquad N_2=r,\qquad N_3=s.
 \]
 
-The current integration rule uses six positive symmetric points with reference weights approximately \(0.111690794839005\) (three points) and \(0.054975871827661\) (three points). The weights sum to the reference-triangle area \(1/2\) and the rule integrates polynomials through degree four exactly. This is sufficient for the current P1 scalar diffusion stiffness and for polynomial source terms through the corresponding assembled integrand degree.
+The current integration rule uses six positive symmetric points with reference weights approximately \(0.111690794839005\) (three points) and \(0.054975871827661\) (three points). The weights sum to the reference-triangle area \(1/2\) and the rule integrates polynomials through degree four exactly.
 
 Physical gradients are obtained from the element Jacobian. The signed determinant is retained in the gradient transformation; its absolute value is used for physical integration weights. Both triangle orientations are accepted, while degenerate and near-degenerate triangles are rejected.
 
@@ -50,15 +50,21 @@ Physical gradients are obtained from the element Jacobian. The signed determinan
 
 ## Solver convention
 
-The initial conjugate-gradient implementation is intended for symmetric positive-definite systems. It checks for non-positive curvature during iteration but does not constitute a formal proof that the input matrix is SPD.
+Conjugate Gradient is intended for symmetric positive-definite systems. It detects non-positive search-direction curvature but cannot prove that an arbitrary input matrix is SPD.
 
-Convergence is declared when
+Supported preconditioners:
+- **None:** standard unpreconditioned CG.
+- **Jacobi:** diagonal preconditioning \(M^{-1}=\operatorname{diag}(A)^{-1}\). Every diagonal entry must be finite and strictly positive.
+
+Convergence is defined by
 
 \[
 \|r_k\|_2 \leq \max(\text{atol}, \text{rtol}\,\|r_0\|_2).
 \]
 
-A solver result must expose convergence status, iteration count, initial residual, final residual, and a diagnostic message. Reaching the iteration limit is not reported as successful convergence.
+Before returning success, the solver recomputes the true residual \(b-Ax\). If the recursive residual meets tolerance but the recomputed residual does not, the solver restarts from the true residual.
+
+A solver result exposes convergence status, iteration count, initial residual, final true residual, and a diagnostic message. Reaching the iteration limit is not reported as successful convergence.
 
 ## Boundary conditions
 
@@ -72,5 +78,5 @@ Every reported benchmark must record:
 - Mesh definition and element order.
 - Material coefficients and units.
 - Boundary and initial conditions.
-- Solver type, tolerances, and iteration limit.
+- Solver type, preconditioner, tolerances, and iteration limit.
 - Norm definitions and reference solution.

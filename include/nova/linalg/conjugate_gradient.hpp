@@ -9,10 +9,16 @@
 
 namespace nova::linalg {
 
+enum class PreconditionerType {
+    None,
+    Jacobi
+};
+
 struct SolverOptions {
     std::size_t max_iterations{1000};
     double relative_tolerance{1.0e-10};
     double absolute_tolerance{1.0e-14};
+    PreconditionerType preconditioner{PreconditionerType::None};
 };
 
 struct SolverResult {
@@ -24,8 +30,8 @@ struct SolverResult {
     std::string message;
 };
 
-// Solves A*x=b using unpreconditioned conjugate gradients.
-// The caller is responsible for supplying a symmetric positive-definite matrix.
+// Solves A*x=b using conjugate gradients. A must be symmetric positive-definite.
+// Jacobi preconditioning uses the inverse of the matrix diagonal.
 [[nodiscard]] SolverResult solve_conjugate_gradient(
     const CsrMatrix& matrix,
     std::span<const double> right_hand_side,

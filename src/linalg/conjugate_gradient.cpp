@@ -54,11 +54,50 @@ SolverResult solve_conjugate_gradient(
         options.relative_tolerance < 0.0 ||
         options.absolute_tolerance < 0.0 ||
         (options.relative_tolerance == 0.0 && options.absolute_tolerance == 0.0)) {
-        throw std::invalid_argument("Conjugate-gradient tolerances must be finite, non-negative, and not both zero.");
+        throw std::invalid_argument(
+            "Conjugate-gradient tolerances must be finite, non-negative, and not both zero."
+        );
     }
     if (!all_finite(right_hand_side) || !all_finite(initial_guess)) {
         throw std::invalid_argument("Conjugate-gradient input vectors must contain only finite values.");
     }
+    if (options.preconditioner != PreconditionerType::None &&
+        options.preconditioner != PreconditionerType::Jacobi) {
+        throw std::invalid_argument("Unsupported conjugate-gradient preconditioner.");
+    }
+
+    std::vector<double> inverse_diagonal;
+    if (options.preconditioner == PreconditionerType::Jacobi) {
+        const std::vector<double> diagonal = matrix.diagonal();
+        inverse_diagonal.resize(diagonal.size(), 0.0);
+
+        for (std::size_t index = 0; index < diagonal.size(); ++index) {
+            if (!std::isfinite(diagonal[index]) || diagonal[index] <= 0.0) {
+                throw std::invalid_argument(
+                    "Jacobi preconditioning requires a finite, strictly positive diagonal."
+                );
+            }
+
+            inverse_diagonal[index] = 1.0 / diagonal[index];
+            if (!std::isfinite(inverse_diagonal[index])) {
+                throw std::invalid_argument(
+                    "Jacobi inverse diagonal is outside the supported numeric range."
+                );
+            }
+        }
+    }
+
+    const auto apply_preconditioner = [&](const std::vector<double>& residual) {
+        if (options.preconditioner == PreconditionerType::None) {
+            return residual;
+        }
+
+        std::vector<double> result(residual.size(), 0.0);
+        for (std::size_t index = 0; index < residual.size(); ++index) {
+            result[index] = inverse_diagonal[index] * residual[index];
+        }
+        return result;
+    };
 
     std::vector<double> solution(matrix.columns(), 0.0);
     if (!initial_guess.empty()) {
@@ -72,21 +111,25 @@ SolverResult solve_conjugate_gradient(
     for (std::size_t index = 0; index < residual.size(); ++index) {
         residual[index] = right_hand_side[index] - matrix_times_solution[index];
     }
-
-    std::vector<double> direction = residual;
-    double residual_squared = dot(residual, residual);
-    if (!std::isfinite(residual_squared)) {
-        throw std::overflow_error("Initial conjugate-gradient residual norm overflowed.");
+    if (!all_finite(residual)) {
+        throw std::overflow_error("Initial conjugate-gradient residual is non-finite.");
     }
 
     SolverResult result;
     result.initial_residual_norm = norm(residual);
     result.residual_norm = result.initial_residual_norm;
 
+    if (!std::isfinite(result.initial_residual_norm)) {
+        throw std::overflow_error("Initial conjugate-gradient residual norm overflowed.");
+    }
+
     const double convergence_threshold = std::max(
         options.absolute_tolerance,
         options.relative_tolerance * result.initial_residual_norm
     );
+    if (!std::isfinite(convergence_threshold)) {
+        throw std::invalid_argument("Conjugate-gradient convergence threshold overflowed.");
+    }
 
     if (result.residual_norm <= convergence_threshold) {
         result.solution = std::move(solution);
@@ -94,6 +137,17 @@ SolverResult solve_conjugate_gradient(
         result.message = "Initial guess satisfies the convergence criterion.";
         return result;
     }
+
+    std::vector<double> preconditioned_residual = apply_preconditioner(residual);
+    double rho = dot(residual, preconditioned_residual);
+
+    if (!std::isfinite(rho) || rho <= 0.0) {
+        result.solution = std::move(solution);
+        result.message = "CG breakdown: preconditioned residual product is non-positive or non-finite.";
+        return result;
+    }
+
+    std::vector<double> direction = preconditioned_residual;
 
     for (std::size_t iteration = 0; iteration < options.max_iterations; ++iteration) {
         const std::vector<double> matrix_times_direction =
@@ -107,7 +161,7 @@ SolverResult solve_conjugate_gradient(
             return result;
         }
 
-        const double alpha = residual_squared / curvature;
+        const double alpha = rho / curvature;
         if (!std::isfinite(alpha)) {
             result.solution = std::move(solution);
             result.iterations = iteration;
@@ -120,30 +174,82 @@ SolverResult solve_conjugate_gradient(
             residual[index] -= alpha * matrix_times_direction[index];
         }
 
-        const double next_residual_squared = dot(residual, residual);
+        if (!all_finite(solution) || !all_finite(residual)) {
+            result.solution = std::move(solution);
+            result.iterations = iteration + 1;
+            result.message = "CG breakdown: solution or residual became non-finite.";
+            return result;
+        }
+
         result.iterations = iteration + 1;
-        result.residual_norm = std::sqrt(next_residual_squared);
+        result.residual_norm = norm(residual);
 
         if (!std::isfinite(result.residual_norm)) {
             result.solution = std::move(solution);
-            result.message = "CG breakdown: residual became non-finite.";
+            result.message = "CG breakdown: residual norm became non-finite.";
             return result;
         }
 
         if (result.residual_norm <= convergence_threshold) {
+            // Recompute the true residual before declaring convergence. This
+            // prevents accumulated recurrence round-off from causing a false pass.
+            const std::vector<double> true_matrix_times_solution =
+                matrix.multiply(std::span<const double>(solution));
+            std::vector<double> true_residual(right_hand_side.size(), 0.0);
+
+            for (std::size_t index = 0; index < true_residual.size(); ++index) {
+                true_residual[index] =
+                    right_hand_side[index] - true_matrix_times_solution[index];
+            }
+
+            if (!all_finite(true_residual)) {
+                result.solution = std::move(solution);
+                result.message = "CG breakdown: recomputed true residual became non-finite.";
+                return result;
+            }
+
+            result.residual_norm = norm(true_residual);
+            if (!std::isfinite(result.residual_norm)) {
+                result.solution = std::move(solution);
+                result.message = "CG breakdown: true residual norm became non-finite.";
+                return result;
+            }
+
+            if (result.residual_norm <= convergence_threshold) {
+                result.solution = std::move(solution);
+                result.converged = true;
+                result.message = options.preconditioner == PreconditionerType::Jacobi
+                    ? "Converged with Jacobi preconditioning."
+                    : "Converged.";
+                return result;
+            }
+
+            // The recursive residual drifted below tolerance before the true
+            // residual did. Restart from the recomputed residual.
+            residual = std::move(true_residual);
+            preconditioned_residual = apply_preconditioner(residual);
+            rho = dot(residual, preconditioned_residual);
+
+            if (!std::isfinite(rho) || rho <= 0.0) {
+                result.solution = std::move(solution);
+                result.message = "CG breakdown after true-residual restart.";
+                return result;
+            }
+
+            direction = preconditioned_residual;
+            continue;
+        }
+
+        preconditioned_residual = apply_preconditioner(residual);
+        const double next_rho = dot(residual, preconditioned_residual);
+
+        if (!std::isfinite(next_rho) || next_rho <= 0.0) {
             result.solution = std::move(solution);
-            result.converged = true;
-            result.message = "Converged.";
+            result.message = "CG breakdown: preconditioned residual product is non-positive or non-finite.";
             return result;
         }
 
-        if (residual_squared <= 0.0 || !std::isfinite(residual_squared)) {
-            result.solution = std::move(solution);
-            result.message = "CG breakdown: invalid residual norm.";
-            return result;
-        }
-
-        const double beta = next_residual_squared / residual_squared;
+        const double beta = next_rho / rho;
         if (!std::isfinite(beta)) {
             result.solution = std::move(solution);
             result.message = "CG breakdown: non-finite direction update.";
@@ -151,9 +257,9 @@ SolverResult solve_conjugate_gradient(
         }
 
         for (std::size_t index = 0; index < direction.size(); ++index) {
-            direction[index] = residual[index] + beta * direction[index];
+            direction[index] = preconditioned_residual[index] + beta * direction[index];
         }
-        residual_squared = next_residual_squared;
+        rho = next_rho;
     }
 
     result.solution = std::move(solution);
