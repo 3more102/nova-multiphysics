@@ -226,10 +226,95 @@ NOVA_TEST(diffusion_2d_solves_mixed_dirichlet_neumann_problem) {
     }
 }
 
+NOVA_TEST(diffusion_2d_solves_mixed_dirichlet_robin_problem) {
+    auto generated = nova::fem::make_rectangle_mesh_2d(
+        0.0, 1.0, 0.0, 1.0, 4, 4
+    );
+
+    nova::fem::ScalarDiffusion2DProblem problem;
+    problem.mesh = std::move(generated.mesh);
+    problem.diffusivity = [](const double, const double) { return 1.0; };
+    problem.source = [](const double, const double) { return 0.0; };
+
+    for (const std::size_t node : generated.boundary_nodes) {
+        const auto& point = problem.mesh.nodes[node];
+        if (point.x == 0.0) {
+            problem.dirichlet_constraints.push_back({node, 0.0});
+        }
+    }
+
+    for (const auto& edge : generated.boundary_edges) {
+        const auto& p0 = problem.mesh.nodes[edge[0]];
+        const auto& p1 = problem.mesh.nodes[edge[1]];
+
+        if (p0.x == 0.0 && p1.x == 0.0) {
+            continue;
+        }
+
+        if (p0.x == 1.0 && p1.x == 1.0) {
+            problem.robin_conditions.push_back({
+                edge,
+                [](const double, const double) { return 2.0; },
+                [](const double, const double) { return 1.5; }
+            });
+        } else {
+            problem.neumann_conditions.push_back({
+                edge,
+                [](const double, const double) { return 0.0; }
+            });
+        }
+    }
+
+    const auto result = nova::fem::solve_scalar_diffusion_2d(problem);
+    NOVA_REQUIRE(result.linear_solver.converged);
+
+    for (std::size_t node = 0; node < problem.mesh.nodes.size(); ++node) {
+        NOVA_REQUIRE_NEAR(
+            result.values[node],
+            problem.mesh.nodes[node].x,
+            1.0e-9
+        );
+    }
+}
+
 NOVA_TEST(diffusion_2d_rejects_neumann_condition_on_interior_edge) {
     auto problem = make_harmonic_problem();
     problem.neumann_conditions.push_back({
         {0, 4},
+        [](const double, const double) { return 0.0; }
+    });
+
+    bool threw = false;
+    try {
+        static_cast<void>(nova::fem::solve_scalar_diffusion_2d(problem));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    NOVA_REQUIRE(threw);
+}
+
+NOVA_TEST(diffusion_2d_rejects_robin_condition_on_interior_edge) {
+    auto problem = make_harmonic_problem();
+    problem.robin_conditions.push_back({
+        {0, 4},
+        [](const double, const double) { return 1.0; },
+        [](const double, const double) { return 0.0; }
+    });
+
+    bool threw = false;
+    try {
+        static_cast<void>(nova::fem::solve_scalar_diffusion_2d(problem));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    NOVA_REQUIRE(threw);
+}
+
+NOVA_TEST(diffusion_2d_rejects_negative_robin_coefficient) {
+    auto problem = make_harmonic_problem();
+    problem.robin_conditions.push_back({
+        {0, 1},
+        [](const double, const double) { return -1.0; },
         [](const double, const double) { return 0.0; }
     });
 

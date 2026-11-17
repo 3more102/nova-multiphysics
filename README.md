@@ -32,7 +32,8 @@ on triangular P1 meshes using:
 - Volumetric source integration.
 - Strong nodal Dirichlet elimination.
 - Neumann outward-flux integration on validated exterior edges.
-- Mixed Dirichlet-Neumann boundary benchmark.
+- Robin boundary integration with non-negative transfer coefficients and ambient values.
+- Mixed Dirichlet-Neumann and Dirichlet-Robin benchmarks.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
 ### Quantitative verification
@@ -53,7 +54,7 @@ on triangular P1 meshes using:
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The 2D implementation does not yet support Robin conditions, pure Neumann nullspace handling, anisotropic diffusion tensors, P2 elements, adaptive meshing, or a general DOF manager.
+The 2D implementation does not yet support pure Neumann nullspace handling, anisotropic diffusion tensors, P2 elements, adaptive meshing, or a general DOF manager.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.

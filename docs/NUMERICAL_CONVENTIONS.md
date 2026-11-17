@@ -25,7 +25,7 @@ with Dirichlet data on \(\Gamma_D\) and prescribed outward flux on \(\Gamma_N\),
 \int_{\Gamma_N}q_n v\,d\Gamma,
 \]
 
-where \(q_n=-k\nabla u\cdot n\) is the outward physical flux. The 2D implementation adds the corresponding negative boundary-load contribution to the assembled right-hand side.
+where \(q_n=-k\nabla u\cdot n\) is the outward physical flux. The 2D implementation adds the corresponding negative Neumann boundary-load contribution to the assembled right-hand side. For a Robin condition, the outward flux is defined as \(q_n=h(u-u_\infty)\), with non-negative transfer coefficient \(h\).
 
 ## Reference triangle and P1 basis
 
@@ -47,7 +47,9 @@ The Neumann implementation uses two-point Gauss quadrature on a linear edge. The
 -\int_{\Gamma_N}q_n N_i\,d\Gamma.
 \]
 
-Only edges incident to exactly one triangle are accepted as Neumann boundary edges. Interior edges and duplicate conditions are rejected.
+Only edges incident to exactly one triangle are accepted as Neumann boundary edges. Interior edges and duplicate natural conditions are rejected.
+
+For a Robin edge, the weak form adds \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side. The same two-point edge quadrature is used. Robin and Neumann conditions cannot be assigned to the same edge.
 
 ## Error-norm quadrature
 
@@ -101,7 +103,7 @@ A solver result exposes convergence status, iteration count, initial residual, f
 
 ## Boundary conditions
 
-The current 1D and 2D prototype paths apply strong Dirichlet constraints through row-and-column elimination with right-hand-side correction. The 2D path additionally supports prescribed Neumann outward flux on exterior linear edges. Robin conditions, pure-Neumann nullspace handling, periodic constraints, multipoint constraints, and Lagrange multipliers remain future work.
+The current 1D and 2D prototype paths apply strong Dirichlet constraints through row-and-column elimination with right-hand-side correction. The 2D path additionally supports prescribed Neumann outward flux and Robin transfer conditions on exterior linear edges. Pure-Neumann nullspace handling, periodic constraints, multipoint constraints, and Lagrange multipliers remain future work.
 
 ## Reproducibility
 

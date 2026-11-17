@@ -93,12 +93,12 @@ The prototype currently contains:
 - A 1D P1 finite-element Poisson benchmark.
 - A validated 2D triangle mesh and structured rectangular mesh generator.
 - P1 reference-triangle basis functions and positive degree-four quadrature.
-- A 2D isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric source, strong nodal Dirichlet constraints, and Neumann edge fluxes.
+- A 2D isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric source, strong nodal Dirichlet constraints, and Neumann/Robin edge terms.
 - A harmonic patch test and manufactured-solution nodal convergence test.
 - L2 and H1 error-norm calculations for nodal P1 fields.
 - Automated numerical and input-validation tests.
 
-The 2D diffusion path currently lacks Robin conditions, pure-Neumann nullspace handling, anisotropic tensors, P2 elements, a general DOF manager, and adaptive meshing. These are explicit follow-up tasks.
+The 2D diffusion path currently lacks pure-Neumann nullspace handling, anisotropic tensors, P2 elements, a general DOF manager, and adaptive meshing. These are explicit follow-up tasks.
 
 ## 4. Dependency policy
 

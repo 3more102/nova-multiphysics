@@ -62,8 +62,8 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
         prescribed_values[constraint.node] = constraint.value;
     }
 
-    // Build edge incidence so Neumann data can only be applied to true
-    // exterior edges, never to an interior edge shared by two elements.
+    // Build edge incidence so natural boundary data can only be applied
+    // to true exterior edges, never to interior edges shared by elements.
     std::map<std::pair<std::size_t, std::size_t>, std::size_t> edge_incidence;
     for (const Triangle2D& element : problem.mesh.elements) {
         ++edge_incidence[canonical_edge(element[0], element[1])];
@@ -71,7 +71,7 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
         ++edge_incidence[canonical_edge(element[2], element[0])];
     }
 
-    std::set<std::pair<std::size_t, std::size_t>> prescribed_neumann_edges;
+    std::set<std::pair<std::size_t, std::size_t>> prescribed_natural_edges;
     for (const NeumannBoundaryCondition2D& condition : problem.neumann_conditions) {
         const std::size_t first = condition.edge[0];
         const std::size_t second = condition.edge[1];
@@ -91,8 +91,34 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
         if (incidence == edge_incidence.end() || incidence->second != 1) {
             throw std::invalid_argument("Neumann data must reference an exterior mesh edge.");
         }
-        if (!prescribed_neumann_edges.insert(key).second) {
-            throw std::invalid_argument("A boundary edge has duplicate Neumann conditions.");
+        if (!prescribed_natural_edges.insert(key).second) {
+            throw std::invalid_argument("A boundary edge has duplicate or conflicting natural conditions.");
+        }
+    }
+
+    for (const RobinBoundaryCondition2D& condition : problem.robin_conditions) {
+        const std::size_t first = condition.edge[0];
+        const std::size_t second = condition.edge[1];
+
+        if (first >= node_count || second >= node_count) {
+            throw std::out_of_range("Robin edge references a missing mesh node.");
+        }
+        if (first == second) {
+            throw std::invalid_argument("A Robin edge must have two distinct nodes.");
+        }
+        if (!condition.transfer_coefficient || !condition.ambient_value) {
+            throw std::invalid_argument(
+                "A Robin condition requires transfer-coefficient and ambient-value functions."
+            );
+        }
+
+        const auto key = canonical_edge(first, second);
+        const auto incidence = edge_incidence.find(key);
+        if (incidence == edge_incidence.end() || incidence->second != 1) {
+            throw std::invalid_argument("Robin data must reference an exterior mesh edge.");
+        }
+        if (!prescribed_natural_edges.insert(key).second) {
+            throw std::invalid_argument("A boundary edge has duplicate or conflicting natural conditions.");
         }
     }
 
@@ -199,6 +225,55 @@ ScalarDiffusion2DResult solve_scalar_diffusion_2d(
             const double integration_weight = 0.5 * edge_length;
             right_hand_side[first] -= flux * (1.0 - t) * integration_weight;
             right_hand_side[second] -= flux * t * integration_weight;
+        }
+    }
+
+    // Robin convention: q_n = h * (u - u_infinity). Move h*u to the
+    // left-hand side and h*u_infinity to the right-hand side.
+    for (const RobinBoundaryCondition2D& condition : problem.robin_conditions) {
+        const std::size_t first = condition.edge[0];
+        const std::size_t second = condition.edge[1];
+        const Point2D& p0 = problem.mesh.nodes[first];
+        const Point2D& p1 = problem.mesh.nodes[second];
+        const double edge_length = std::hypot(p1.x - p0.x, p1.y - p0.y);
+
+        if (!std::isfinite(edge_length) || edge_length <= 0.0) {
+            throw std::invalid_argument("Robin edge length must be finite and positive.");
+        }
+
+        for (const double t : edge_points) {
+            const double x = (1.0 - t) * p0.x + t * p1.x;
+            const double y = (1.0 - t) * p0.y + t * p1.y;
+            const double transfer = condition.transfer_coefficient(x, y);
+            const double ambient = condition.ambient_value(x, y);
+
+            if (!std::isfinite(transfer) || transfer < 0.0) {
+                throw std::invalid_argument(
+                    "Robin transfer coefficient must be finite and non-negative."
+                );
+            }
+            if (!std::isfinite(ambient)) {
+                throw std::invalid_argument("Robin ambient value must be finite.");
+            }
+
+            const std::array<double, 2> shape{{1.0 - t, t}};
+            const double weight = 0.5 * edge_length;
+
+            right_hand_side[first] += transfer * ambient * shape[0] * weight;
+            right_hand_side[second] += transfer * ambient * shape[1] * weight;
+
+            matrix_entries.push_back({
+                first, first, transfer * shape[0] * shape[0] * weight
+            });
+            matrix_entries.push_back({
+                first, second, transfer * shape[0] * shape[1] * weight
+            });
+            matrix_entries.push_back({
+                second, first, transfer * shape[1] * shape[0] * weight
+            });
+            matrix_entries.push_back({
+                second, second, transfer * shape[1] * shape[1] * weight
+            });
         }
     }
 

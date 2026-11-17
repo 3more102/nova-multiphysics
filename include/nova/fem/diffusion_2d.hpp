@@ -20,12 +20,20 @@ struct NeumannBoundaryCondition2D {
     std::function<double(double, double)> outward_flux;
 };
 
+struct RobinBoundaryCondition2D {
+    BoundaryEdge2D edge{};
+    // Robin convention: q_n = h * (u - u_infinity), with h >= 0.
+    std::function<double(double, double)> transfer_coefficient;
+    std::function<double(double, double)> ambient_value;
+};
+
 struct ScalarDiffusion2DProblem {
     TriangleMesh2D mesh;
     std::function<double(double, double)> diffusivity;
     std::function<double(double, double)> source;
     std::vector<DirichletConstraint2D> dirichlet_constraints;
     std::vector<NeumannBoundaryCondition2D> neumann_conditions;
+    std::vector<RobinBoundaryCondition2D> robin_conditions;
 };
 
 struct ScalarDiffusion2DResult {
@@ -35,7 +43,7 @@ struct ScalarDiffusion2DResult {
 
 // Solves -div(k grad(u)) = f on a triangular 2D mesh.
 // Uses linear P1 triangles, degree-four triangle quadrature, strong
-// Dirichlet elimination, linear-edge Neumann integration, and CG.
+// Dirichlet elimination, linear-edge Neumann/Robin integration, and CG.
 // At least one Dirichlet constraint is required; pure Neumann systems
 // and anisotropic diffusion tensors are not supported by this prototype.
 [[nodiscard]] ScalarDiffusion2DResult solve_scalar_diffusion_2d(

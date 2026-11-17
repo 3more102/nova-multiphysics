@@ -35,7 +35,8 @@ Implemented regression cases:
 - Duplicate Dirichlet constraint rejection.
 - Structured rectangular mesh topology, boundary-node and boundary-edge counts.
 - Mixed Dirichlet-Neumann test for u(x,y)=x with zero volume source.
-- Rejection of Neumann conditions on interior edges.
+- Mixed Dirichlet-Robin test for u(x,y)=x with zero volume source.
+- Rejection of Neumann/Robin conditions on interior edges and negative Robin coefficients.
 - Manufactured quartic solution on 4×4, 8×8, and 16×16 meshes.
 - Nodal maximum-error refinement.
 - L2, H1-seminorm, and H1 error calculations.
@@ -45,7 +46,6 @@ Implemented regression cases:
 The error-norm calculator integrates the squared value and gradient errors elementwise using a Duffy-transformed 5×5 Gauss-Legendre rule.
 
 Current limitations:
-- No Robin boundary conditions.
 - No pure Neumann nullspace handling.
 - No anisotropic diffusion tensor.
 - No P2 elements.
@@ -53,7 +53,7 @@ Current limitations:
 
 Required next verification:
 - Compare the error norms and observed convergence rates with an independent reference implementation.
-- Add boundary flux and energy-balance checks for more general Neumann problems.
+- Add boundary flux and energy-balance checks for more general Neumann and Robin problems.
 - Evaluate distorted meshes and conditioning sensitivity.
 
 ## Gate 4: thermal and structural modules
