@@ -14,8 +14,9 @@
 - Verify Jacobi CG rejection of non-positive or non-finite diagonal entries.
 - Compare Jacobi-preconditioned and unpreconditioned CG on a scaled SPD diagonal system.
 - Verify BiCGSTAB on a known nonsymmetric system with a hand-computed solution.
-- Verify BiCGSTAB with Jacobi preconditioning.
-- Verify BiCGSTAB rejects zero Jacobi diagonal entries.
+- Verify BiCGSTAB with Jacobi preconditioning and zero-diagonal rejection.
+- Verify restarted GMRES on a known nonsymmetric system.
+- Verify GMRES with Jacobi preconditioning and restart-length validation.
 - Verify breakdown and iteration-limit states are not reported as convergence.
 - Verify reported convergence against the recomputed true residual.
 

@@ -40,14 +40,14 @@ on triangular P1 meshes using:
 ### Linear solver capabilities
 - CSR sparse matrix-vector products.
 - Conjugate Gradient for symmetric positive-definite systems.
-- BiCGSTAB for general nonsymmetric systems.
+- BiCGSTAB and restarted GMRES for general nonsymmetric systems.
 - Optional Jacobi diagonal preconditioning.
 - Explicit breakdown and convergence reporting.
 - True-residual recomputation before reporting convergence.
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support GMRES, incomplete Cholesky, pure Neumann nullspace handling, anisotropic diffusion tensors, P2 elements, adaptive meshing, or a general DOF manager.
+The current prototype does not yet support incomplete Cholesky, pure Neumann nullspace handling, anisotropic diffusion tensors, P2 elements, adaptive meshing, or a general DOF manager.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.

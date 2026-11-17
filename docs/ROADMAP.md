@@ -51,13 +51,13 @@ Implemented:
 - Optional Jacobi diagonal preconditioning for CG.
 - BiCGSTAB for general nonsymmetric systems.
 - Optional Jacobi diagonal preconditioning for BiCGSTAB.
-- Explicit preconditioner validation and breakdown diagnostics.
+- Restarted GMRES with modified Gram-Schmidt reorthogonalization and Givens rotations.
+- Optional right Jacobi preconditioning for GMRES.
 - True-residual recomputation before convergence is accepted.
 - Regression tests for SPD and nonsymmetric systems.
 
 Remaining:
 - Incomplete Cholesky preconditioning for SPD systems.
-- GMRES for nonsymmetric systems.
 - Sparse matrix block operations.
 - Newton nonlinear solver.
 - Line search and damping.
