@@ -1,11 +1,6 @@
 # Numerical Verification Plan
 
-## Purpose
-
-NOVA must establish numerical correctness before expanding feature breadth. Each implemented feature requires automated regression tests and a documented verification case.
-
 ## Gate 0: build and software integrity
-
 - Build with supported C++20 compilers.
 - Run unit tests on Windows and Linux.
 - Enable compiler warnings.
@@ -13,7 +8,6 @@ NOVA must establish numerical correctness before expanding feature breadth. Each
 - Keep the build free of mandatory third-party numerical dependencies.
 
 ## Gate 1: sparse linear algebra
-
 - Verify CSR duplicate triplet accumulation and matrix-vector products.
 - Verify dimension and index errors.
 - Verify CG solution and residual reduction for known SPD systems.
@@ -23,50 +17,42 @@ NOVA must establish numerical correctness before expanding feature breadth. Each
 - Verify reported convergence against the recomputed true residual.
 
 ## Gate 2: one-dimensional Poisson FEM
-
-Benchmark:
 - Domain: x in [0, 1].
-- Governing equation: -u'' = 2.
-- Boundary conditions: u(0) = 0 and u(1) = 0.
+- Equation: -u'' = 2.
+- Boundary values: u(0) = u(1) = 0.
 - Analytical solution: u(x) = x(1-x).
-- Element family: linear P1 segments.
-- Mesh: uniform subdivisions.
-
-Automated verification currently covers:
-- Nodal values against the analytical quadratic solution.
-- Nonzero Dirichlet values with a zero-source linear solution.
-- Invalid mesh size rejection.
-
-Remaining:
-- Explicit algebraic residual assertion.
-- L2 and H1 mesh-refinement convergence rates.
-- Variable-coefficient manufactured solutions.
+- Linear P1 elements on uniform meshes.
+- Compare computed nodal values with the analytical solution.
+- Verify a nonzero Dirichlet linear solution with zero source.
 
 ## Gate 3: two-dimensional scalar diffusion
 
-Implemented prototype:
-- Triangular P1 mesh representation and geometric validation.
-- Structured rectangular mesh generator.
-- Positive six-point degree-four reference-triangle quadrature.
-- Jacobian-based physical basis gradients.
-- Positive scalar isotropic diffusivity, including spatially varying coefficients.
-- Volumetric source integration.
-- Strong nodal Dirichlet elimination.
-- Linear harmonic patch test.
-- Manufactured quartic solution with second-order maximum-nodal-error convergence on 4x4, 8x8, and 16x16 rectangular subdivisions.
-- Reversed element orientation, degenerate element, and duplicate constraint tests.
+Implemented regression cases:
+- Linear harmonic patch test with nonzero Dirichlet values.
+- Spatially varying positive diffusivity and source.
+- Reversed triangle orientation.
+- Degenerate and near-degenerate triangle rejection.
+- Duplicate Dirichlet constraint rejection.
+- Structured rectangular mesh topology and boundary-node count.
+- Manufactured quartic solution on 4×4, 8×8, and 16×16 meshes.
+- Nodal maximum-error refinement.
+- L2, H1-seminorm, and H1 error calculations.
+- Exact reproduction of a linear P1 field by the error-norm calculator.
+- Orientation-independent error-norm integration.
+
+The error-norm calculator integrates the squared value and gradient errors elementwise using a Duffy-transformed 5×5 Gauss-Legendre rule.
 
 Current limitations:
 - No Neumann or Robin boundary conditions.
 - No pure Neumann nullspace handling.
 - No anisotropic diffusion tensor.
 - No P2 elements.
-- No L2/H1 error norms or automatic adaptive refinement.
+- No automatic adaptive refinement.
 
 Required next verification:
-- L2 and H1 error calculations and observed convergence rates.
-- Boundary flux and energy-balance checks when Neumann conditions are added.
-- Mesh distortion and conditioning sensitivity.
+- Compare the error norms and observed convergence rates with an independent reference implementation.
+- Add boundary flux and energy-balance checks when Neumann conditions are added.
+- Evaluate distorted meshes and conditioning sensitivity.
 
 ## Gate 4: thermal and structural modules
 
@@ -83,7 +69,6 @@ Structural:
 - Reaction-force equilibrium.
 
 ## Gate 5: multiphysics coupling
-
 - Electrothermal Joule-heating benchmark.
 - Segregated versus monolithic comparison on a controlled problem.
 - Coupling residual and energy-balance checks.
@@ -91,11 +76,4 @@ Structural:
 
 ## Acceptance policy
 
-A benchmark is accepted only when:
-1. The reference problem and assumptions are documented.
-2. The implementation passes automated regression tests.
-3. The error metric and expected convergence are stated.
-4. Results are reproducible from committed input data.
-5. Known limitations are documented.
-
-Agreement with another software package is useful evidence but is not a substitute for analytical verification.
+A benchmark is accepted only when the reference problem and assumptions are documented, automated regression tests pass, error metrics and expected convergence are stated, results are reproducible, and known limitations are recorded. Agreement with another software package is useful evidence but is not a substitute for analytical verification.

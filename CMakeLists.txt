@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(NOVA_Multiphysics
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Independent multiphysics simulation platform"
     LANGUAGES CXX
 )
@@ -25,7 +25,9 @@ add_library(nova_core
     src/fem/mesh2d.cpp
     src/fem/poisson_1d.cpp
     src/fem/diffusion_2d.cpp
+    src/fem/error_norms_2d.cpp
 )
+
 add_library(NOVA::Core ALIAS nova_core)
 target_compile_features(nova_core PUBLIC cxx_std_20)
 target_include_directories(nova_core PUBLIC
@@ -56,6 +58,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_conjugate_gradient.cpp
         tests/test_poisson_1d.cpp
         tests/test_diffusion_2d.cpp
+        tests/test_error_norms_2d.cpp
     )
     target_include_directories(nova_tests PRIVATE tests)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)

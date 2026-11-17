@@ -70,7 +70,6 @@ Initial scalar modules use nodal P1 H1-like fields. The current 2D diffusion imp
 ### Multiphysics framework
 
 Two coupling strategies are required:
-
 - Segregated: solve one field or physics block at a time, with controlled field updates.
 - Monolithic: assemble a global coupled residual and Jacobian and solve for all dependent fields together.
 
@@ -79,6 +78,8 @@ The coupling layer owns dependency graphs, block structure, convergence criteria
 ### Results and visualization
 
 The results subsystem stores mesh identity, field values, units, study metadata, solver diagnostics, and derived quantities. Visualization must consume results without mutating solver state.
+
+The current numerical prototype also provides elementwise L2 and H1 error measurements against analytical fields. These are verification utilities, not yet a general adaptive error-estimation framework.
 
 ### Solver process
 
@@ -93,10 +94,11 @@ The prototype currently contains:
 - A validated 2D triangle mesh and structured rectangular mesh generator.
 - P1 reference-triangle basis functions and positive degree-four quadrature.
 - A 2D isotropic scalar diffusion assembler with spatially varying scalar diffusivity and strong nodal Dirichlet constraints.
-- A harmonic patch test and a manufactured-solution nodal convergence test.
+- A harmonic patch test and manufactured-solution nodal convergence test.
+- L2 and H1 error-norm calculations for nodal P1 fields.
 - Automated numerical and input-validation tests.
 
-The 2D diffusion path currently lacks Neumann/Robin conditions, anisotropic tensors, P2 elements, a general DOF manager, L2/H1 error norms, and adaptive meshing. These are explicit follow-up tasks.
+The 2D diffusion path currently lacks Neumann/Robin conditions, anisotropic tensors, P2 elements, a general DOF manager, and adaptive meshing. These are explicit follow-up tasks.
 
 ## 4. Dependency policy
 
