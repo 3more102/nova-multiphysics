@@ -241,6 +241,7 @@ ScalarH1Operators3D assemble_scalar_h1_operators_3d(
 TransientHeat3DResult solve_transient_heat_3d(
     const TransientHeat3DProblem& problem, const TransientHeat3DOptions& options
 ) {
+    detail::validate_heat_time_grid(options);
     const auto prepared = detail::prepare_transient_heat_3d(problem);
     auto state = detail::initial_transient_heat_state_3d(problem);
     return detail::solve_prepared_transient_heat_3d(
