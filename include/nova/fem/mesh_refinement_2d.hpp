@@ -61,4 +61,14 @@ struct RefinedTriangleMesh2D {
     std::span<const double> coarse_nodal_values
 );
 
+
+// Interpolate a coarse P2 H1 field onto the uniformly refined P2 space.
+// Coarse vertex and edge-midpoint values are preserved. New fine-edge
+// midpoint DOFs are evaluated from the parent coarse quadratic element.
+[[nodiscard]] std::vector<double> prolongate_p2_uniform_2d(
+    const TriangleMesh2D& coarse_mesh,
+    const RefinedTriangleMesh2D& refined,
+    std::span<const double> coarse_p2_dofs
+);
+
 } // namespace nova::fem
