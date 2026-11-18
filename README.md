@@ -47,6 +47,8 @@ using:
 - Consistent mass/capacity and stiffness matrices in sparse CSR format.
 - Positive spatially varying, time-independent volumetric heat capacity and conductivity.
 - Backward Euler (first-order) or Crank–Nicolson (second-order for sufficiently smooth solutions) time integration.
+- Adaptive time stepping with two-half-step error estimates, automatic rejection, absolute/relative RMS DOF tolerances and configurable step limits.
+- Restart from an exact P1/P2 nodal DOF vector at a user-defined physical start time.
 - Time-dependent volume sources and prescribed Dirichlet temperature traces, including P2 edge midpoint DOFs.
 - Time-dependent Neumann outward heat flux and Robin convection with ambient temperature.
 - Homogeneous natural (zero-flux) conditions on unassigned edges.
@@ -54,9 +56,9 @@ using:
 - Conjugate Gradient and per-step residual/convergence reports.
 - Manufactured-solution convergence and energy-budget regression tests.
 
-Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate with Backward Euler) and examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson with Neumann/Robin boundary exchange).
+Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), and examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating).
 
-Limitations: no temperature-dependent coefficients, adaptive time stepping, higher-order time integrators, or independently reconstructed Dirichlet normal heat flux. This prototype is not validated for engineering design use.
+Limitations: no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
@@ -112,6 +114,7 @@ Run the examples:
 ./build/nova_diffusion_2d
 ./build/nova_transient_heat_2d
 ./build/nova_transient_flux_2d
+./build/nova_adaptive_heat_2d
 ./build/nova_nonlinear_diffusion_1d
 ~~~
 
