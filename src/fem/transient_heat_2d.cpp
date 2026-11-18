@@ -616,9 +616,11 @@ TransientHeat2DResult solve_transient_heat_2d(
             throw std::overflow_error("Transient energy diagnostic overflowed.");
         }
 
+        // Copy the new state before moving step_result into diagnostic history.
+        // next_state is a reference into step_result.solution.
+        state = next_state;
         result.diagnostics.push_back(diagnostic);
         result.linear_solvers.push_back(std::move(step_result));
-        state = next_state;
         previous_natural = std::move(current_natural);
         previous_volume = std::move(current_volume);
     }
