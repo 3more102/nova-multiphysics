@@ -142,3 +142,38 @@ NOVA_TEST(tetrahedral_mesh_3d_rejects_degenerate_and_nonmanifold_cells) {
     }
     NOVA_REQUIRE(rejected_nonmanifold);
 }
+
+NOVA_TEST(tetrahedron_quality_is_invariant_under_uniform_scaling_and_orientation) {
+    for (double size : {1.0, 1.0e-90, 1.0e80}) {
+        nova::fem::TetrahedralMesh3D mesh{
+            {{0, 0, 0}, {size, 0, 0}, {0, size, 0}, {0, 0, size}},
+            {{0, 1, 2, 3}}
+        };
+        for (int orientation = 0; orientation < 2; ++orientation) {
+            const auto quality = nova::fem::evaluate_mesh_quality_3d(mesh);
+            // Three faces are coordinate planes. The fourth has normal (1,1,1).
+            NOVA_REQUIRE_NEAR(quality.minimum_dihedral_angle,
+                              std::acos(1.0 / std::sqrt(3.0)), 1.0e-13);
+            NOVA_REQUIRE_NEAR(quality.minimum_mean_ratio,
+                              12.0 * std::cbrt(0.25) / 9.0, 1.0e-13);
+            std::swap(mesh.elements[0][0], mesh.elements[0][1]);
+        }
+    }
+}
+
+NOVA_TEST(tetrahedral_mesh_rejects_a_folded_shared_face_and_an_unused_vertex) {
+    nova::fem::TetrahedralMesh3D mesh{
+        {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.25, 0.25, 0.5}},
+        {{0, 1, 2, 3}, {2, 1, 0, 4}}
+    };
+    for (int invalid_case = 0; invalid_case < 2; ++invalid_case) {
+        bool rejected = false;
+        try {
+            mesh.validate();
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        NOVA_REQUIRE(rejected);
+        mesh.elements.resize(1); // The last vertex now has no supporting cell.
+    }
+}

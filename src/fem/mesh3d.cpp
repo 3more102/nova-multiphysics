@@ -37,7 +37,11 @@ using FaceKey = std::array<std::size_t, 3>;
 }
 
 [[nodiscard]] double norm(const Vector3& value) {
-    return std::sqrt(dot(value, value));
+    return std::hypot(value.x, value.y, value.z);
+}
+
+[[nodiscard]] Vector3 divide(const Vector3& value, double scale) {
+    return {value.x / scale, value.y / scale, value.z / scale};
 }
 
 [[nodiscard]] double determinant(
@@ -121,38 +125,34 @@ struct OrientedFace {
     const double volume = std::abs(det) / 6.0;
     const auto lengths = tetrahedron_edge_lengths(mesh, tetrahedron);
 
+    const double maximum_edge = *std::max_element(lengths.begin(), lengths.end());
     double edge_square_sum = 0.0;
-    double maximum_edge = 0.0;
     for (const double length : lengths) {
-        edge_square_sum += length * length;
-        maximum_edge = std::max(maximum_edge, length);
+        const double relative_length = length / maximum_edge;
+        edge_square_sum += relative_length * relative_length;
     }
+    const auto e1 = divide(subtract(p1, p0), maximum_edge);
+    const auto e2 = divide(subtract(p2, p0), maximum_edge);
+    const auto e3 = divide(subtract(p3, p0), maximum_edge);
+    const double scaled_det = std::abs(dot(e1, cross(e2, e3)));
     const double mean_ratio =
-        12.0 * std::pow(3.0 * volume, 2.0 / 3.0) / edge_square_sum;
+        12.0 * std::pow(scaled_det / 2.0, 2.0 / 3.0) / edge_square_sum;
 
     const auto faces = outward_faces(mesh, tetrahedron);
+    std::array<Vector3, 4> unit_normals{};
+    for (std::size_t i = 0; i < faces.size(); ++i) {
+        const auto& face = faces[i].nodes;
+        const auto& origin = mesh.nodes[face[0]];
+        const auto a = divide(subtract(mesh.nodes[face[1]], origin), maximum_edge);
+        const auto b = divide(subtract(mesh.nodes[face[2]], origin), maximum_edge);
+        const auto normal = cross(a, b);
+        unit_normals[i] = divide(normal, norm(normal));
+    }
     double minimum_dihedral = std::acos(-1.0);
-    for (std::size_t first = 0; first < faces.size(); ++first) {
-        const BoundaryFace3D& a = faces[first].nodes;
-        const Vector3 normal_a = cross(
-            subtract(mesh.nodes[a[1]], mesh.nodes[a[0]]),
-            subtract(mesh.nodes[a[2]], mesh.nodes[a[0]])
-        );
-        const double norm_a = norm(normal_a);
-        for (std::size_t second = first + 1U; second < faces.size(); ++second) {
-            const BoundaryFace3D& b = faces[second].nodes;
-            const Vector3 normal_b = cross(
-                subtract(mesh.nodes[b[1]], mesh.nodes[b[0]]),
-                subtract(mesh.nodes[b[2]], mesh.nodes[b[0]])
-            );
-            const double cosine = std::clamp(
-                dot(normal_a, normal_b) / (norm_a * norm(normal_b)),
-                -1.0, 1.0
-            );
-            const double normal_angle = std::acos(cosine);
-            minimum_dihedral = std::min(
-                minimum_dihedral, std::acos(-1.0) - normal_angle
-            );
+    for (std::size_t i = 0; i < faces.size(); ++i) {
+        for (std::size_t j = i + 1; j < faces.size(); ++j) {
+            const double cosine = std::clamp(-dot(unit_normals[i], unit_normals[j]), -1.0, 1.0);
+            minimum_dihedral = std::min(minimum_dihedral, std::acos(cosine));
         }
     }
 
@@ -165,9 +165,20 @@ struct OrientedFace {
     };
 }
 
-} // namespace
+struct FaceRecord {
+    BoundaryFace3D outward{};
+    bool interior{};
+};
 
-void TetrahedralMesh3D::validate() const {
+// Both faces have the same three vertex IDs. Cyclic permutations preserve winding.
+[[nodiscard]] bool same_winding(const BoundaryFace3D& a, const BoundaryFace3D& b) {
+    return a == b || (a[0] == b[1] && a[1] == b[2]) ||
+                     (a[0] == b[2] && a[1] == b[0]);
+}
+
+[[nodiscard]] std::map<FaceKey, FaceRecord> validated_faces(const TetrahedralMesh3D& mesh) {
+    const auto& nodes = mesh.nodes;
+    const auto& elements = mesh.elements;
     if (nodes.empty()) {
         throw std::invalid_argument("A 3D tetrahedral mesh must contain nodes.");
     }
@@ -184,7 +195,8 @@ void TetrahedralMesh3D::validate() const {
     constexpr double degeneracy_factor =
         128.0 * std::numeric_limits<double>::epsilon();
     std::set<std::array<std::size_t, 4>> unique_elements;
-    std::map<FaceKey, std::size_t> face_incidence;
+    std::map<FaceKey, FaceRecord> records;
+    std::vector<bool> used(nodes.size(), false);
 
     for (const Tetrahedron3D& tetrahedron : elements) {
         for (const std::size_t node : tetrahedron) {
@@ -193,6 +205,7 @@ void TetrahedralMesh3D::validate() const {
                     "Tetrahedron connectivity references a missing node."
                 );
             }
+            used[node] = true;
         }
         for (std::size_t i = 0; i < 4U; ++i) {
             for (std::size_t j = i + 1U; j < 4U; ++j) {
@@ -210,7 +223,7 @@ void TetrahedralMesh3D::validate() const {
             throw std::invalid_argument("Mesh contains a duplicate tetrahedron.");
         }
 
-        const auto lengths = tetrahedron_edge_lengths(*this, tetrahedron);
+        const auto lengths = tetrahedron_edge_lengths(mesh, tetrahedron);
         double maximum_edge = 0.0;
         for (const double length : lengths) {
             maximum_edge = std::max(maximum_edge, length);
@@ -226,51 +239,48 @@ void TetrahedralMesh3D::validate() const {
                 "Tetrahedron geometry exceeds the supported numeric range."
             );
         }
-        if (maximum_edge == 0.0 ||
+        if (std::abs(det) / 6.0 == 0.0 ||
             std::abs(det) <= degeneracy_factor * maximum_edge_cubed) {
             throw std::invalid_argument(
                 "Mesh contains a degenerate or near-degenerate tetrahedron."
             );
         }
 
-        for (const OrientedFace& face : outward_faces(*this, tetrahedron)) {
-            ++face_incidence[canonical_face(face.nodes)];
-        }
-    }
-
-    for (const auto& [face, incidence] : face_incidence) {
-        static_cast<void>(face);
-        if (incidence > 2U) {
-            throw std::invalid_argument(
-                "Mesh contains a non-manifold face shared by more than two tetrahedra."
+        for (const OrientedFace& face : outward_faces(mesh, tetrahedron)) {
+            const auto [it, inserted] = records.try_emplace(
+                canonical_face(face.nodes), FaceRecord{face.nodes, false}
             );
+            if (!inserted) {
+                if (it->second.interior) {
+                    throw std::invalid_argument("More than two tetrahedra share a face.");
+                }
+                if (same_winding(it->second.outward, face.nodes)) {
+                    throw std::invalid_argument("Tetrahedra occupy the same side of a shared face.");
+                }
+                it->second.interior = true;
+            }
         }
     }
+    if (std::find(used.begin(), used.end(), false) != used.end()) {
+        throw std::invalid_argument("Every 3D mesh vertex must belong to a tetrahedron.");
+    }
+    return records;
+}
+
+} // namespace
+
+void TetrahedralMesh3D::validate() const {
+    static_cast<void>(validated_faces(*this));
 }
 
 std::vector<BoundaryFace3D> extract_boundary_faces_3d(
     const TetrahedralMesh3D& mesh
 ) {
-    mesh.validate();
-    struct FaceRecord {
-        std::size_t incidence{};
-        BoundaryFace3D outward{};
-    };
-    std::map<FaceKey, FaceRecord> records;
-    for (const Tetrahedron3D& tetrahedron : mesh.elements) {
-        for (const OrientedFace& face : outward_faces(mesh, tetrahedron)) {
-            FaceRecord& record = records[canonical_face(face.nodes)];
-            ++record.incidence;
-            if (record.incidence == 1U) {
-                record.outward = face.nodes;
-            }
-        }
-    }
-
+    const auto records = validated_faces(mesh);
     std::vector<BoundaryFace3D> boundary_faces;
     for (const auto& [key, record] : records) {
         static_cast<void>(key);
-        if (record.incidence == 1U) {
+        if (!record.interior) {
             boundary_faces.push_back(record.outward);
         }
     }
@@ -407,7 +417,6 @@ StructuredBoxMesh3D make_box_mesh_3d(
         }
     }
 
-    result.mesh.validate();
     result.boundary_faces = extract_boundary_faces_3d(result.mesh);
     return result;
 }

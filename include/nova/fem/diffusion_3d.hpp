@@ -45,7 +45,9 @@ struct ScalarDiffusion3DProblem {
 };
 
 struct ScalarDiffusion3DResult {
+    // Physical field with the volume-mean convention on unanchored components.
     std::vector<double> values;
+    // CG iterate and residual for its actual, temporarily pinned linear system.
     linalg::SolverResult linear_solver;
 };
 

@@ -484,3 +484,24 @@ NOVA_TEST(diffusion_3d_rejects_negative_robin_data) {
     }
     NOVA_REQUIRE(rejected_negative_robin);
 }
+
+NOVA_TEST(diffusion_3d_pure_neumann_residual_describes_the_gauged_cg_iterate) {
+    ScalarDiffusion3DProblem problem;
+    problem.mesh = {{{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {{0, 1, 2, 3}}};
+    problem.diffusivity = [](double, double, double) { return 1.0; };
+    problem.source = [](double, double, double) { return 0.0; };
+    problem.neumann_faces = {
+        {{0, 2, 3}, [](double, double, double) { return 1.0; }},
+        {{1, 2, 3}, [](double, double, double) { return -1.0 / std::sqrt(3.0); }}
+    };
+    const auto result = nova::fem::solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(result.linear_solver.converged);
+    const auto& x = result.linear_solver.solution;
+    // Pin node zero. The free 3x3 stiffness block is I/6, with load (1,0,0)/6.
+    const double residual = std::hypot(std::hypot(x[0], (1.0 - x[1]) / 6.0),
+                                       std::hypot(x[2] / 6.0, x[3] / 6.0));
+    NOVA_REQUIRE_NEAR(result.linear_solver.residual_norm, residual, 1.0e-14);
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        NOVA_REQUIRE_NEAR(result.values[i], problem.mesh.nodes[i].x - 0.25, 1.0e-13);
+    }
+}

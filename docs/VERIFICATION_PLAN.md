@@ -57,7 +57,7 @@ Current limitations:
 - No pure-Neumann nullspace handling in the 2D solver.
 - No anisotropic diffusion tensor.
 - No arbitrary higher-order elements beyond P2.
-- Uniform conforming refinement is implemented; no error-indicator-driven adaptive refinement.
+- Uniform and one-level red-green refinement are implemented. Multi-cycle quality control remains open.
 
 Required next verification:
 - Compare error norms and observed convergence rates with an independent reference implementation.
@@ -65,6 +65,8 @@ Required next verification:
 - Evaluate distorted meshes and conditioning sensitivity.
 
 ## Gate 3D: tetrahedral scalar diffusion
+- Check right-tetrahedron mean ratio and minimum dihedral against analytical values at scales 1e-90, 1 and 1e80, including reversed connectivity. Reject folded face neighbors and unused vertices.
+- Reconstruct the pinned reference-tetrahedron residual from the reported CG iterate and independently check the mean-normalized physical field.
 - Reproduce affine harmonic fields and variable-coefficient manufactured solutions.
 - Verify mixed Dirichlet-Neumann and Dirichlet-Robin cases, reversed element orientation, and mesh-refinement convergence.
 - For pure-Neumann problems, verify source/outward-flux compatibility separately on disconnected mesh components.

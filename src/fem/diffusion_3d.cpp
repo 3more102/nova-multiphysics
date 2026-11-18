@@ -81,19 +81,9 @@ struct MeshComponents {
     const TetrahedralMesh3D& mesh
 ) {
     DisjointSet sets(mesh.nodes.size());
-    std::vector<bool> referenced(mesh.nodes.size(), false);
     for (const Tetrahedron3D& cell : mesh.elements) {
         for (const std::size_t node : cell) {
-            referenced[node] = true;
             sets.unite(cell[0], node);
-        }
-    }
-
-    for (std::size_t node = 0; node < mesh.nodes.size(); ++node) {
-        if (!referenced[node]) {
-            throw std::invalid_argument(
-                "Every 3D mesh vertex must belong to a tetrahedron."
-            );
         }
     }
 
@@ -206,9 +196,8 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     const ScalarDiffusion3DProblem& problem,
     const linalg::SolverOptions& solver_options
 ) {
-    problem.mesh.validate();
-    const H1FunctionSpace3D space(problem.mesh);
-    const std::size_t node_count = space.dimension();
+    const auto boundary_faces = extract_boundary_faces_3d(problem.mesh);
+    const std::size_t node_count = problem.mesh.nodes.size();
     const MeshComponents components = find_mesh_components(problem.mesh);
     const std::size_t component_count = components.nodes.size();
     std::vector<bool> anchored_component(component_count, false);
@@ -222,7 +211,7 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     }
 
     std::set<FaceKey> exterior_faces;
-    for (const BoundaryFace3D& face : extract_boundary_faces_3d(problem.mesh)) {
+    for (const BoundaryFace3D& face : boundary_faces) {
         exterior_faces.insert(canonical_face(face));
     }
 
@@ -646,13 +635,14 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         matrix, std::span<const double>(rhs), solver_options
     );
 
+    auto values = solver.solution;
     for (const std::size_t component : pure_neumann_components) {
         long double weighted_value_sum = 0.0L;
         long double component_volume = 0.0L;
         for (const std::size_t node : components.nodes[component]) {
             const long double weight = nodal_volume_weights[node];
             weighted_value_sum +=
-                weight * static_cast<long double>(solver.solution[node]);
+                weight * static_cast<long double>(values[node]);
             component_volume += weight;
         }
         if (!std::isfinite(component_volume) || component_volume <= 0.0L) {
@@ -669,8 +659,8 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
             );
         }
         for (const std::size_t node : components.nodes[component]) {
-            solver.solution[node] -= mean;
-            if (!std::isfinite(solver.solution[node])) {
+            values[node] -= mean;
+            if (!std::isfinite(values[node])) {
                 throw std::overflow_error(
                     "Pure-Neumann 3D zero-mean normalization overflowed."
                 );
@@ -678,7 +668,7 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         }
     }
 
-    return {solver.solution, std::move(solver)};
+    return {std::move(values), std::move(solver)};
 }
 
 } // namespace nova::fem
