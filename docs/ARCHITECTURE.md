@@ -100,6 +100,7 @@ The prototype currently contains:
 - A shared H1 P1/P2 isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric sources, strong nodal and boundary-edge Dirichlet constraints, and P1/P2 Neumann/Robin edge terms.
 - Reusable consistent capacity/mass and stiffness operators for P1/P2 triangular H1 elements.
 - A theta-method (Backward Euler or Crank–Nicolson) 2D transient heat solver with time-dependent sources, Dirichlet temperatures, Neumann flux, Robin convection, and per-step linear/energy diagnostics.
+- An independent adaptive time-step controller with full-step/two-half-step error estimation, accepted/rejected trial recording, and exact DOF restarts. Its current prototype calls the fixed-step solver repeatedly rather than caching assembled operators.
 - A 1D nonlinear P1 diffusion benchmark with a consistent tangent/Jacobian for (k(u)=1+u^2).
 - Harmonic patch, mixed-boundary, manufactured-solution, and nonlinear diffusion benchmarks.
 - L2 and H1 error-norm calculations for nodal P1 fields.
