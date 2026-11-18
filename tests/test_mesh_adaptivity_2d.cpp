@@ -134,7 +134,7 @@ NOVA_TEST(mesh_adaptivity_local_refinement_closes_shared_edges_without_hanging_n
         );
 
     NOVA_REQUIRE(refined.midpoint_parent_edges.size() == 1U);
-    NOVA_REQUIRE(refined.midpoint_parent_edges[0] == BoundaryEdge2D{0U, 2U});
+    NOVA_REQUIRE((refined.midpoint_parent_edges[0] == BoundaryEdge2D{0U, 2U}));
     NOVA_REQUIRE(refined.mesh.nodes.size() == mesh.nodes.size() + 1U);
     NOVA_REQUIRE(refined.mesh.elements.size() == 4U);
     NOVA_REQUIRE(refined.parent_elements.size() == 4U);
@@ -164,14 +164,14 @@ NOVA_TEST(mesh_adaptivity_local_boundary_refinement_preserves_direction) {
             mesh, boundary, std::vector<std::size_t>{0U}
         );
     NOVA_REQUIRE(refined.midpoint_parent_edges.size() == 1U);
-    NOVA_REQUIRE(refined.midpoint_parent_edges[0] == BoundaryEdge2D{1U, 2U});
+    NOVA_REQUIRE((refined.midpoint_parent_edges[0] == BoundaryEdge2D{1U, 2U}));
     NOVA_REQUIRE(refined.boundary_edges.size() == 4U);
-    NOVA_REQUIRE(refined.boundary_edges[0] == BoundaryEdge2D{0U, 1U});
+    NOVA_REQUIRE((refined.boundary_edges[0] == BoundaryEdge2D{0U, 1U}));
     NOVA_REQUIRE(refined.boundary_edges[1][0] == 1U);
     NOVA_REQUIRE(refined.boundary_edges[1][1] == 3U);
     NOVA_REQUIRE(refined.boundary_edges[2][0] == 3U);
     NOVA_REQUIRE(refined.boundary_edges[2][1] == 2U);
-    NOVA_REQUIRE(refined.boundary_edges[3] == BoundaryEdge2D{2U, 0U});
+    NOVA_REQUIRE((refined.boundary_edges[3] == BoundaryEdge2D{2U, 0U}));
     const auto quality = nova::fem::evaluate_mesh_quality_2d(refined.mesh);
     NOVA_REQUIRE_NEAR(quality.total_area, 1.0, 1.0e-13);
 }
