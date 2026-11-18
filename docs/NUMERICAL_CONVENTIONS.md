@@ -61,16 +61,46 @@ segments with the same directed traversal. Original vertex values
 are preserved and new midpoint temperatures for a P1 nodal field
 are interpolated as the arithmetic mean of endpoint values.
 
-This refinement is geometric and uniform, not a residual-based error
-estimator or selective adaptive refinement. The reported quality is a
-shape metric, not an independent solution-accuracy guarantee.
+Uniform refinement splits every unique mesh edge. Selective refinement
+requests the longest edge of each marked triangle. Every adjacent triangle
+sharing a requested edge is split as well, so the resulting mesh has no
+hanging nodes. A cell with one, two, or three split edges is partitioned into
+two, three, or four children respectively. Unrequested exterior boundary
+edges are retained; selected boundary edges are split in their original
+direction. This is a one-level conforming refinement operation, not a complete
+multi-level grading strategy.
+
+The P1/P2 gradient-recovery indicator evaluates each element gradient at its
+centroid, forms area-weighted averages at mesh vertices, and compares the
+element gradient with the average of its recovered vertex gradients. The
+element indicator is
+
+\[
+\eta_K=h_K\sqrt{|K|}\,\left\lVert
+\overline{\nabla u}_{K,\mathrm{recovered}}-
+\nabla u_{h,K}(x_K)
+\right\rVert_2,
+\]
+
+where \(h_K\) is the longest element edge and \(x_K\) is the centroid. This
+indicator is a practical refinement heuristic; it is not a guaranteed upper
+bound on the finite-element error and should be checked against analytical
+or independent reference solutions.
+
+Dörfler marking sorts the non-negative indicators in descending order and
+selects the smallest prefix whose squared sum reaches the configured fraction
+\(\theta\sum_K\eta_K^2\), with \(0<\theta\leq1\). Ties are resolved by
+ascending element index for reproducibility. The reported triangle quality
+is a shape metric, not an independent solution-accuracy guarantee.
 
 ## H1 solution transfer and thermal remeshing
 
-A conforming uniform refinement preserves all coarse vertices and adds
-one mesh vertex at the midpoint of every unique coarse edge. For P1,
-the new vertex value is the average of the two endpoint values. For P2,
-the new vertex value is the existing coarse edge-midpoint DOF.
+A conforming refinement preserves all coarse vertices and adds a mesh vertex
+only at the midpoint of each split coarse edge. Uniform refinement splits
+every unique edge; selective refinement splits only requested edges and the
+edges needed for conforming neighbor closure. For P1, the new vertex value
+is the average of the two endpoint values. For P2, the new vertex value is
+the existing coarse edge-midpoint DOF.
 
 P2 transfer also evaluates the original quadratic finite-element
 polynomial at every midpoint of a fine-mesh edge. When a fine edge lies
@@ -78,12 +108,13 @@ on a coarse-element interface, both parent-element traces are checked
 for continuity before the value is accepted. This preserves the
 piecewise-quadratic field exactly up to floating-point evaluation error.
 
-The transient-heat remeshing helper applies the same conforming mesh
-refinement, transfers an optional P1/P2 restart vector, and splits
-Dirichlet, Neumann and Robin boundary edges into two directed segments.
-Their original physical-coordinate callbacks are retained unchanged.
-This is uniform remeshing; it does not yet implement error-driven local
-refinement or transfer arbitrary user-defined physical groups.
+The transient-heat remeshing helpers apply conforming uniform or selective
+mesh refinement, transfer an optional P1/P2 restart vector, and split only
+selected Dirichlet, Neumann and Robin boundary edges into two directed
+segments. Unselected assigned edges are retained. Original physical-coordinate
+callbacks are preserved unchanged. A complete multi-level adaptive solve
+loop and arbitrary user-defined physical-group transfer are not yet
+implemented.
 
 ## Boundary-edge integration
 
