@@ -44,6 +44,22 @@ NOVA_TEST(p1_residual_estimator_integrates_constant_cell_residual) {
     NOVA_REQUIRE_NEAR(estimate.global_estimate, 3.0, 1.0e-13);
 }
 
+NOVA_TEST(p1_residual_estimator_integrates_linear_source_squared_exactly) {
+    const nova::fem::TriangleMesh2D mesh{{
+        {0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}
+    }, {{0U, 1U, 2U}}};
+    const std::vector<double> values{0.0, 0.0, 0.0};
+    const std::vector<double> diffusivity{1.0};
+    const auto estimate = nova::fem::estimate_p1_residual_indicators_2d(
+        mesh, values, diffusivity,
+        [](const double x, const double) { return 1.0 + 2.0 * x; }
+    );
+
+    // On this unit right triangle, integral_K (1 + 2x)^2 dA = 3/2
+    // and the squared element diameter is 2, so eta_K^2 = 3.
+    NOVA_REQUIRE_NEAR(estimate.element_indicators[0], std::sqrt(3.0), 1.0e-13);
+}
+
 NOVA_TEST(p1_residual_estimator_detects_interior_flux_jump) {
     const auto rectangle = nova::fem::make_rectangle_mesh_2d(
         0.0, 1.0, 0.0, 1.0, 1U, 1U
