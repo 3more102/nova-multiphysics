@@ -53,6 +53,7 @@ H1DofManager2D::H1DofManager2D(
             if (edge_indices.find(edge) == edge_indices.end()) {
                 const std::size_t index = edge_keys_.size();
                 edge_indices.emplace(edge, index);
+                edge_indices_.emplace(edge, index);
                 edge_keys_.push_back(edge);
             }
         }
@@ -118,15 +119,11 @@ std::optional<std::size_t> H1DofManager2D::edge_dof(
 
     const EdgeKey2D key = canonical_edge(first, second);
 
-    // edge_keys_ is stored in discovery order, so use an explicit linear
-    // lookup. The public API is independent of the backing index structure.
-    for (std::size_t index = 0; index < edge_keys_.size(); ++index) {
-        if (edge_keys_[index] == key) {
-            return vertex_count_ + index;
-        }
+    const auto iterator = edge_indices_.find(key);
+    if (iterator == edge_indices_.end()) {
+        return std::nullopt;
     }
-
-    return std::nullopt;
+    return vertex_count_ + iterator->second;
 }
 
 H1DofEntity H1DofManager2D::dof_entity(const std::size_t dof) const {
