@@ -7,6 +7,7 @@
 #include <cmath>
 #include <map>
 #include <set>
+#include <span>
 #include <utility>
 #include <vector>
 
