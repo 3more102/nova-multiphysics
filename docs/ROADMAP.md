@@ -18,7 +18,7 @@ A milestone is complete only when its acceptance tests, verification evidence, a
 Implemented:
 - Triangle mesh data model with scale-aware geometric validation.
 - Structured rectangular mesh generator with two P1 triangles per cell.
-- Linear P1 reference-triangle basis functions.
+- Linear P1 and quadratic P2 reference-triangle H1 basis functions.
 - Positive six-point degree-four triangle quadrature.
 - Jacobian-based physical basis gradients.
 - 2D scalar isotropic diffusion assembly.
@@ -35,9 +35,7 @@ Implemented:
 
 Remaining:
 - Reusable element and integration interfaces shared across physics.
-- Explicit general H1 function-space abstraction and DOF manager.
 - Pure-Neumann nullspace handling.
-- P2 triangle elements.
 - Mesh refinement and element-quality metrics.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.
