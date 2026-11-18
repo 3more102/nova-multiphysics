@@ -39,7 +39,7 @@ int main() {
     options.order = nova::fem::H1TriangleOrder::P2;
     options.steps = 5U;
     options.time_step = 0.1;
-    options.newton_options.gmres.preconditioner =
+    options.newton_options.gmres.solver.preconditioner =
         nova::linalg::PreconditionerType::Jacobi;
 
     const auto result = nova::fem::solve_nonlinear_heat_2d(
