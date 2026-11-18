@@ -515,3 +515,47 @@ NOVA_TEST(transient_heat_rejects_unsupported_time_scheme) {
     }
     NOVA_REQUIRE(caught);
 }
+
+
+NOVA_TEST(transient_heat_p1_mixed_neumann_robin_energy_budget) {
+    auto problem = make_problem(2U);
+    std::map<std::pair<std::size_t, std::size_t>, std::size_t> incidence;
+    for (const auto& tri : problem.mesh.elements) {
+        ++incidence[std::minmax(tri[0], tri[1])];
+        ++incidence[std::minmax(tri[1], tri[2])];
+        ++incidence[std::minmax(tri[2], tri[0])];
+    }
+    for (const auto& [edge, count] : incidence) {
+        if (count != 1U) {
+            continue;
+        }
+        const auto& a = problem.mesh.nodes[edge.first];
+        const auto& b = problem.mesh.nodes[edge.second];
+        if (a.x == 1.0 && b.x == 1.0) {
+            problem.neumann_edges.push_back({
+                {edge.first, edge.second},
+                [](double, double, double) { return -0.5; }
+            });
+        } else if (a.x == 0.0 && b.x == 0.0) {
+            problem.robin_edges.push_back({
+                {edge.first, edge.second},
+                [](double, double, double) { return 2.0; },
+                [](double, double, double) { return 1.0; }
+            });
+        }
+    }
+    TransientHeat2DOptions options;
+    options.order = H1TriangleOrder::P1;
+    options.scheme = nova::fem::TransientTimeScheme::CrankNicolson;
+    options.time_step = 0.1;
+    options.steps = 2U;
+    const auto result = nova::fem::solve_transient_heat_2d(problem, options);
+    double accumulated = 0.0;
+    for (const auto& diagnostic : result.diagnostics) {
+        NOVA_REQUIRE(diagnostic.neumann_energy > 0.0);
+        NOVA_REQUIRE(diagnostic.robin_energy > 0.0);
+        accumulated += diagnostic.neumann_energy + diagnostic.robin_energy;
+        NOVA_REQUIRE_NEAR(diagnostic.heat_content, accumulated, 1.0e-9);
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 1.0e-9);
+    }
+}
