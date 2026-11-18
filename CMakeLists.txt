@@ -31,6 +31,7 @@ add_library(nova_core
     src/fem/diffusion_h1_2d.cpp
     src/fem/transient_heat_2d.cpp
     src/fem/adaptive_heat_2d.cpp
+    src/fem/nonlinear_heat_2d.cpp
     src/fem/error_norms_2d.cpp
     src/fem/nonlinear_diffusion_1d.cpp
     src/fem/h1_space_2d.cpp
@@ -69,6 +70,10 @@ if(NOVA_BUILD_EXAMPLES)
     target_link_libraries(nova_adaptive_heat_2d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_adaptive_heat_2d)
 
+    add_executable(nova_nonlinear_heat_2d examples/nonlinear_heat_2d/main.cpp)
+    target_link_libraries(nova_nonlinear_heat_2d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_nonlinear_heat_2d)
+
     add_executable(nova_nonlinear_diffusion_1d examples/nonlinear_diffusion_1d/main.cpp)
     target_link_libraries(nova_nonlinear_diffusion_1d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_nonlinear_diffusion_1d)
@@ -88,6 +93,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_diffusion_h1_2d.cpp
         tests/test_transient_heat_2d.cpp
         tests/test_adaptive_heat_2d.cpp
+        tests/test_nonlinear_heat_2d.cpp
         tests/test_error_norms_2d.cpp
         tests/test_mesh_topology_2d.cpp
         tests/test_nonlinear_diffusion_1d.cpp
@@ -101,5 +107,6 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_transient_heat_smoke COMMAND nova_transient_heat_2d)
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)
+        add_test(NAME nova_nonlinear_heat_smoke COMMAND nova_nonlinear_heat_2d)
     endif()
 endif()

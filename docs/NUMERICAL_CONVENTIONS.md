@@ -97,6 +97,46 @@ It accepts a trial when (sqrt{sum_i r_i^2/N}le 1). On acceptance it stores the *
 
 This is a local DOF-RMS temporal error criterion, not a global error bound or a spatial error estimate. Very sharp transients, stiff dynamics, and discontinuous coefficients can require tighter controls. The current reference implementation reassembles its matrices on each full/half trial and is intended for small benchmarks rather than high-performance production use.
 
+## Nonlinear transient heat conduction
+
+The nonlinear P1/P2 H1 prototype solves
+
+\[
+\rho c(x,y)\frac{\partial T}{\partial t}
+-\nabla\cdot(k(x,y,T)\nabla T)=Q(x,y,t).
+\]
+
+For Backward Euler and a test function \(N_i\), the unconstrained discrete residual at time \(t_{n+1}\) is
+
+\[
+R_i(T^{n+1})=
+\int_\Omega
+\left[
+\frac{\rho c}{\Delta t}(T_h^{n+1}-T_h^n)N_i
++k(x,y,T_h^{n+1})\nabla T_h^{n+1}\cdot\nabla N_i
+-Q(t_{n+1})N_i
+\right]d\Omega
++\int_{\Gamma_N}q_nN_i\,d\Gamma
++\int_{\Gamma_R}h(T_h^{n+1}-T_\infty)N_i\,d\Gamma.
+\]
+
+The *consistent* tangent is
+
+\[
+\frac{\partial R_i}{\partial T_j}=
+\int_\Omega \left[
+\frac{\rho c}{\Delta t}N_iN_j
++k\nabla N_j\cdot\nabla N_i
++\frac{\partial k}{\partial T}N_j
+  \nabla T_h^{n+1}\cdot\nabla N_i
+\right]d\Omega
++\int_{\Gamma_R}hN_iN_j\,d\Gamma.
+\]
+
+Here \(k>0\), \(\rho c>0\), and the exact constitutive derivative \(\partial k/\partial T\) must be supplied. The Robin coefficient \(h\) may depend on position and time but **not** on temperature in this version. Strong Dirichlet constraints overwrite residual rows with \(T_i-g_i\) and tangent rows with the corresponding identity row. Unconstrained columns are retained in free equations; this is the exact nonsymmetric Jacobian for the complete unknown vector.
+
+Damped Newton iteration uses the existing Armijo line search and either GMRES or BiCGSTAB, not Conjugate Gradient. Its state is advanced only after a step converges. Nonconvergence is reported as a failure rather than a valid transient solution. This solver uses fixed Backward Euler steps only; the linear adaptive Crank–Nicolson controller does not currently apply to temperature-dependent material laws.
+
 ## Error-norm quadrature
 
 The L2 and H1 error calculator uses a 5×5 Gauss-Legendre product rule mapped to the reference triangle by a Duffy transformation. The resulting rule integrates polynomial integrands through total degree eight exactly, which is sufficient for the squared P1 interpolation error of the current quartic manufactured solution.

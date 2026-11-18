@@ -74,16 +74,20 @@ Implemented:
 - Backward Euler and Crank–Nicolson implicit transient time integration.
 - Adaptive, fixed-mesh time stepping by step doubling, absolute/relative local error control, accepted/rejected attempt histories, minimum/maximum step size and attempt limits.
 - Exact H1 nodal DOF restarts with nonzero physical start times.
-- Spatially varying positive (time-independent) volumetric heat capacity and conductivity.
+- Spatially varying positive volumetric heat capacity and conductivity in the linear thermal solver.
+- Nonlinear P1/P2 transient heat conduction with supplied temperature-dependent conductivity and exact temperature derivative.
+- Consistent nonsymmetric nonlinear residual/Jacobian assembly and Newton with line search on each Backward Euler step.
+- Nonlinear transient Dirichlet, Neumann, and linear Robin boundary conditions.
 - Time-dependent volumetric heating, essential Dirichlet temperatures, Neumann outward heat fluxes, and Robin ambient convection.
 - Validated, mutually exclusive exterior-edge boundary assignment; other edges insulated by default.
 - Integrated discrete heat budget with Dirichlet reaction contributions.
 - Manufactured-solution temporal convergence and source/boundary energy-balance tests.
-- Cooling plate, convective boundary-flux, and adaptive time-step example executables.
+- Cooling plate, convective boundary-flux, adaptive-step, and nonlinear manufactured-solution executables.
 
 Remaining:
-- Nonlinear temperature-dependent constitutive properties and time-dependent materials.
+- Temperature-dependent heat capacity, temperature-dependent Robin coefficients, and time-dependent material properties.
 - Optimized adaptive stepping with shared preassembled FEM operators, factorization/preconditioner reuse and a global temporal error estimator.
+- Adaptive nonlinear transient stepping and consistent nonlinear thermal energy diagnostics.
 - Independently recovered normal heat fluxes and physical energy-balance cross-checks.
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.

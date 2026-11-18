@@ -94,7 +94,21 @@ Implemented transient thermal regression cases:
 - Rejection of invalid time step, negative volumetric capacity, non-finite heat source,
   interior Dirichlet edges, and conflicting corner temperature values.
 
+Implemented nonlinear transient thermal regression cases:
+- P1/P2 nonlinear temperature-dependent conductivity with an exact linear-in-space/time manufactured solution.
+- Direct centered finite-difference check of the assembled P2 Jacobian applied to a test vector.
+- Reversed triangle orientation with P2 nonlinear material assembly.
+- Constant-temperature homogeneous-Neumann source heating.
+- Linear Robin convection at the exact ambient temperature.
+- Exact P1/P2 manufactured nonlinear Neumann outward-flux and Robin convection solutions on mixed-boundary meshes.
+- Explicit rejection of overlapping nonlinear thermal boundary-edge assignments.
+- Rejection of negative conductivity, non-finite constitutive temperature derivatives and incompatible initial-state DOF sizes.
+- Nonconvergent Newton steps reported as failure, not a valid solution.
+
 Required next verification:
+- Independently compare nonlinear temperature-dependent conduction with a trusted reference solver.
+- Add tests for large temperature gradients, distorted meshes, and strong nonlinearities.
+- Verify nonlinear thermal energy and boundary flux budgets.
 - Quantify discrete energy decay, adaptive error-controller sensitivity, and step efficiency for a cooling plate.
 - Cross-check transient thermal benchmarks against an independent reference solver.
 - Cross-check independent physical fluxes, Dirichlet boundary reactions, and energy changes.
