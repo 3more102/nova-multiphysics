@@ -126,7 +126,7 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
 
         fixed.time_step = 0.5 * dt;
         fixed.steps = 2U;
-        const auto half = detail::solve_prepared_transient_heat_3d(
+        auto half = detail::solve_prepared_transient_heat_3d(
             problem, fixed, prepared, state
         );
 
@@ -137,10 +137,10 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         result.attempts.push_back({time, dt, error, accepted});
 
         if (accepted) {
-            state = half.temperature;
+            state = std::move(half.temperature);
             result.diagnostics.push_back(combine_half_budgets(half.diagnostics));
-            for (const auto& solver : half.linear_solvers) {
-                result.substep_solvers.push_back(solver);
+            for (auto& solver : half.linear_solvers) {
+                result.substep_solvers.push_back(std::move(solver));
             }
             ++result.accepted_steps;
             time = std::min(options.end_time, time + dt);
