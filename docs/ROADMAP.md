@@ -73,6 +73,7 @@ Implemented:
 - Consistent scalar capacity and stiffness FEM operators.
 - Backward Euler and Crank–Nicolson implicit transient time integration.
 - Adaptive, fixed-mesh time stepping by step doubling, absolute/relative local error control, accepted/rejected attempt histories, minimum/maximum step size and attempt limits.
+- One-time per-run assembly and reuse of time-independent mass/capacity and stiffness operators across adaptive full/half-step trials.
 - Exact H1 nodal DOF restarts with nonzero physical start times.
 - Spatially varying positive (time-independent) volumetric heat capacity and conductivity.
 - Time-dependent volumetric heating, essential Dirichlet temperatures, Neumann outward heat fluxes, and Robin ambient convection.
@@ -83,7 +84,7 @@ Implemented:
 
 Remaining:
 - Nonlinear temperature-dependent constitutive properties and time-dependent materials.
-- Optimized adaptive stepping with shared preassembled FEM operators, factorization/preconditioner reuse and a global temporal error estimator.
+- Reuse of dt-dependent system matrices, factorizations and preconditioners where mathematically valid, plus a global temporal error estimator.
 - Independently recovered normal heat fluxes and physical energy-balance cross-checks.
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.

@@ -185,28 +185,47 @@ NOVA_TEST(adaptive_heat_crank_nicolson_rejects_large_steps_and_refines) {
     NOVA_REQUIRE(strict_error < 5.0e-5);
 }
 
-NOVA_TEST(adaptive_heat_backward_euler_handles_time_dependent_source) {
-    auto problem = base_problem(2U);
-    // Exact uniform solution u=t^2 (unit volumetric capacity, zero grad).
-    problem.source = [](double, double, double t) { return 2.0 * t; };
-    AdaptiveHeat2DOptions opts;
-    opts.order = H1TriangleOrder::P1;
-    opts.scheme = TransientTimeScheme::BackwardEuler;
-    opts.end_time = 0.8;
-    opts.initial_step = 0.4;
-    opts.max_step = 0.4;
-    opts.min_step = 1.0e-5;
-    opts.absolute_tolerance = 2.0e-4;
-    opts.relative_tolerance = 0.0;
-    const auto result = nova::fem::solve_adaptive_heat_2d(problem, opts);
-    NOVA_REQUIRE(result.accepted_steps > 2U);
-    NOVA_REQUIRE(result.rejected_steps > 0U);
-    NOVA_REQUIRE_NEAR(result.final_time, 0.8, 1.0e-14);
-    for (const double temperature : result.temperature) {
-        NOVA_REQUIRE_NEAR(temperature, 0.64, 0.03);
-    }
-    for (const auto& d : result.diagnostics) {
-        NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 2.0e-9);
+NOVA_TEST(adaptive_heat_backward_euler_reuses_operators_across_trials_p1_p2) {
+    for (const auto order : {H1TriangleOrder::P1, H1TriangleOrder::P2}) {
+        auto problem = base_problem(2U);
+        std::size_t capacity_evaluations = 0U;
+        std::size_t conductivity_evaluations = 0U;
+        problem.volumetric_capacity = [&](double, double) {
+            ++capacity_evaluations;
+            return 1.0;
+        };
+        problem.conductivity = [&](double, double) {
+            ++conductivity_evaluations;
+            return 1.0;
+        };
+        // Exact uniform solution u=t^2 (unit volumetric capacity, zero grad).
+        problem.source = [](double, double, double t) { return 2.0 * t; };
+        AdaptiveHeat2DOptions opts;
+        opts.order = order;
+        opts.scheme = TransientTimeScheme::BackwardEuler;
+        opts.end_time = 0.8;
+        opts.initial_step = 0.4;
+        opts.max_step = 0.4;
+        opts.min_step = 1.0e-5;
+        opts.absolute_tolerance = 2.0e-4;
+        opts.relative_tolerance = 0.0;
+        const auto result = nova::fem::solve_adaptive_heat_2d(problem, opts);
+        NOVA_REQUIRE(result.accepted_steps > 2U);
+        NOVA_REQUIRE(result.rejected_steps > 0U);
+        NOVA_REQUIRE_NEAR(result.final_time, 0.8, 1.0e-14);
+        for (const double temperature : result.temperature) {
+            NOVA_REQUIRE_NEAR(temperature, 0.64, 0.03);
+        }
+        for (const auto& d : result.diagnostics) {
+            NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 2.0e-9);
+        }
+
+        // Six triangle quadrature evaluations per cell and material field:
+        // exact equality proves that M and K were assembled only once.
+        const std::size_t expected_evaluations =
+            6U * problem.mesh.elements.size();
+        NOVA_REQUIRE(capacity_evaluations == expected_evaluations);
+        NOVA_REQUIRE(conductivity_evaluations == expected_evaluations);
     }
 }
 
