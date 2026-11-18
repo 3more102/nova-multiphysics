@@ -37,6 +37,34 @@ N_1=1-r-s,\qquad N_2=r,\qquad N_3=s.
 
 The assembly rule uses six positive symmetric points and integrates polynomials through degree four exactly. Physical gradients are obtained from the element Jacobian. The signed determinant is retained in the gradient transformation; its absolute value is used for physical integration weights. Both triangle orientations are accepted, while degenerate and near-degenerate triangles are rejected using a scale-aware test.
 
+## Triangle quality and uniform mesh refinement
+
+The 2D quality metric uses each triangle's positive area \(A\) and edge
+lengths \(a,b,c\):
+
+\[
+q_\mathrm{mean}=\frac{4\sqrt{3}A}{a^2+b^2+c^2}.
+\]
+
+An equilateral triangle has \(q_\mathrm{mean}=1\); a degenerate shape
+approaches zero. The smallest interior angle is computed using
+\(\operatorname{atan2}(|u\times v|,u\cdot v)\) in radians.
+Signed area preserves the source mesh orientation; total area sums
+absolute areas.
+
+Uniform 1-to-4 refinement creates one globally shared node per unique
+original edge, then splits each triangle into three corner triangles
+and one central triangle. The refinement is conforming on a valid
+manifold triangular mesh; all source triangles retain orientation.
+When exterior boundary edges are provided, each is split into two
+segments with the same directed traversal. Original vertex values
+are preserved and new midpoint temperatures for a P1 nodal field
+are interpolated as the arithmetic mean of endpoint values.
+
+This refinement is geometric and uniform, not a residual-based error
+estimator or selective adaptive refinement. The reported quality is a
+shape metric, not an independent solution-accuracy guarantee.
+
 ## Boundary-edge integration
 
 Neumann conditions supply outward physical flux \(q_n\) and contribute \(-\int_{\Gamma_N}q_n N_i\,d\Gamma\) to the right-hand side. Robin conditions contribute \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side. Three-point Gauss-Legendre quadrature is used on P1 and P2 boundary edges (exact for polynomials through degree five). Neumann and Robin conditions cannot be assigned to the same edge.
