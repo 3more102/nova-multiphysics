@@ -63,7 +63,7 @@ jobs:
           clang-tidy
           --checks='-*,clang-analyzer-core.*,clang-analyzer-cplusplus.*,bugprone-use-after-move,bugprone-dangling-handle,performance-for-range-copy'
           --warnings-as-errors='*' --header-filter='.*(include/nova|src/fem)/.*'
-          src/fem/heat_time_integration.cpp src/fem/transient_heat_3d.cpp src/fem/transient_heat_2d.cpp
+          src/fem/heat_time_integration.cpp src/fem/transient_heat_3d.cpp src/fem/transient_heat_2d.cpp src/fem/adaptive_heat_3d.cpp
           src/fem/diffusion_3d.cpp src/fem/mesh3d.cpp src/fem/h1_space_3d.cpp
           src/fem/diffusion_h1_2d.cpp src/fem/diffusion_nullspace.cpp src/fem/constrained_diffusion.cpp src/fem/mesh2d.cpp
           -- -std=c++20 -Iinclude
