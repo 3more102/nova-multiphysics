@@ -30,6 +30,7 @@ add_library(nova_core
     src/fem/diffusion_2d.cpp
     src/fem/error_norms_2d.cpp
     src/fem/nonlinear_diffusion_1d.cpp
+    src/fem/h1_space_2d.cpp
 )
 
 add_library(NOVA::Core ALIAS nova_core)
@@ -72,6 +73,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_error_norms_2d.cpp
         tests/test_mesh_topology_2d.cpp
         tests/test_nonlinear_diffusion_1d.cpp
+        tests/test_h1_space_2d.cpp
     )
     target_include_directories(nova_tests PRIVATE tests)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)
