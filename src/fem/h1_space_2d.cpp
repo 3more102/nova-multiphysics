@@ -109,24 +109,23 @@ std::optional<std::size_t> H1DofManager2D::edge_dof(
         return std::nullopt;
     }
 
-    const EdgeKey2D key = canonical_edge(first, second);
-    const auto iterator = std::lower_bound(
-        edge_keys_.begin(),
-        edge_keys_.end(),
-        key
-    );
+    if (first >= vertex_count_ || second >= vertex_count_) {
+        throw std::out_of_range("H1 edge references a missing mesh node.");
+    }
+    if (first == second) {
+        throw std::invalid_argument("An H1 edge must have two distinct nodes.");
+    }
 
-    // edge_keys_ is stored in discovery order, not sorted order, so use
-    // an explicit linear lookup. Mesh edge counts are small at this layer;
-    // production mesh indexing can replace this with a dedicated map without
-    // changing the public API.
+    const EdgeKey2D key = canonical_edge(first, second);
+
+    // edge_keys_ is stored in discovery order, so use an explicit linear
+    // lookup. The public API is independent of the backing index structure.
     for (std::size_t index = 0; index < edge_keys_.size(); ++index) {
         if (edge_keys_[index] == key) {
             return vertex_count_ + index;
         }
     }
 
-    static_cast<void>(iterator);
     return std::nullopt;
 }
 
