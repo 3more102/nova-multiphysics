@@ -60,6 +60,18 @@ Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/trans
 
 Limitations: no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
 
+### Nonlinear transient 2D thermal conduction
+A new P1/P2 H1 Backward Euler solver supports constitutive conductivity \(k(x,y,T)>0\), its supplied derivative \(\partial k/\partial T\), and spatially varying, temperature-independent volumetric heat capacity. It reuses NOVA's damped Newton method and general nonsymmetric Krylov solvers (GMRES/BiCGSTAB).
+
+- Assemble the nonlinear volumetric residual and a mathematically consistent Jacobian at each triangle quadrature point.
+- Support time-dependent volumetric sources, Dirichlet temperatures, Neumann outward heat flux, and Robin convection with temperature-independent transfer coefficients.
+- Preserve global P2 edge-midpoint DOF numbering, exterior-edge validation, and exact restart state support.
+- Reject non-positive conductivity, non-finite constitutive derivatives, boundary overlaps, and unsuccessful Newton steps.
+- Verify P1/P2 manufactured solutions, an independent finite-difference Jacobian-vector check, reversed triangle orientation, and nonlinear failure handling.
+- Run the manufactured P2 benchmark in examples/nonlinear_heat_2d/main.cpp.
+
+Current scope is a fully implicit fixed-step 2D scalar thermal prototype: no temperature-dependent heat capacity, nonlinear convection law, adaptive stepping for the nonlinear solver, or general multiphysics coupling.
+
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
 
@@ -115,6 +127,7 @@ Run the examples:
 ./build/nova_transient_heat_2d
 ./build/nova_transient_flux_2d
 ./build/nova_adaptive_heat_2d
+./build/nova_nonlinear_heat_2d
 ./build/nova_nonlinear_diffusion_1d
 ~~~
 
