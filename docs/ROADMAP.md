@@ -7,7 +7,7 @@ A milestone is complete only when its acceptance tests, verification evidence, a
 **Implemented; CI verified on Windows and Linux.**
 
 - C++20 and CMake project.
-- CSR sparse matrix.
+- CSR sparse matrix and O(nnz) scaled sparse linear combinations.
 - 1D P1 Poisson FEM benchmark.
 - Automated tests and continuous integration.
 
@@ -21,6 +21,7 @@ Implemented:
 - Linear P1 and quadratic P2 reference-triangle H1 basis functions.
 - Positive six-point degree-four triangle quadrature.
 - Jacobian-based physical basis gradients.
+- Consistent P1/P2 scalar H1 mass and stiffness matrix assembly for transient physics.
 - Shared continuous H1 P1/P2 2D scalar isotropic diffusion assembly with orientation-independent physical gradients.
 - Spatially varying positive scalar diffusivity and volumetric source.
 - Strong symmetric Dirichlet elimination for vertex DOFs and P2 boundary-edge midpoint DOFs.
@@ -64,11 +65,24 @@ Remaining:
 - Solver configuration and reproducible logs.
 
 ## M3 — General scalar physics
-- Thermal conduction.
-- Volumetric and boundary sources.
-- Temperature-dependent material properties.
-- Stationary and transient scalar diffusion.
-- Parameter sweeps.
+
+**In progress: first transient thermal prototype implemented.**
+
+Implemented:
+- Stationary scalar conduction/diffusion with P1/P2 H1 elements.
+- Consistent scalar capacity and stiffness operators.
+- Backward Euler transient heat conduction with spatially varying, time-independent material coefficients.
+- Volumetric time-dependent heat source.
+- Time-dependent strong Dirichlet temperature traces, including P2 edge DOFs.
+- Homogeneous natural (zero-flux) boundaries for transient problems.
+- Exact space-time manufactured solution, temporal convergence, and cooling-plate example.
+
+Remaining:
+- Transient nonzero Neumann and Robin flux support.
+- Temperature-dependent and time-dependent material coefficients.
+- Crank-Nicolson and adaptive time integration.
+- Energy and heat-flux balance diagnostics.
+- Parameter sweeps and model-level thermal study configuration.
 
 ## M4 — Structural mechanics
 - Vector-valued H1 spaces.
