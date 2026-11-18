@@ -2,15 +2,17 @@
 
 #include "nova/fem/error_estimator_2d.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <vector>
 
 NOVA_TEST(p1_residual_estimator_is_zero_for_affine_harmonic_field) {
-    const auto rectangle = nova::fem::make_rectangle_mesh_2d(
+    auto rectangle = nova::fem::make_rectangle_mesh_2d(
         0.0, 2.0, -1.0, 1.0, 3U, 2U
     );
+    std::swap(rectangle.mesh.elements[0][1], rectangle.mesh.elements[0][2]);
     std::vector<double> values;
     for (const auto& node : rectangle.mesh.nodes) {
         values.push_back(1.0 + 2.0 * node.x - 3.0 * node.y);
