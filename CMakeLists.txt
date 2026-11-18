@@ -37,6 +37,7 @@ add_library(nova_core
     src/fem/adaptive_heat_2d.cpp
     src/fem/error_norms_2d.cpp
     src/fem/error_indicators_2d.cpp
+    src/fem/residual_error_estimator_2d.cpp
     src/fem/nonlinear_diffusion_1d.cpp
     src/fem/h1_space_2d.cpp
 )
@@ -99,6 +100,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_mesh_transfer_2d.cpp
         tests/test_adaptive_mesh_2d.cpp
         tests/test_error_indicators_2d.cpp
+        tests/test_residual_error_estimator_2d.cpp
         tests/test_nonlinear_diffusion_1d.cpp
         tests/test_h1_space_2d.cpp
     )
