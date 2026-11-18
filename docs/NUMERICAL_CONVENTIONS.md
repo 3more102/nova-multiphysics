@@ -61,9 +61,48 @@ segments with the same directed traversal. Original vertex values
 are preserved and new midpoint temperatures for a P1 nodal field
 are interpolated as the arithmetic mean of endpoint values.
 
-This refinement is geometric and uniform, not a residual-based error
-estimator or selective adaptive refinement. The reported quality is a
-shape metric, not an independent solution-accuracy guarantee.
+For P2 transfer, original coarse vertex DOFs are copied and each new
+refinement vertex receives the corresponding coarse edge-midpoint DOF.
+Every fine-edge midpoint is evaluated by the parent coarse P2 element
+using the reference-triangle quadratic basis. This is exact restriction
+of a coarse P2 polynomial to the refined P2 space, up to floating-point
+roundoff. The transfer requires the parent-element and midpoint-edge
+maps returned by the uniform refiner.
+
+The geometric operation remains uniform, not selective adaptive
+refinement. The reported quality is a shape metric, not an independent
+solution-accuracy guarantee.
+
+## P1 residual-based diffusion indicators
+
+For continuous P1 fields and positive elementwise-constant isotropic
+diffusivity, the element gradient is constant and
+\(\nabla\cdot(k_K\nabla u_h)=0\) inside each element. The current
+residual indicator therefore uses the cell source residual and interior
+normal-flux jumps:
+
+\[
+\eta_K^2 =
+h_K^2 \|f\|_{L^2(K)}^2
++ \frac12
+\sum_{e\subset\partial K,\ e\text{ interior}}
+h_e \|[k\nabla u_h\cdot n_e]\|_{L^2(e)}^2.
+\]
+
+Here \(h_K\) is the longest element edge and \(h_e\) is the edge
+length. The source-square integral uses the symmetric three-point
+degree-two triangle rule; it is exact when the source is linear or
+lower order. With elementwise-constant coefficients and P1 fields, the
+interior flux jump is constant along each straight edge.
+
+The implementation does not include Neumann/Robin boundary residuals,
+coefficient-gradient volume residuals, or P2 residual estimation. It is
+intended for P1 scalar diffusion with all-Dirichlet boundaries (or
+problems where omitted natural-boundary residuals are known to vanish).
+The resulting values are practical refinement indicators, not a
+certified global error bound. Dörfler marking selects the smallest
+descending-indicator prefix whose squared sum reaches the configured
+fraction of the total squared indicator.
 
 ## Boundary-edge integration
 
