@@ -116,6 +116,35 @@ callbacks are preserved unchanged. A complete multi-level adaptive solve
 loop and arbitrary user-defined physical-group transfer are not yet
 implemented.
 
+## P1 residual-based diffusion indicators
+
+For continuous P1 fields with positive elementwise-constant isotropic
+diffusivity \(k_K\), the element gradient is constant and
+\(\nabla\cdot(k_K\nabla u_h)=0\) inside each triangle. The strong cell
+residual is therefore \(R_K=f\). The current residual estimator uses
+
+\[
+\eta_K^2 =
+h_K^2 \|f\|_{L^2(K)}^2
++ \frac12
+\sum_{\substack{e\subset\partial K\\e\ \mathrm{interior}}}
+h_e \|[k\nabla u_h\cdot n_e]\|_{L^2(e)}^2,
+\]
+
+where \(h_K\) is the longest element edge and \(h_e\) is the interior
+edge length. The cell source-square integral uses the symmetric
+three-point degree-two triangle rule, which is exact when \(f\) is
+linear or lower order. The interior flux jump is constant on each
+straight edge for this P1, elementwise-constant material model.
+
+This estimator does not include Neumann/Robin boundary residuals,
+coefficient-gradient volume residuals, or P2 residuals. It is intended
+for all-Dirichlet scalar diffusion problems (or cases where omitted
+natural-boundary residuals are known to vanish). It provides practical
+element indicators, not a certified global error bound. The existing
+area-weighted gradient-recovery indicator remains available for both
+P1 and P2 fields and is a separate heuristic.
+
 ## Boundary-edge integration
 
 Neumann conditions supply outward physical flux \(q_n\) and contribute \(-\int_{\Gamma_N}q_n N_i\,d\Gamma\) to the right-hand side. Robin conditions contribute \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side. Three-point Gauss-Legendre quadrature is used on P1 and P2 boundary edges (exact for polynomials through degree five). Neumann and Robin conditions cannot be assigned to the same edge.
