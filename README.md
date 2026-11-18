@@ -46,11 +46,17 @@ It supports conforming uniform 1-to-4 refinement on a validated 2D mesh:
 - Optional exterior-boundary-edge splitting that preserves edge direction.
 - Parent-element indices and midpoint-parent edge records for mesh transfer.
 - P1 nodal prolongation (coarse vertices copied; edge midpoint averages).
+- P2 H1 prolongation that evaluates every fine-edge midpoint from its parent coarse quadratic element.
+- P1 residual-based element indicators combining source residuals and interior flux jumps for elementwise-constant positive isotropic diffusivity.
+- Deterministic Dörfler bulk marking from the element indicators.
 - Geometry and topology regression tests, including mixed element orientation.
 
-API: `nova/fem/mesh_refinement_2d.hpp`. This is **uniform** refinement,
-not error-driven adaptive mesh refinement. It does not yet preserve arbitrary
-physical boundary groups or transfer P2 solution DOFs automatically.
+APIs: `nova/fem/mesh_refinement_2d.hpp` and `nova/fem/error_estimator_2d.hpp`.
+Mesh refinement is still **uniform**; the error estimator and Dörfler marker
+provide the first adaptive workflow components but do not yet perform selective
+local refinement. The current residual estimator is limited to P1 fields with
+positive elementwise-constant isotropic diffusivity and omits natural-boundary
+residuals. Arbitrary physical boundary groups are not yet transferred.
 
 ### Transient 2D heat diffusion
 The continuous P1/P2 H1 kernel solves
