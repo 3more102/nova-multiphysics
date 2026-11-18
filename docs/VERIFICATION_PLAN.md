@@ -52,18 +52,12 @@ Implemented regression cases:
 - Exact area preservation and unchanged element quality under uniform refinement.
 - Parent-child element mapping and refinement of mixed clockwise/counterclockwise cells.
 - Exterior-edge splitting, duplicate/interior boundary rejection and exact affine P1 nodal prolongation.
-- Red-green adaptive refinement with one-, two-, and three-edge transition templates, no hanging nodes, preserved orientation and area.
-- Exact P1/P2 transfer across locally refined parent interfaces and selective transient-heat boundary remapping.
-- P1 affine harmonic residual is near zero, including mixed element orientation.
-- P2 quadratic manufactured field cancels the exact cell Laplacian residual.
-- Constant cell-source integration and discontinuous-conductivity interior flux-jump detection.
-- Residual-estimator rejection of invalid DOF counts, conductivity values, and source callbacks.
 
 Current limitations:
 - No pure Neumann nullspace handling.
 - No anisotropic diffusion tensor.
 - No arbitrary higher-order elements beyond P2.
-- Recovery-based and P1/P2 residual-based indicators are implemented for the documented coefficient scope; boundary residuals, variable-coefficient gradient terms, multi-level grading control, and automated adaptive solve loops remain.
+- Uniform conforming refinement is implemented; no error-indicator-driven adaptive refinement.
 
 Required next verification:
 - Compare error norms and observed convergence rates with an independent reference implementation.
