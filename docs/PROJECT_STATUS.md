@@ -7,9 +7,9 @@
 | [#17](https://github.com/3more102/nova-multiphysics/pull/17), `3a132bc6083a` | 3D diffusion integration, mesh quality and diagnostics | 141 registered tests and six CTest targets. [Ubuntu and Windows](https://github.com/3more102/nova-multiphysics/actions/runs/44372586103) |
 | [#18](https://github.com/3more102/nova-multiphysics/pull/18), `7a055a401219` | Transient P1 tetrahedral heat and continuous numerical verification | 151 registered tests and seven CTest targets. [Ubuntu, Windows, ASan with leak detection, UBSan, independent FEM and static analysis](https://github.com/3more102/nova-multiphysics/actions/runs/44375598672) |
 | `feature/component-neumann-2d` on #18 | Stationary component-wise 2D P1/P2 nullspaces and triangle topology | 158 registered tests and seven CTest targets passed in the local GCC 14.2 Release build. The independent 3D reference comparison still passes. |
-| `feature/adaptive-heat-3d` at `e6710787c252` | Adaptive P1 tetrahedral Backward Euler/Crank–Nicolson step doubling, static operator reuse, exact restarts and energy diagnostics | Implementation, CMake wiring, example and five regression tests are committed. Remote CI and refined-reference acceptance are pending. |
+| [#20](https://github.com/3more102/nova-multiphysics/pull/20), verified source `69be028397a6` | Adaptive P1 tetrahedral Backward Euler/Crank–Nicolson step doubling, static operator reuse, exact restarts and energy diagnostics | Five new regression cases; all eight CTest targets pass on Ubuntu, Windows and ASan/UBSan. Static analysis and the independent fixed-step FEM comparison pass. [Exact-head CI run 44379306942](https://github.com/3more102/nova-multiphysics/actions/runs/44379306942). |
 
-The next thermal milestone is implemented on `feature/adaptive-heat-3d`: full-step/two-half-step error control, accepted/rejected trials, component heat preservation, exact restart vectors and one-time static operator assembly. The branch is not yet validated or merged. After acceptance, prioritize nonlinear thermal material properties and higher-order tetrahedral spaces.
+The adaptive 3D milestone is implemented and CI-verified on `feature/adaptive-heat-3d`: full-step/two-half-step error control, accepted/rejected trials, component heat preservation, exact restart vectors and one-time static operator assembly. PR #20 remains a draft stacked on #19; no upstream changes were merged. Independent adaptive cross-solver validation and experimental validation remain open. Next thermal priorities are nonlinear material properties and higher-order tetrahedral spaces.
 
 ## Baseline audit · 18 November 2026
 
@@ -49,6 +49,24 @@ PRs #5, #6, #7, #10, #13 and #14 are outside the 3D path. #13 and #14 overlap in
 | #6 first Picard material evaluation before prescribed initial temperatures | Open review on a sibling branch. Verify start-time projection there before integration. |
 
 Three new regressions failed on the original diffusion head and passed after the corrections. They cover scale/orientation invariance, folded faces and unused vertices, and correspondence between the reported CG residual and the actual gauged iterate. Linux Release then passed 141 registered tests and six CTest targets. Mesh validation checks adjacent cells across shared faces. Global intersection detection for geometrically overlapping, topologically unrelated tetrahedra remains open.
+
+
+## Current open-PR dependency audit · 18 November 2026
+
+The repository has 19 open PRs. At this audit, all 19 current base commits are ancestors of their corresponding heads (behind_by = 0), and GitHub reports each PR as mergeable. This is an ancestry/conflict check, not merge approval. The default branch remains main at 0d56a5efe268.
+
+| Dependency | Open PRs |
+| --- | --- |
+| main → #1 → #2 → #3 → #4 | Core H1, transient heat, Crank–Nicolson and 2D adaptive stepping |
+| #4 → #5, #6, #7, #8, #10 | VTK export, Picard thermal, Newton thermal, triangle refinement, and the separate 2D operator cache |
+| #8 → #9 → #12 | P1/P2 transfer, transient remeshing and red-green adaptive refinement |
+| #12 → #14 | P1/P2 residual-based diffusion estimator |
+| #12 → #15 → #16 → #17 → #18 → #19 → #20 | 3D mesh/H1, stationary diffusion, integration corrections, fixed-step 3D heat, 2D component nullspaces, and adaptive 3D heat |
+| feature/local-adaptive-mesh-refinement → #13 | Separate P1 residual estimator; no open parent PR |
+
+PRs #13 and #14 cover overlapping residual-estimator functionality on different refinement branches. Review their assumptions and implementation differences before integrating both. PR #10 is the 2D adaptive operator-cache branch; PR #20 independently reuses static 3D thermal operators and does not depend on #10.
+
+The verified 3D integration chain is #15 → #16 → #17 → #18 → #19 → #20, with #15 descending from #12. Merge or retarget in dependency order. Squashing an upstream PR changes the ancestry expected by its children. No PR in this stack was merged during this audit.
 
 ## Numerical and product gaps
 
