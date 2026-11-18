@@ -44,7 +44,7 @@ Responsibilities:
 
 External CAD and mesh libraries may be used after commercial license review. NOVA must own its internal mesh representation and the contracts that connect mesh data to the numerical core.
 
-The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, conforming uniform and selective longest-edge refinement, area-weighted P1/P2 gradient-recovery indicators, Dörfler marking, and exact P1/P2 transfer to refined meshes. Transient-heat remeshing preserves directed Dirichlet, Neumann and Robin edge callbacks. General CAD geometry, general physical groups, multi-level grading controls, and an automated solve-estimate-refine driver are not yet implemented.
+The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, conforming uniform and selective longest-edge refinement, area-weighted P1/P2 gradient-recovery indicators, a P1 residual/flux-jump estimator for elementwise-constant isotropic diffusivity, Dörfler marking, and exact P1/P2 transfer to refined meshes. Transient-heat remeshing preserves directed Dirichlet, Neumann and Robin edge callbacks. General CAD geometry, general physical groups, multi-level grading controls, P2 residual indicators, and an automated solve-estimate-refine driver are not yet implemented.
 
 ### Numerical core
 
