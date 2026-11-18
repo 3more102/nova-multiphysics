@@ -69,7 +69,7 @@ The theta time integrator chooses \(\theta=1\) for Backward Euler and \(\theta=1
 \Delta t[\theta F_{n+1}+(1-\theta)F_n],
 \]
 
-where \(F=b_Q+b_N+b_R\). Strong prescribed temperatures are imposed at each new time level using symmetric elimination with a corrected right-hand side. Initial essential boundary DOFs are projected onto their prescribed temperatures at \(t=0\).
+where \(F=b_Q+b_N+b_R\). Strong prescribed temperatures are imposed at each new time level using symmetric elimination with a corrected right-hand side. Initial essential boundary DOFs are projected onto their prescribed temperatures at the configured start time.
 
 The per-step *integrated* discrete heat budget is
 
@@ -81,7 +81,21 @@ E_n=\int_\Omega\rho cT_h^n\,d\Omega.
 
 The energy terms integrate their respective weighted theta-method source and boundary contributions over one time step. The Dirichlet term \(E_D\) is calculated by summing constrained finite-element residual entries; it is a *discrete reaction*, not an independently reconstructed normal flux. The energy-balance residual \(\varepsilon\) checks an algebraic identity and iterative solver error, **not** independent physical accuracy. Independent numerical verification is still needed.
 
-Backward Euler has first-order temporal accuracy; Crank–Nicolson has second-order temporal accuracy for sufficiently smooth solutions. Both are implicit, but Crank–Nicolson is not L-stable and large time steps may be inaccurate or nonmonotone. Adaptive time stepping and time-dependent material coefficients remain unsupported.
+Backward Euler has first-order temporal accuracy; Crank–Nicolson has second-order temporal accuracy for sufficiently smooth solutions. Both are implicit, but Crank–Nicolson is not L-stable and large time steps may be inaccurate or nonmonotone. The fixed-step API supports explicit physical start times and an exact initial H1 DOF restart vector, including P2 edge-midpoint values. Time-dependent material coefficients remain unsupported.
+
+### Adaptive time-stepping convention
+
+For a candidate interval of width (Delta t), the adaptive driver performs one full theta-method step and two half steps from the **same initial H1 state**. Define (p=1) for Backward Euler or (p=2) for Crank–Nicolson. Its local error indicator at each DOF is
+
+[
+e_i=rac{T_{2	imesmathrm{half},i}-T_{mathrm{full},i}}{2^p-1},
+qquad
+r_i=rac{e_i}{mathrm{atol}+mathrm{rtol}max(|T_{n,i}|,|T_{2	imesmathrm{half},i}|)}.
+]
+
+It accepts a trial when (sqrt{sum_i r_i^2/N}le 1). On acceptance it stores the **two-half-step** solution, not Richardson extrapolation, and aggregates their energy diagnostics. On rejection the physical state does not advance. A bounded controller adjusts the next step using the local-error exponent (1/(p+1)), while enforcing the configured step bounds, time interval and attempt limit.
+
+This is a local DOF-RMS temporal error criterion, not a global error bound or a spatial error estimate. Very sharp transients, stiff dynamics, and discontinuous coefficients can require tighter controls. The current reference implementation reassembles its matrices on each full/half trial and is intended for small benchmarks rather than high-performance production use.
 
 ## Error-norm quadrature
 
