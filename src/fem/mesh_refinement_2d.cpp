@@ -1,4 +1,5 @@
 #include "nova/fem/mesh_refinement_2d.hpp"
+#include "nova/fem/h1_space_2d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -221,6 +222,178 @@ std::vector<double> prolongate_p1_uniform_2d(
         values.push_back(midpoint_value);
     }
     return values;
+}
+
+
+std::vector<double> prolongate_p2_uniform_2d(
+    const TriangleMesh2D& coarse_mesh,
+    const RefinedTriangleMesh2D& refined,
+    const std::span<const double> coarse_p2_dofs
+) {
+    coarse_mesh.validate();
+    refined.mesh.validate();
+
+    if (refined.coarse_node_count != coarse_mesh.nodes.size() ||
+        refined.mesh.nodes.size() !=
+            refined.coarse_node_count + refined.midpoint_parent_edges.size() ||
+        refined.parent_elements.size() != refined.mesh.elements.size()) {
+        throw std::invalid_argument("Uniform P2 prolongation metadata is inconsistent.");
+    }
+
+    const H1DofManager2D coarse_dofs(coarse_mesh, H1TriangleOrder::P2);
+    if (coarse_p2_dofs.size() != coarse_dofs.dof_count()) {
+        throw std::invalid_argument("Coarse P2 field size must match its H1 DOF count.");
+    }
+    for (const double value : coarse_p2_dofs) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument("Coarse P2 field must contain finite values.");
+        }
+    }
+
+    const std::size_t coarse_node_count = coarse_mesh.nodes.size();
+    for (std::size_t node = 0; node < coarse_node_count; ++node) {
+        const Point2D& coarse = coarse_mesh.nodes[node];
+        const Point2D& fine = refined.mesh.nodes[node];
+        if (coarse.x != fine.x || coarse.y != fine.y) {
+            throw std::invalid_argument(
+                "Uniform P2 prolongation requires original vertices to retain their indices."
+            );
+        }
+    }
+
+    std::vector<double> fine_values(
+        H1DofManager2D(refined.mesh, H1TriangleOrder::P2).dof_count(), 0.0
+    );
+    std::copy_n(coarse_p2_dofs.begin(), coarse_node_count, fine_values.begin());
+
+    std::set<EdgeKey> midpoint_edges;
+    for (std::size_t i = 0; i < refined.midpoint_parent_edges.size(); ++i) {
+        const BoundaryEdge2D& parent_edge = refined.midpoint_parent_edges[i];
+        if (parent_edge[0] >= coarse_node_count ||
+            parent_edge[1] >= coarse_node_count ||
+            parent_edge[0] == parent_edge[1]) {
+            throw std::out_of_range("P2 midpoint metadata references an invalid coarse edge.");
+        }
+        const EdgeKey key = canonical_edge(parent_edge[0], parent_edge[1]);
+        if (!midpoint_edges.insert(key).second) {
+            throw std::invalid_argument("P2 midpoint metadata contains a duplicate edge.");
+        }
+        const auto coarse_edge_dof = coarse_dofs.edge_dof(
+            parent_edge[0], parent_edge[1]
+        );
+        if (!coarse_edge_dof.has_value()) {
+            throw std::invalid_argument(
+                "P2 midpoint metadata does not identify a coarse mesh edge."
+            );
+        }
+
+        const Point2D& a = coarse_mesh.nodes[parent_edge[0]];
+        const Point2D& b = coarse_mesh.nodes[parent_edge[1]];
+        const Point2D& midpoint = refined.mesh.nodes[coarse_node_count + i];
+        const double expected_x = 0.5 * a.x + 0.5 * b.x;
+        const double expected_y = 0.5 * a.y + 0.5 * b.y;
+        const double scale = std::max({
+            1.0, std::abs(expected_x), std::abs(expected_y),
+            std::abs(midpoint.x), std::abs(midpoint.y)
+        });
+        const double coordinate_tolerance =
+            64.0 * std::numeric_limits<double>::epsilon() * scale;
+        if (std::abs(midpoint.x - expected_x) > coordinate_tolerance ||
+            std::abs(midpoint.y - expected_y) > coordinate_tolerance) {
+            throw std::invalid_argument(
+                "P2 midpoint metadata does not match the refined mesh coordinates."
+            );
+        }
+        fine_values[coarse_node_count + i] = coarse_p2_dofs[*coarse_edge_dof];
+    }
+
+    std::map<EdgeKey, std::size_t> fine_edge_parent;
+    for (std::size_t child = 0; child < refined.mesh.elements.size(); ++child) {
+        const std::size_t parent = refined.parent_elements[child];
+        if (parent >= coarse_mesh.elements.size()) {
+            throw std::out_of_range("P2 prolongation parent-element index is invalid.");
+        }
+        const Triangle2D& triangle = refined.mesh.elements[child];
+        const std::array<EdgeKey, 3> edges{{
+            canonical_edge(triangle[0], triangle[1]),
+            canonical_edge(triangle[1], triangle[2]),
+            canonical_edge(triangle[2], triangle[0])
+        }};
+        for (const EdgeKey& edge : edges) {
+            fine_edge_parent.emplace(edge, parent);
+        }
+    }
+
+    const H1DofManager2D fine_dofs(refined.mesh, H1TriangleOrder::P2);
+    for (const EdgeKey& edge : fine_dofs.edge_keys()) {
+        const auto parent_it = fine_edge_parent.find(edge);
+        if (parent_it == fine_edge_parent.end()) {
+            throw std::logic_error("A refined P2 edge has no parent element.");
+        }
+        const auto fine_edge_dof = fine_dofs.edge_dof(edge.first, edge.second);
+        if (!fine_edge_dof.has_value()) {
+            throw std::logic_error("A refined P2 edge is missing its global DOF.");
+        }
+
+        const Point2D& edge_a = refined.mesh.nodes[edge.first];
+        const Point2D& edge_b = refined.mesh.nodes[edge.second];
+        const Point2D point{
+            0.5 * edge_a.x + 0.5 * edge_b.x,
+            0.5 * edge_a.y + 0.5 * edge_b.y
+        };
+
+        const Triangle2D& parent_triangle =
+            coarse_mesh.elements[parent_it->second];
+        const Point2D& p0 = coarse_mesh.nodes[parent_triangle[0]];
+        const Point2D& p1 = coarse_mesh.nodes[parent_triangle[1]];
+        const Point2D& p2 = coarse_mesh.nodes[parent_triangle[2]];
+        const double bx = p1.x - p0.x;
+        const double by = p1.y - p0.y;
+        const double cx = p2.x - p0.x;
+        const double cy = p2.y - p0.y;
+        const double dx = point.x - p0.x;
+        const double dy = point.y - p0.y;
+        const double determinant = bx * cy - by * cx;
+        const double r = (dx * cy - dy * cx) / determinant;
+        const double s = (bx * dy - by * dx) / determinant;
+        if (!std::isfinite(r) || !std::isfinite(s)) {
+            throw std::overflow_error("P2 prolongation reference coordinates are non-finite.");
+        }
+
+        constexpr double reference_tolerance =
+            256.0 * std::numeric_limits<double>::epsilon();
+        const double l0 = 1.0 - r - s;
+        if (r < -reference_tolerance || s < -reference_tolerance ||
+            l0 < -reference_tolerance ||
+            r > 1.0 + reference_tolerance ||
+            s > 1.0 + reference_tolerance ||
+            l0 > 1.0 + reference_tolerance) {
+            throw std::invalid_argument(
+                "A refined edge midpoint is outside its recorded parent element."
+            );
+        }
+
+        const TriangleH1BasisEvaluation basis =
+            evaluate_triangle_h1_basis(H1TriangleOrder::P2, r, s);
+        const H1ElementDofMap2D& parent_dof_map =
+            coarse_dofs.element_dofs(parent_it->second);
+        double value = 0.0;
+        for (std::size_t local = 0; local < basis.count; ++local) {
+            value += basis.values[local] *
+                coarse_p2_dofs[parent_dof_map[local]];
+        }
+        if (!std::isfinite(value)) {
+            throw std::overflow_error("Prolongated P2 edge value is non-finite.");
+        }
+        fine_values[*fine_edge_dof] = value;
+    }
+
+    for (const double value : fine_values) {
+        if (!std::isfinite(value)) {
+            throw std::overflow_error("Prolongated P2 field contains a non-finite value.");
+        }
+    }
+    return fine_values;
 }
 
 } // namespace nova::fem
