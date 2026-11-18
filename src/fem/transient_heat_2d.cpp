@@ -1,5 +1,6 @@
 #include "nova/fem/transient_heat_2d.hpp"
 
+#include "transient_heat_2d_internal.hpp"
 #include "nova/fem/triangle_p1.hpp"
 
 #include <algorithm>
@@ -430,7 +431,9 @@ ScalarH1Operators2D assemble_scalar_h1_operators_2d(
     };
 }
 
-TransientHeat2DResult solve_transient_heat_2d(
+namespace detail {
+
+void validate_transient_heat_2d_inputs(
     const TransientHeat2DProblem& problem,
     const TransientHeat2DOptions& options
 ) {
@@ -454,15 +457,27 @@ TransientHeat2DResult solve_transient_heat_2d(
         options.scheme != TransientTimeScheme::CrankNicolson) {
         throw std::invalid_argument("Unsupported transient time integration scheme.");
     }
+}
+
+TransientHeat2DResult solve_transient_heat_2d_with_operators(
+    const TransientHeat2DProblem& problem,
+    const TransientHeat2DOptions& options,
+    const ScalarH1Operators2D& operators
+) {
     const double theta = options.scheme == TransientTimeScheme::BackwardEuler
         ? 1.0 : 0.5;
     const double previous_weight = 1.0 - theta;
     const double dt = options.time_step;
+    const double final_time =
+        options.start_time + options.time_step * static_cast<double>(options.steps);
     const H1FunctionSpace2D space(problem.mesh, options.order);
-    const ScalarH1Operators2D operators = assemble_scalar_h1_operators_2d(
-        problem.mesh, options.order,
-        problem.volumetric_capacity, problem.conductivity
-    );
+    const std::size_t expected_dimension = space.dimension();
+    if (operators.mass.rows() != expected_dimension ||
+        operators.mass.columns() != expected_dimension ||
+        operators.stiffness.rows() != expected_dimension ||
+        operators.stiffness.columns() != expected_dimension) {
+        throw std::invalid_argument("Preassembled thermal operators do not match the H1 space dimension.");
+    }
     const BoundaryData boundary = prepare_boundary_data(problem, space);
     validate_natural_boundaries(problem);
     const std::size_t n = space.dimension();
@@ -642,6 +657,22 @@ TransientHeat2DResult solve_transient_heat_2d(
 
     result.temperature = std::move(state);
     return result;
+}
+
+} // namespace detail
+
+TransientHeat2DResult solve_transient_heat_2d(
+    const TransientHeat2DProblem& problem,
+    const TransientHeat2DOptions& options
+) {
+    detail::validate_transient_heat_2d_inputs(problem, options);
+    const ScalarH1Operators2D operators = assemble_scalar_h1_operators_2d(
+        problem.mesh, options.order,
+        problem.volumetric_capacity, problem.conductivity
+    );
+    return detail::solve_transient_heat_2d_with_operators(
+        problem, options, operators
+    );
 }
 
 } // namespace nova::fem

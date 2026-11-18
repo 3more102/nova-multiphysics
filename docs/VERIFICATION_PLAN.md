@@ -84,6 +84,7 @@ Implemented transient thermal regression cases:
 - Adaptive constant-field preservation and discrete thermal energy budgets.
 - Adaptive Backward Euler time-dependent source and rejected-step control.
 - Adaptive Crank–Nicolson tolerance tightening on a cubic-time manufactured P2 field.
+- Count material callback evaluations for P1/P2 adaptive runs with accepted and rejected trials; confirm mass/stiffness quadrature assembly occurs once per run.
 - Adaptive rejection of invalid time ranges, tolerances, attempt limits and non-finite restart values.
 - Global heat-content budgets under constant volumetric heating.
 - Time-dependent Neumann flux integrated energy budget for Backward Euler and Crank–Nicolson.

@@ -1,5 +1,7 @@
 #include "nova/fem/adaptive_heat_2d.hpp"
 
+#include "transient_heat_2d_internal.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -117,6 +119,22 @@ AdaptiveHeat2DResult solve_adaptive_heat_2d(
     const double order =
         options.scheme == TransientTimeScheme::BackwardEuler ? 1.0 : 2.0;
 
+    TransientHeat2DOptions fixed;
+    fixed.order = options.order;
+    fixed.scheme = options.scheme;
+    fixed.start_time = time;
+    fixed.time_step = std::min(step, options.end_time - time);
+    fixed.steps = 1U;
+    fixed.solver_options = options.solver_options;
+    detail::validate_transient_heat_2d_inputs(trial_problem, fixed);
+
+    // Material coefficients are time-independent for this linear thermal API.
+    // Assemble M and K once, then share them across every full/half-step trial.
+    const ScalarH1Operators2D operators = assemble_scalar_h1_operators_2d(
+        problem.mesh, options.order,
+        problem.volumetric_capacity, problem.conductivity
+    );
+
     while (time < options.end_time) {
         if (result.attempts.size() >= options.max_attempts) {
             throw std::runtime_error("Adaptive heat maximum step attempts exhausted.");
@@ -128,22 +146,22 @@ AdaptiveHeat2DResult solve_adaptive_heat_2d(
         }
 
         trial_problem.initial_dof_values = state;
-        TransientHeat2DOptions fixed;
-        fixed.order = options.order;
-        fixed.scheme = options.scheme;
         fixed.start_time = time;
         fixed.time_step = dt;
         fixed.steps = 1U;
-        fixed.solver_options = options.solver_options;
-        const TransientHeat2DResult full = solve_transient_heat_2d(
-            trial_problem, fixed
-        );
+        detail::validate_transient_heat_2d_inputs(trial_problem, fixed);
+        const TransientHeat2DResult full =
+            detail::solve_transient_heat_2d_with_operators(
+                trial_problem, fixed, operators
+            );
 
         fixed.time_step = 0.5 * dt;
         fixed.steps = 2U;
-        TransientHeat2DResult half = solve_transient_heat_2d(
-            trial_problem, fixed
-        );
+        detail::validate_transient_heat_2d_inputs(trial_problem, fixed);
+        TransientHeat2DResult half =
+            detail::solve_transient_heat_2d_with_operators(
+                trial_problem, fixed, operators
+            );
 
         const double error = normalized_step_error(
             state, full.temperature, half.temperature, options

@@ -52,8 +52,9 @@ struct AdaptiveHeat2DResult {
 // Throws when tolerances cannot be met above min_step, when the attempt
 // limit is exceeded, or when underlying numerical solves fail.
 //
-// This reference implementation reassembles the fixed-step FEM systems
-// on each trial; future work should reuse mass/stiffness and system factors.
+// Time-independent mass/stiffness operators are assembled once per adaptive
+// run and reused across all trials. Time-dependent loads and dt-dependent
+// systems are rebuilt; factorization/preconditioner reuse remains future work.
 [[nodiscard]] AdaptiveHeat2DResult solve_adaptive_heat_2d(
     const TransientHeat2DProblem& problem,
     const AdaptiveHeat2DOptions& options = {}

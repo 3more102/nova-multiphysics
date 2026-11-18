@@ -95,7 +95,7 @@ r_i=rac{e_i}{mathrm{atol}+mathrm{rtol}max(|T_{n,i}|,|T_{2	imesmathrm{half},i}|)
 
 It accepts a trial when (sqrt{sum_i r_i^2/N}le 1). On acceptance it stores the **two-half-step** solution, not Richardson extrapolation, and aggregates their energy diagnostics. On rejection the physical state does not advance. A bounded controller adjusts the next step using the local-error exponent (1/(p+1)), while enforcing the configured step bounds, time interval and attempt limit.
 
-This is a local DOF-RMS temporal error criterion, not a global error bound or a spatial error estimate. Very sharp transients, stiff dynamics, and discontinuous coefficients can require tighter controls. The current reference implementation reassembles its matrices on each full/half trial and is intended for small benchmarks rather than high-performance production use.
+This is a local DOF-RMS temporal error criterion, not a global error bound or a spatial error estimate. Very sharp transients, stiff dynamics, and discontinuous coefficients can require tighter controls. The adaptive driver assembles the time-independent mass and stiffness operators once per solve and reuses them across full/half trials. Time-dependent source and boundary vectors, Robin matrices, and time-step-dependent system matrices are still assembled for each trial/step; factorization and preconditioner reuse are not yet implemented. This reduces repeated quadrature/operator assembly but is not a complete large-scale performance strategy.
 
 ## Error-norm quadrature
 
