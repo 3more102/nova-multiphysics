@@ -44,7 +44,7 @@ Responsibilities:
 
 External CAD and mesh libraries may be used after commercial license review. NOVA must own its internal mesh representation and the contracts that connect mesh data to the numerical core.
 
-The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, boundary-edge topology for structured rectangles, and a reusable continuous H1 function-space/DOF layer supporting P1 and P2 triangular Lagrange fields. It does not yet include general CAD geometry, unstructured meshing, general physical groups, or adaptive mesh refinement.
+The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, boundary-edge topology for structured rectangles, and a reusable continuous H1 function-space/DOF layer supporting P1 and P2 triangular Lagrange fields. It does not yet include general CAD geometry, general physical groups, or conforming local/graded adaptive mesh refinement.
 
 ### Numerical core
 
@@ -81,7 +81,7 @@ The coupling layer owns dependency graphs, block structure, convergence criteria
 
 The results subsystem stores mesh identity, field values, units, study metadata, solver diagnostics, and derived quantities. Visualization must consume results without mutating solver state.
 
-The current numerical prototype also provides elementwise L2 and H1 error measurements against analytical fields. These are verification utilities, not yet a general adaptive error-estimation framework.
+The current numerical prototype also provides elementwise L2 and H1 error measurements against analytical fields, P1 residual-based diffusion indicators for elementwise-constant scalar coefficients, and Dörfler bulk marking. The residual estimator omits natural-boundary residuals and is not a certified global error bound; local adaptive mesh generation and the automated adaptation loop remain future work.
 
 ### Solver process
 
@@ -104,6 +104,8 @@ The prototype currently contains:
 - A 1D nonlinear P1 diffusion benchmark with a consistent tangent/Jacobian for (k(u)=1+u^2).
 - Harmonic patch, mixed-boundary, manufactured-solution, and nonlinear diffusion benchmarks.
 - L2 and H1 error-norm calculations for nodal P1 fields.
+- Residual-based P1 scalar-diffusion element indicators with interior flux jumps and deterministic Dörfler marking.
+- Uniform-refinement transfer for both P1 and P2 H1 fields; P2 transfer evaluates fine-edge midpoint DOFs from their parent coarse quadratic elements.
 - Automated numerical and input-validation tests.
 
 The 2D diffusion path currently lacks pure Neumann nullspace handling, anisotropic tensors, adaptive meshing, and a generalized physics residual/tangent interface. The nonlinear solver is not yet connected to a general material or multiphysics model.
