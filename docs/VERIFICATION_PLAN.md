@@ -100,6 +100,8 @@ Implemented nonlinear transient thermal regression cases:
 - Reversed triangle orientation with P2 nonlinear material assembly.
 - Constant-temperature homogeneous-Neumann source heating.
 - Linear Robin convection at the exact ambient temperature.
+- Exact P1/P2 manufactured nonlinear Neumann outward-flux and Robin convection solutions on mixed-boundary meshes.
+- Explicit rejection of overlapping nonlinear thermal boundary-edge assignments.
 - Rejection of negative conductivity, non-finite constitutive temperature derivatives and incompatible initial-state DOF sizes.
 - Nonconvergent Newton steps reported as failure, not a valid solution.
 
