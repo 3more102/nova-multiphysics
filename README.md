@@ -36,21 +36,30 @@ on continuous triangular P1 and P2 meshes using:
 - L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
-### Triangle mesh quality and uniform refinement
+### Triangle mesh quality and adaptive refinement
 
-The mesh kernel now evaluates each triangle's signed area, minimum interior
+The mesh kernel evaluates each triangle's signed area, minimum interior
 angle, longest edge and mean-ratio shape quality (0 to 1; equilateral is 1).
-It supports conforming uniform 1-to-4 refinement on a validated 2D mesh:
+It supports both conforming uniform 1-to-4 refinement and selective local
+refinement:
 - Unique global edge midpoints shared between neighboring triangles.
-- Four child triangles per parent, preserving orientation and domain area.
-- Optional exterior-boundary-edge splitting that preserves edge direction.
-- Parent-element indices and midpoint-parent edge records for mesh transfer.
-- P1 nodal prolongation (coarse vertices copied; edge midpoint averages).
-- Geometry and topology regression tests, including mixed element orientation.
+- Longest-edge requests from marked elements, with neighboring cells split
+  automatically to prevent hanging nodes.
+- One, two, or three split edges per cell produce two, three, or four children.
+- Optional exterior-boundary splitting preserves the original edge direction.
+- Parent-element indices and midpoint-parent edge records for solution transfer.
+- Area-weighted P1/P2 gradient-recovery indicators and deterministic Dörfler
+  bulk marking.
+- Exact P1/P2 H1 solution transfer, including continuity checks across coarse
+  interfaces.
+- Selective transient-heat remeshing preserves assigned Dirichlet, Neumann and
+  Robin callbacks and transfers optional P1/P2 restart vectors.
 
-API: `nova/fem/mesh_refinement_2d.hpp`. This is **uniform** refinement,
-not error-driven adaptive mesh refinement. It does not yet preserve arbitrary
-physical boundary groups or transfer P2 solution DOFs automatically.
+APIs: `nova/fem/mesh_refinement_2d.hpp`, `nova/fem/mesh_adaptivity_2d.hpp`,
+and `nova/fem/mesh_transfer_2d.hpp`. The recovery indicator is a refinement
+heuristic, not a guaranteed error bound. Multi-level grading controls,
+residual/flux-jump estimators, arbitrary physical groups, and a fully automatic
+solve-estimate-refine loop remain future work.
 
 ### Transient 2D heat diffusion
 The continuous P1/P2 H1 kernel solves
@@ -74,7 +83,7 @@ using:
 
 Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), and examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating).
 
-Limitations: no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
+Limitations: no temperature-dependent coefficients, automatic solve-estimate-refine loop, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
@@ -102,7 +111,7 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support incomplete Cholesky, stationary pure-Neumann nullspace handling, anisotropic diffusion tensors, error-driven adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The current prototype does not yet support incomplete Cholesky, stationary pure-Neumann nullspace handling, anisotropic diffusion tensors, residual/flux-jump error estimators, multi-level mesh grading controls, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
