@@ -43,29 +43,45 @@ Neumann conditions supply outward physical flux \(q_n\) and contribute \(-\int_{
 
 ## Transient heat diffusion
 
-The scalar transient thermal prototype solves
+The transient scalar heat equation is
 
 \[
 \rho c\frac{\partial T}{\partial t}-\nabla\cdot(k\nabla T)=Q
 \]
 
-with positive volumetric heat capacity \(\rho c(x,y)\) and conductivity \(k(x,y)\), both time independent in the current implementation. With continuous P1/P2 H1 basis \(N_i\),
+with spatially varying, time-independent, strictly positive volumetric heat capacity \(\rho c\) and isotropic conductivity \(k\). For H1 basis \(N_i\),
 
 \[
-M_{ij}=\int_\Omega\rho c N_i N_j\,d\Omega,\qquad
-K_{ij}=\int_\Omega k\nabla N_i\cdot\nabla N_j\,d\Omega,\qquad
-F_i(t)=\int_\Omega Q(x,y,t)N_i\,d\Omega.
+M_{ij}=\int_\Omega\rho cN_iN_j\,d\Omega,\quad
+K_{ij}=\int_\Omega k\nabla N_i\cdot\nabla N_j\,d\Omega,\quad
+b_{Q,i}(t)=\int_\Omega Q(t)N_i\,d\Omega.
 \]
 
-Both matrices use six-point positive degree-four triangle quadrature. The consistent (non-lumped) mass matrix and the stiffness matrix are assembled once. Backward Euler forms
+On an exterior edge with outward conductive heat flux \(q_n=-k\nabla T\cdot n\), the Neumann load is \(b_{N,i}=-\int_{\Gamma_N}q_nN_i\,d\Gamma\). Positive outward heat flux is an energy *loss*. For Robin convection \(q_n=h(T-T_\infty)\), the weak form adds \(R_{ij}(t)=\int_{\Gamma_R}hN_iN_j\,d\Gamma\) to the left and \(b_{R,i}(t)=\int_{\Gamma_R}hT_\infty N_i\,d\Gamma\) to the right, with \(h\ge 0\). Overlapping boundary conditions on the same edge are rejected. Unassigned edges are insulated.
+
+The mass and stiffness operators use positive degree-four six-point reference-triangle quadrature. Natural boundary contributions use three-point Gauss–Legendre edge quadrature. P2 edge-midpoint DOFs are shared globally and included in natural boundary integrals.
+
+The theta time integrator chooses \(\theta=1\) for Backward Euler and \(\theta=1/2\) for Crank–Nicolson:
 
 \[
-(M+\Delta t K)T^{n+1}=MT^n+\Delta t F(t_{n+1}).
+[M+\theta\Delta t(K+R_{n+1})]T^{n+1} =
+[M-(1-\theta)\Delta t(K+R_n)]T^n+
+\Delta t[\theta F_{n+1}+(1-\theta)F_n],
 \]
 
-The right-hand side uses the previous solution including its prescribed boundary values. Time-dependent Dirichlet data on exterior edges are imposed at each new time level via symmetric row/column elimination and RHS correction, including midpoint DOFs for P2. Initial boundary DOFs are projected to the prescribed trace at \(t=0\). Omitted edges use zero outward heat flux. No other transient natural boundary condition is currently implemented.
+where \(F=b_Q+b_N+b_R\). Strong prescribed temperatures are imposed at each new time level using symmetric elimination with a corrected right-hand side. Initial essential boundary DOFs are projected onto their prescribed temperatures at \(t=0\).
 
-Backward Euler has first-order temporal accuracy and is unconditionally stable for this linear positive-capacity, nonnegative-stiffness spatial discretization; stability does not guarantee small time-discretization error. Every time step runs a Conjugate Gradient solve and reports failure if the solver does not converge.
+The per-step *integrated* discrete heat budget is
+
+\[
+E_{n+1}-E_n =
+E_Q+E_N+E_R+E_D+\varepsilon,\qquad
+E_n=\int_\Omega\rho cT_h^n\,d\Omega.
+\]
+
+The energy terms integrate their respective weighted theta-method source and boundary contributions over one time step. The Dirichlet term \(E_D\) is calculated by summing constrained finite-element residual entries; it is a *discrete reaction*, not an independently reconstructed normal flux. The energy-balance residual \(\varepsilon\) checks an algebraic identity and iterative solver error, **not** independent physical accuracy. Independent numerical verification is still needed.
+
+Backward Euler has first-order temporal accuracy; Crank–Nicolson has second-order temporal accuracy for sufficiently smooth solutions. Both are implicit, but Crank–Nicolson is not L-stable and large time steps may be inaccurate or nonmonotone. Adaptive time stepping and time-dependent material coefficients remain unsupported.
 
 ## Error-norm quadrature
 
