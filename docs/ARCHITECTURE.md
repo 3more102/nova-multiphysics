@@ -44,7 +44,7 @@ Responsibilities:
 
 External CAD and mesh libraries may be used after commercial license review. NOVA must own its internal mesh representation and the contracts that connect mesh data to the numerical core.
 
-The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, boundary-edge topology for structured rectangles, and a reusable continuous H1 function-space/DOF layer supporting P1 and P2 triangular Lagrange fields. It does not yet include general CAD geometry, unstructured meshing, general physical groups, or adaptive mesh refinement.
+The current prototype includes a validated 2D triangle mesh, conforming uniform and one-level red-green adaptive refinement, P1/P2 H1 solution transfer, area-weighted gradient-recovery and P1/P2 residual-based diffusion indicators, and selective transient-heat remeshing. General CAD geometry, general physical groups, multi-level grading controls, and an automated solve-estimate-refine driver are not yet implemented.
 
 ### Numerical core
 
@@ -81,7 +81,7 @@ The coupling layer owns dependency graphs, block structure, convergence criteria
 
 The results subsystem stores mesh identity, field values, units, study metadata, solver diagnostics, and derived quantities. Visualization must consume results without mutating solver state.
 
-The current numerical prototype also provides elementwise L2 and H1 error measurements against analytical fields. These are verification utilities, not yet a general adaptive error-estimation framework.
+The current numerical prototype provides elementwise L2 and H1 error measurements, a P1/P2 gradient-recovery indicator, and a P1/P2 cell-residual/interior-flux-jump estimator for elementwise-constant isotropic conductivity. These estimators are practical refinement tools, not certified error bounds.
 
 ### Solver process
 
