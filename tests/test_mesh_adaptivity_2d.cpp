@@ -330,3 +330,60 @@ NOVA_TEST(transient_heat_adaptive_remeshing_transfers_p2_and_boundary_callbacks)
         NOVA_REQUIRE(std::isfinite(value));
     }
 }
+
+
+NOVA_TEST(mesh_adaptivity_p1_residual_driver_marks_and_refines_conformingly) {
+    TriangleMesh2D mesh;
+    mesh.nodes = {
+        {0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}
+    };
+    mesh.elements = {{0U, 1U, 2U}, {0U, 2U, 3U}};
+    const std::vector<BoundaryEdge2D> boundary{
+        {0U, 1U}, {1U, 2U}, {2U, 3U}, {3U, 0U}
+    };
+    const std::vector<double> values{0.0, 1.0, 1.0, 0.0};
+    const std::vector<double> diffusivity{1.0, 2.0};
+
+    const auto adaptation =
+        nova::fem::adapt_p1_diffusion_mesh_by_residual_2d(
+            mesh, boundary, values, diffusivity,
+            [](const double, const double) { return 0.0; },
+            0.5
+        );
+
+    NOVA_REQUIRE_NEAR(adaptation.estimate.global_estimate, 1.0, 1.0e-13);
+    NOVA_REQUIRE(adaptation.marked_elements.size() == 1U);
+    NOVA_REQUIRE(adaptation.marked_elements[0] == 0U);
+    NOVA_REQUIRE(adaptation.refinement.midpoint_parent_edges.size() == 1U);
+    NOVA_REQUIRE(adaptation.refinement.mesh.nodes.size() == 5U);
+    NOVA_REQUIRE(adaptation.refinement.mesh.elements.size() == 4U);
+    NOVA_REQUIRE(adaptation.refinement.parent_elements.size() == 4U);
+    NOVA_REQUIRE(adaptation.refinement.boundary_edges.size() == boundary.size());
+}
+
+NOVA_TEST(mesh_adaptivity_p1_residual_driver_leaves_zero_indicator_mesh_unchanged) {
+    TriangleMesh2D mesh;
+    mesh.nodes = {
+        {0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}
+    };
+    mesh.elements = {{0U, 1U, 2U}, {0U, 2U, 3U}};
+    const std::vector<BoundaryEdge2D> boundary{
+        {0U, 1U}, {1U, 2U}, {2U, 3U}, {3U, 0U}
+    };
+    const std::vector<double> values{0.0, 1.0, 1.0, 0.0};
+    const std::vector<double> diffusivity{2.0, 2.0};
+
+    const auto adaptation =
+        nova::fem::adapt_p1_diffusion_mesh_by_residual_2d(
+            mesh, boundary, values, diffusivity,
+            [](const double, const double) { return 0.0; },
+            0.5
+        );
+
+    NOVA_REQUIRE_NEAR(adaptation.estimate.global_estimate, 0.0, 1.0e-13);
+    NOVA_REQUIRE(adaptation.marked_elements.empty());
+    NOVA_REQUIRE(adaptation.refinement.mesh.nodes.size() == mesh.nodes.size());
+    NOVA_REQUIRE(adaptation.refinement.mesh.elements.size() == mesh.elements.size());
+    NOVA_REQUIRE(adaptation.refinement.midpoint_parent_edges.empty());
+    NOVA_REQUIRE(adaptation.refinement.parent_elements.size() == mesh.elements.size());
+}
