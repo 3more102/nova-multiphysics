@@ -152,6 +152,66 @@ NOVA_TEST(mesh_adaptivity_local_refinement_closes_shared_edges_without_hanging_n
     }
 }
 
+NOVA_TEST(mesh_adaptivity_two_and_three_edge_templates_preserve_conformity) {
+    const double root_three = std::sqrt(3.0);
+    TriangleMesh2D mesh;
+    mesh.nodes = {
+        {0.0, 0.0}, {2.0, 0.0}, {1.0, root_three},
+        {1.0, -0.2},
+        {2.0 - 0.2 * root_three / 2.0, root_three / 2.0 + 0.1},
+        {0.2 * root_three / 2.0, root_three / 2.0 + 0.1}
+    };
+    mesh.elements = {
+        {0U, 1U, 2U},
+        {1U, 0U, 3U},
+        {2U, 1U, 4U},
+        {0U, 2U, 5U}
+    };
+    mesh.validate();
+    const auto original_quality = nova::fem::evaluate_mesh_quality_2d(mesh);
+
+    const auto check_refinement = [&](const std::vector<std::size_t>& marked,
+                                      const std::size_t expected_splits,
+                                      const std::size_t expected_children) {
+        const auto refined =
+            nova::fem::refine_triangles_by_marked_elements_2d(
+                mesh, {}, marked
+            );
+        NOVA_REQUIRE(refined.midpoint_parent_edges.size() == expected_splits);
+        NOVA_REQUIRE(refined.mesh.elements.size() == expected_children);
+        const auto counts = edge_counts(refined.mesh);
+        for (const auto& [edge, count] : counts) {
+            static_cast<void>(edge);
+            NOVA_REQUIRE(count == 1U || count == 2U);
+        }
+        for (std::size_t i = 0; i < refined.midpoint_parent_edges.size(); ++i) {
+            const auto& parent_edge = refined.midpoint_parent_edges[i];
+            const std::size_t midpoint = refined.coarse_node_count + i;
+            NOVA_REQUIRE(!counts.contains(edge_key(
+                parent_edge[0], parent_edge[1]
+            )));
+            NOVA_REQUIRE(counts.at(edge_key(parent_edge[0], midpoint)) == 2U);
+            NOVA_REQUIRE(counts.at(edge_key(midpoint, parent_edge[1])) == 2U);
+        }
+        const auto quality = nova::fem::evaluate_mesh_quality_2d(refined.mesh);
+        NOVA_REQUIRE_NEAR(
+            quality.total_area, original_quality.total_area, 1.0e-12
+        );
+        for (const auto& element : quality.elements) {
+            NOVA_REQUIRE(element.signed_area > 0.0);
+        }
+        NOVA_REQUIRE(refined.parent_elements.size() == expected_children);
+        for (const std::size_t parent : refined.parent_elements) {
+            NOVA_REQUIRE(parent < mesh.elements.size());
+        }
+    };
+
+    // The central cell sees two selected edges and must create three children.
+    check_refinement({1U, 2U}, 2U, 8U);
+    // The central cell sees all three selected edges and must create four children.
+    check_refinement({1U, 2U, 3U}, 3U, 10U);
+}
+
 NOVA_TEST(mesh_adaptivity_local_boundary_refinement_preserves_direction) {
     TriangleMesh2D mesh;
     mesh.nodes = {{0.0, 0.0}, {2.0, 0.0}, {0.0, 1.0}};
