@@ -38,8 +38,8 @@ int main() {
         }
     }
 
-    linalg::SolverOptions solver_options;
-    solver_options.preconditioner = linalg::PreconditionerType::Jacobi;
+    nova::linalg::SolverOptions solver_options;
+    solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
     solver_options.relative_tolerance = 1.0e-11;
 
     const auto result = solve_scalar_diffusion_3d(problem, solver_options);
