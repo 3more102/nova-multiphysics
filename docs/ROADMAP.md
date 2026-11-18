@@ -30,7 +30,9 @@ Implemented:
 - Mixed Dirichlet-Neumann and Dirichlet-Robin boundary benchmarks.
 - Triangle orientation-independent integration.
 - Orientation-aware 2D triangle quality analysis (minimum angle, mean ratio, element area and longest edge).
-- Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
+- Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, and parent-element maps.
+- P1 and P2 solution prolongation across uniform refinement, with P2 transfer preserving the coarse quadratic field at all refined H1 DOFs.
+- P1 residual-based cell and interior-flux-jump error indicators for positive elementwise-constant isotropic diffusivity, plus deterministic Dörfler bulk marking.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
 - Nonlinear 1D P1 diffusion residual and consistent Jacobian assembly.
@@ -39,7 +41,7 @@ Implemented:
 Remaining:
 - Reusable element and integration interfaces shared across physics.
 - Pure-Neumann nullspace handling.
-- Local/graded adaptive mesh refinement, error indicators, quality-based marking and solver mesh-transfer workflows.
+- Conforming local/graded adaptive mesh refinement, physical-group transfer, and an automated solve-estimate-mark-refine workflow.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.
 
