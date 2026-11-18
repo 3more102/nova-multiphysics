@@ -94,7 +94,7 @@ NOVA_TEST(h1_dof_manager_p1_uses_vertex_dofs_only) {
 
     NOVA_REQUIRE(dofs.dof_count() == 4);
     NOVA_REQUIRE(dofs.vertex_dof_count() == 4);
-    NOVA_REQUIRE(dofs.edge_dof_count() == 5);
+    NOVA_REQUIRE(dofs.edge_dof_count() == 0);
     NOVA_REQUIRE(dofs.element_dof_count() == 3);
     NOVA_REQUIRE(dofs.element_dofs(0)[0] == 0);
     NOVA_REQUIRE(dofs.element_dofs(0)[1] == 1);
