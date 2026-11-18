@@ -95,9 +95,10 @@ Implemented:
 - Cooling plate, convective boundary-flux, and adaptive time-step example executables.
 
 Remaining:
-- Adaptive time stepping for 3D heat, nonlinear thermal properties and higher-order tetrahedral spaces.
+- Adaptive 3D step-doubling implementation is on `feature/adaptive-heat-3d`; Windows/Linux CI, sanitizer/static-analysis checks and refined-reference acceptance are pending.
+- Nonlinear thermal properties and higher-order tetrahedral spaces.
 - General material models and time-dependent volume coefficients.
-- Optimized adaptive stepping with shared preassembled FEM operators, factorization/preconditioner reuse and a global temporal error estimator.
+- Adaptive stepping with system-matrix factorization/preconditioner reuse and a global temporal error estimator.
 - General-purpose face flux reconstruction and broader physical validation. An analytical mixed-boundary heat budget is covered by the 3D regression suite.
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.
