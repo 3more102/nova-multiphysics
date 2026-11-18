@@ -47,12 +47,17 @@ Implemented regression cases:
 - L2, H1-seminorm, and H1 error calculations.
 - Exact reproduction of a linear P1 field by the error-norm calculator.
 - Orientation-independent error-norm integration.
+- Analytical equilateral/right-triangle shape-quality metrics and minimum angles.
+- Conforming 1-to-4 triangle refinement with deterministic shared-edge midpoints and no hanging nodes.
+- Exact area preservation and unchanged element quality under uniform refinement.
+- Parent-child element mapping and refinement of mixed clockwise/counterclockwise cells.
+- Exterior-edge splitting, duplicate/interior boundary rejection and exact affine P1 nodal prolongation.
 
 Current limitations:
 - No pure Neumann nullspace handling.
 - No anisotropic diffusion tensor.
 - No arbitrary higher-order elements beyond P2.
-- No automatic adaptive refinement.
+- Uniform conforming refinement is implemented; no error-indicator-driven adaptive refinement.
 
 Required next verification:
 - Compare error norms and observed convergence rates with an independent reference implementation.
