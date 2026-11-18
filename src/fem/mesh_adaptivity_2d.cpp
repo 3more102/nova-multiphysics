@@ -404,4 +404,31 @@ RefinedTriangleMesh2D refine_triangles_by_marked_elements_2d(
     return result;
 }
 
+
+P1ResidualAdaptation2D adapt_p1_diffusion_mesh_by_residual_2d(
+    const TriangleMesh2D& mesh,
+    const std::vector<BoundaryEdge2D>& boundary_edges,
+    const std::span<const double> nodal_values,
+    const std::span<const double> element_diffusivity,
+    const std::function<double(double, double)>& source,
+    const double theta
+) {
+    DiffusionResidualIndicators2D estimate =
+        estimate_p1_residual_indicators_2d(
+            mesh, nodal_values, element_diffusivity, source
+        );
+    std::vector<std::size_t> marked = mark_elements_dorfler_2d(
+        estimate.element_indicators, theta
+    );
+    RefinedTriangleMesh2D refinement =
+        refine_triangles_by_marked_elements_2d(
+            mesh, boundary_edges, marked
+        );
+    return {
+        std::move(estimate),
+        std::move(marked),
+        std::move(refinement)
+    };
+}
+
 } // namespace nova::fem
