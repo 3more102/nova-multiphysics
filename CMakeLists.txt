@@ -27,6 +27,7 @@ add_library(nova_core
     src/nonlinear/newton_solver.cpp
     src/fem/mesh2d.cpp
     src/fem/mesh_refinement_2d.cpp
+    src/fem/mesh_adaptivity_2d.cpp
     src/fem/mesh_transfer_2d.cpp
     src/fem/poisson_1d.cpp
     src/fem/diffusion_2d.cpp
@@ -93,6 +94,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_error_norms_2d.cpp
         tests/test_mesh_topology_2d.cpp
         tests/test_mesh_refinement_2d.cpp
+        tests/test_mesh_adaptivity_2d.cpp
         tests/test_mesh_transfer_2d.cpp
         tests/test_nonlinear_diffusion_1d.cpp
         tests/test_h1_space_2d.cpp
