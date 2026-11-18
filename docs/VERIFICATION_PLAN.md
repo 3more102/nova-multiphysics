@@ -53,6 +53,10 @@ Implemented regression cases:
 - Parent-child element mapping and refinement of mixed clockwise/counterclockwise cells.
 - Exterior-edge splitting, duplicate/interior boundary rejection and exact affine P1 nodal prolongation.
 - P1/P2 gradient recovery gives near-zero indicators for affine fields and positive indicators for curved fields.
+- P1 residual indicators vanish for an affine harmonic field with zero source.
+- Residual source integration matches analytic constant and linear-source integrals.
+- Interior flux-jump indicators match an analytic two-triangle discontinuous-diffusivity case.
+- Residual estimator rejects mismatched DOFs, non-positive diffusivity and non-finite source values.
 - Deterministic Dörfler bulk marking, including zero indicators and invalid-parameter rejection.
 - Selective longest-edge refinement with shared-edge closure, no hanging nodes, preserved orientation and domain area.
 - Directed boundary-edge splitting only where selected; unselected boundary edges remain unchanged.
@@ -62,7 +66,7 @@ Current limitations:
 - No pure Neumann nullspace handling.
 - No anisotropic diffusion tensor.
 - No arbitrary higher-order elements beyond P2.
-- Recovery-based indicators and one-level selective conforming refinement are implemented; no certified residual/flux-jump estimator, multi-level grading control, or automated adaptive solve loop.
+- Recovery-based indicators and one-level selective conforming refinement are implemented. The P1 residual/flux-jump estimator assumes elementwise-constant diffusivity and omits natural-boundary and coefficient-gradient residuals; no P2 residual estimator, multi-level grading control, or automated adaptive solve loop is available.
 
 Required next verification:
 - Compare error norms and observed convergence rates with an independent reference implementation.
