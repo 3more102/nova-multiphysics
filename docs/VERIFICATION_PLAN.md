@@ -57,6 +57,7 @@ Implemented regression cases:
 - Residual source integration matches analytic constant and linear-source integrals.
 - Interior flux-jump indicators match an analytic two-triangle discontinuous-diffusivity case.
 - Residual estimator rejects mismatched DOFs, non-positive diffusivity and non-finite source values.
+- One-cycle residual adaptation marks the expected element, closes shared edges without hanging nodes, and leaves a zero-indicator mesh unchanged.
 - Deterministic Dörfler bulk marking, including zero indicators and invalid-parameter rejection.
 - Selective longest-edge refinement with shared-edge closure, no hanging nodes, preserved orientation and domain area.
 - Directed boundary-edge splitting only where selected; unselected boundary edges remain unchanged.
