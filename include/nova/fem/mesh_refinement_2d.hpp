@@ -43,7 +43,8 @@ struct RefinedTriangleMesh2D {
     std::vector<BoundaryEdge2D> midpoint_parent_edges;
     // Each child triangle maps back to its original parent triangle.
     std::vector<std::size_t> parent_elements;
-    // User-supplied exterior edges, split in their original direction.
+    // User-supplied exterior edges after refinement. An untouched edge remains
+    // one segment; a bisected edge is returned as two directed segments.
     std::vector<BoundaryEdge2D> boundary_edges;
 };
 
@@ -51,6 +52,16 @@ struct RefinedTriangleMesh2D {
 // distinct exterior edge of the coarse mesh.
 [[nodiscard]] RefinedTriangleMesh2D refine_triangles_uniformly_2d(
     const TriangleMesh2D& mesh,
+    const std::vector<BoundaryEdge2D>& boundary_edges = {}
+);
+
+// One-level conforming red-green refinement. Every marked triangle is red-split
+// into four; neighbors sharing marked edges receive one-, two-, or three-edge
+// transition splits. No hanging nodes are introduced. Boundary edges are
+// returned unchanged or split according to whether their parent edge was marked.
+[[nodiscard]] RefinedTriangleMesh2D refine_triangles_adaptively_2d(
+    const TriangleMesh2D& mesh,
+    std::span<const std::size_t> marked_elements,
     const std::vector<BoundaryEdge2D>& boundary_edges = {}
 );
 

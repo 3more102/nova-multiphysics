@@ -31,9 +31,12 @@ Implemented:
 - Triangle orientation-independent integration.
 - Orientation-aware 2D triangle quality analysis (minimum angle, mean ratio, element area and longest edge).
 - Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
-- Exact P1/P2 H1 solution transfer to uniformly refined triangular meshes, including continuity checks across coarse-element interfaces.
-- Transient heat problem remeshing with directed Dirichlet, Neumann and Robin edge splitting and optional P1/P2 restart-state transfer.
+- One-level conforming red-green adaptive refinement with unique edge midpoints, transition elements, parent-cell maps and directed boundary-edge remapping.
+- Area-weighted H1 gradient recovery indicators and deterministic Dörfler bulk marking for P1/P2 fields.
+- Exact P1/P2 H1 solution transfer to uniform and locally refined triangular meshes, including continuity checks across coarse-element interfaces.
+- Uniform and selective transient heat remeshing with directed Dirichlet, Neumann and Robin edge splitting and optional P1/P2 restart-state transfer.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
+- End-to-end adaptive thermal example: estimate, Dörfler mark, red-green remesh, P2 restart transfer and re-solve.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
 - Nonlinear 1D P1 diffusion residual and consistent Jacobian assembly.
 - Manufactured nonlinear diffusion benchmark with Newton solution and mesh-refinement regression tests.
@@ -41,7 +44,7 @@ Implemented:
 Remaining:
 - Reusable element and integration interfaces shared across physics.
 - Pure-Neumann nullspace handling.
-- Local/graded adaptive mesh refinement, residual or recovery-based error indicators, quality-based marking and selective solver mesh-transfer workflows.
+- Multi-level graded refinement closure, residual-based error indicators, quality-aware marking, arbitrary physical-group transfer and automated solve-estimate-mark-refine cycles.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.
 

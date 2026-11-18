@@ -8,9 +8,16 @@
 
 namespace nova::fem {
 
-// Transfers a continuous P1/P2 H1 field from a coarse triangle mesh to its
-// conforming uniform 1-to-4 refinement. P2 transfer evaluates the original
+// Transfers a continuous P1/P2 H1 field to a conforming midpoint refinement
+// (uniform or red-green adaptive). P2 transfer evaluates the original
 // quadratic element polynomial at every new fine-edge midpoint.
+[[nodiscard]] std::vector<double> prolongate_h1_refined_2d(
+    const TriangleMesh2D& coarse_mesh,
+    const RefinedTriangleMesh2D& refined,
+    H1TriangleOrder order,
+    std::span<const double> coarse_dof_values
+);
+
 [[nodiscard]] std::vector<double> prolongate_h1_uniform_2d(
     const TriangleMesh2D& coarse_mesh,
     const RefinedTriangleMesh2D& refined,
@@ -31,6 +38,16 @@ struct RefinedTransientHeat2DProblem {
 refine_transient_heat_problem_uniformly_2d(
     const TransientHeat2DProblem& problem,
     H1TriangleOrder order
+);
+
+// Applies selective red-green refinement to a transient heat problem. Boundary
+// edges are split only when their parent edge is bisected; other edges and
+// callbacks are preserved. Optional restart states are transferred for P1/P2.
+[[nodiscard]] RefinedTransientHeat2DProblem
+refine_transient_heat_problem_adaptively_2d(
+    const TransientHeat2DProblem& problem,
+    H1TriangleOrder order,
+    std::span<const std::size_t> marked_elements
 );
 
 } // namespace nova::fem
