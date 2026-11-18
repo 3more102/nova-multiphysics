@@ -271,14 +271,14 @@ NOVA_TEST(transient_heat_rejects_conflicting_corner_temperatures) {
 
 namespace {
 
-double crank_nicolson_quadratic_time_error(std::size_t steps) {
+double crank_nicolson_cubic_time_error(std::size_t steps) {
     auto problem = make_problem(3U);
-    // Spatial P2 exact: u=t^2*x*(1-x). Crank-Nicolson is second-order in t.
+    // Spatial P2 exact: u=t^3*x*(1-x); time derivative is quadratic.
     problem.source = [](double x, double, double t) {
-        return 2.0 * t * x * (1.0 - x) + 2.0 * t * t;
+        return 3.0 * t * t * x * (1.0 - x) + 2.0 * t * t * t;
     };
     set_all_dirichlet(problem, [](double x, double, double t) {
-        return t * t * x * (1.0 - x);
+        return t * t * t * x * (1.0 - x);
     });
     TransientHeat2DOptions options;
     options.order = H1TriangleOrder::P2;
@@ -316,9 +316,9 @@ std::vector<nova::fem::BoundaryEdge2D> right_boundary_edges(
 } // namespace
 
 NOVA_TEST(transient_heat_crank_nicolson_second_order_temporal_convergence) {
-    const double coarse = crank_nicolson_quadratic_time_error(4U);
-    const double medium = crank_nicolson_quadratic_time_error(8U);
-    const double fine = crank_nicolson_quadratic_time_error(16U);
+    const double coarse = crank_nicolson_cubic_time_error(4U);
+    const double medium = crank_nicolson_cubic_time_error(8U);
+    const double fine = crank_nicolson_cubic_time_error(16U);
     NOVA_REQUIRE(coarse > medium);
     NOVA_REQUIRE(medium > fine);
     NOVA_REQUIRE(coarse / medium > 3.0);
