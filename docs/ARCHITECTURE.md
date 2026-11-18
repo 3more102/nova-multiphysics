@@ -100,7 +100,7 @@ The prototype currently contains:
 - A shared H1 P1/P2 isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric sources, strong nodal and boundary-edge Dirichlet constraints, and P1/P2 Neumann/Robin edge terms.
 - Reusable consistent capacity/mass and stiffness operators for P1/P2 triangles and P1 tetrahedra. The 3D stationary and transient assemblies share barycentric quadrature, physical point mapping, gradient products and exterior-face assignment checks.
 - A geometry-independent theta method in `src/fem/heat_time_integration.cpp`. The 2D P1/P2 and 3D P1 adapters supply material operators, time-level volume and face/edge loads, and prescribed traces. Both receive the same solver and energy reports.
-- An independent adaptive time-step controller with full-step/two-half-step error estimation, accepted/rejected trial recording, and exact DOF restarts. Its current prototype calls the fixed-step solver repeatedly rather than caching assembled operators.
+- Fixed-mesh adaptive time-step controllers with full-step/two-half-step error estimation, accepted/rejected trial recording, and exact DOF restarts. The 2D reference path still reassembles fixed operators per trial. The 3D P1 path prepares the material mass/stiffness operators and element Jacobians once, then reuses them across full, half and rejected trials.
 - A 1D nonlinear P1 diffusion benchmark with a consistent tangent/Jacobian for (k(u)=1+u^2).
 - Harmonic patch, mixed-boundary, manufactured-solution, and nonlinear diffusion benchmarks.
 - L2 and H1 error-norm calculations for nodal P1 fields.
@@ -135,6 +135,6 @@ The core FEM algorithms must not silently depend on a third-party multiphysics s
 
 ## Fixed-step thermal data flow
 
-A solver call borrows the problem and owns its assembled CSR matrices. The 3D adapter stores one absolute element Jacobian for reuse in time-dependent volume loads. The time integrator retains the current mass action and the previous heat rate only when the scheme needs it. The matrix with fixed Dirichlet topology is reused on steps with zero Robin matrix. Time-dependent Robin exchange is assembled at each required endpoint. The mesh, callbacks and initial DOF state are never modified.
+A fixed-step solver call borrows the problem and owns its assembled CSR matrices. The 3D adapter stores one absolute element Jacobian for reuse in time-dependent volume loads. The adaptive 3D controller extends this lifetime across all full-step, half-step and rejected trials: static mass/stiffness operators and Jacobians are assembled once, while time-step-dependent system matrices and time-dependent source/face loads are rebuilt only when required. The time integrator retains the current mass action and previous heat rate only when the scheme needs it. The matrix with fixed Dirichlet topology is reused on steps with zero Robin matrix. The mesh, callbacks and initial DOF state are never modified.
 
 Both dimensional APIs expose their existing dimensional names for the common operator, diagnostic and result types. Results retain one CG solution vector per accepted step, so solution-history memory grows with DOFs times steps. Streaming result storage is an open design requirement.
