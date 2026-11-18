@@ -11,7 +11,7 @@ namespace nova::fem {
 // Transfers a continuous P1/P2 H1 field from a coarse triangle mesh to its
 // conforming uniform 1-to-4 refinement. P2 transfer evaluates the original
 // quadratic element polynomial at every new fine-edge midpoint.
-[[nodiscard]] std::vector<double> prolongate_h1_uniform_2d(
+[[nodiscard]] std::vector<double> prolongate_h1_refined_2d(
     const TriangleMesh2D& coarse_mesh,
     const RefinedTriangleMesh2D& refined,
     H1TriangleOrder order,
