@@ -117,6 +117,32 @@ This first adaptive refiner performs one conforming refinement level per
 call; repeated marking cycles and more advanced grading/quality controls
 remain application-level work.
 
+## Residual-based diffusion error estimation
+
+For a positive conductivity \(k_K\) that is constant within each triangle,
+the element residual for \(-\nabla\cdot(k\nabla u)=f\) is
+\(R_K=f+k_K\Delta u_h\). The estimator implemented for P1 and P2 fields is
+
+\[
+\eta_K^2 =
+h_K^2\|R_K\|_{L^2(K)}^2+
+\frac12\sum_{e\subset\partial K\cap\Omega}
+h_e\|[[k\nabla u_h\cdot n_e]]\|_{L^2(e)}^2.
+\]
+
+The P1 element Laplacian is zero; the P2 Laplacian is constant on an affine
+triangle and is evaluated from the transformed reference Hessian. Interior
+edge jumps are formed by summing the two adjacent elements' outward normal
+conductive-gradient fluxes. Three-point Gauss-Legendre edge quadrature exactly
+integrates the squared P2 flux jump along a straight edge. The cell residual
+uses the positive degree-four triangle rule.
+
+The current estimator assumes elementwise-constant isotropic conductivity.
+It omits coefficient-gradient terms and Neumann/Robin boundary residuals.
+It is a practical refinement indicator, not a guaranteed upper bound on the
+true discretization error; use analytical convergence and independent
+reference checks before relying on its magnitude.
+
 ## Boundary-edge integration
 
 Neumann conditions supply outward physical flux \(q_n\) and contribute \(-\int_{\Gamma_N}q_n N_i\,d\Gamma\) to the right-hand side. Robin conditions contribute \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side. Three-point Gauss-Legendre quadrature is used on P1 and P2 boundary edges (exact for polynomials through degree five). Neumann and Robin conditions cannot be assigned to the same edge.
