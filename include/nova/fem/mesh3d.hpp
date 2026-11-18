@@ -20,7 +20,7 @@ struct TetrahedralMesh3D {
     std::vector<Tetrahedron3D> elements;
 
     // Checks finite coordinates, valid unique connectivity, non-degenerate
-    // tetrahedra, and manifold face incidence.
+    // tetrahedra, opposite-sided neighbors across shared faces, and vertex use.
     void validate() const;
 };
 

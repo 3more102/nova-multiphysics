@@ -134,7 +134,8 @@ integration, while the signed determinant preserves orientation.
 
 Tetrahedron validation rejects repeated/duplicate cells, invalid node
 indices, non-finite coordinates, near-zero signed volume relative to
-the cube of the longest edge, and non-manifold faces. Both element
+the cube of the longest edge, unused vertices, non-manifold faces and neighbors
+occupying the same side of a shared face. Both element
 orientations are accepted. Structured boxes use six tetrahedra per
 hexahedral cell with a globally consistent face triangulation.
 
@@ -142,7 +143,8 @@ The tetrahedron mean-ratio quality is
 q = 12 * (3V)^(2/3) / sum_i(edge_length_i^2),
 where V is positive tetrahedron volume and the sum includes all six
 edges. A regular tetrahedron has q=1. The minimum interior dihedral
-angle is reported in radians. Boundary faces are extracted once and
+angle is reported in radians. Edge vectors are divided by the longest edge
+before forming unit face normals. The interior angle is acos(-n1 dot n2). Boundary faces are extracted once and
 oriented outward using the opposite tetrahedron vertex.
 
 The first 3D H1 space is continuous P1 with one global degree of freedom
@@ -157,7 +159,9 @@ insulated. On each connected component without Dirichlet or positive Robin
 anchoring, the integrated source must equal the integrated outward Neumann
 flux within a relative tolerance of 1e-10 against the assembled absolute
 load. The solver fixes the constant nullspace by imposing a temporary vertex
-gauge, then shifts the result to zero volume-weighted mean on that component.
+gauge. The physical field in `values` is shifted to zero volume-weighted mean on
+that component. The original iterate in `linear_solver.solution` and its true
+residual describe the same pinned system.
 Anisotropic tensors remain unsupported.
 
 The 3D diffusion kernel is P1 only. Higher-order tetrahedral spaces,

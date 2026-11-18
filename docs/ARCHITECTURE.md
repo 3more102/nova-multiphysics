@@ -4,7 +4,7 @@
 
 NOVA is intended to become a commercial, general-purpose multiphysics CAE application. The architecture must support independent evolution of the desktop application, model representation, geometry and mesh services, numerical engine, physics modules, and results system.
 
-The current implementation is an early numerical prototype. Its 1D and 2D scalar FEM cases and nonlinear diffusion benchmark are verification steps, not evidence of production readiness or broad multiphysics capability.
+The current implementation is an early numerical prototype. The tested code covers scalar finite elements in one, two and three dimensions. See [project status](PROJECT_STATUS.md) for the revision and numerical evidence.
 
 ## 2. Target subsystem boundaries
 
@@ -44,7 +44,7 @@ Responsibilities:
 
 External CAD and mesh libraries may be used after commercial license review. NOVA must own its internal mesh representation and the contracts that connect mesh data to the numerical core.
 
-The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, boundary-edge topology for structured rectangles, and a reusable continuous H1 function-space/DOF layer supporting P1 and P2 triangular Lagrange fields. It does not yet include general CAD geometry, unstructured meshing, general physical groups, or adaptive mesh refinement.
+The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, boundary-edge topology for structured rectangles, and a reusable continuous H1 function-space/DOF layer supporting P1 and P2 triangular Lagrange fields. The mesh layer also owns tetrahedral geometry, boundary face extraction, triangle red-green refinement and P1/P2 solution transfer. General CAD import, general physical groups and 3D adaptivity remain open.
 
 ### Numerical core
 
@@ -106,7 +106,7 @@ The prototype currently contains:
 - L2 and H1 error-norm calculations for nodal P1 fields.
 - Automated numerical and input-validation tests.
 
-The 2D diffusion path currently lacks pure Neumann nullspace handling, anisotropic tensors, adaptive meshing, and a generalized physics residual/tangent interface. The nonlinear solver is not yet connected to a general material or multiphysics model.
+The 2D diffusion path currently lacks pure Neumann nullspace handling, anisotropic tensors and a generalized physics residual/tangent interface. The nonlinear solver is not yet connected to a general material or multiphysics model.
 
 ## 4. Dependency policy
 
@@ -118,3 +118,16 @@ Every dependency must be evaluated for:
 - ABI stability and integration cost.
 
 The core FEM algorithms must not silently depend on a third-party multiphysics solver.
+
+## Module ownership and interfaces
+
+| Layer | Owner and testable boundary |
+| --- | --- |
+| Mathematical core and solvers | `nova::linalg` owns CSR values and solve reports. `nova::nonlinear` consumes residual/Jacobian callbacks. Matrix and residual tests exercise these contracts. |
+| Geometry and mesh | Meshes own coordinates/connectivity. The 3D validator verifies shared-face topology, orientation and supported scale. Future CAD entities need versioned IDs and checked remapping. |
+| FEM | Function spaces borrow a mesh for their lifetime and own DOF maps. Assembly produces owned operators, loads and physical fields. Stationary 3D field values and gauged CG diagnostics have separate consumers. |
+| Materials and physics | Callers currently supply coefficient and boundary callbacks. Future material records need units, ranges and provenance. Modules will contribute to shared field equations. |
+| Coupling and studies | Planned studies own snapshots, field layouts, time settings and solver parameters. Coupling owns transfer, iteration state and convergence. Replay must reconstruct the same inputs. |
+| Results and visualization | Results own field values and diagnostic metadata. Viewers and exporters consume immutable results tied to mesh and time. |
+| Desktop and Python | Planned Qt and Python clients submit the same versioned study description to the engine. Verify round trips, cancellation and stable public entry points. |
+| Commercial infrastructure | An entitlement service owns product feature grants. Its public verification interface belongs at application entry points. Numerical assembly has no dependency on license state. |

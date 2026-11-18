@@ -6,6 +6,8 @@ NOVA is an independent C++20 multiphysics simulation platform under development.
 
 > **Development status:** Early engineering prototype. It is not production-certified and must not be used as the sole basis for engineering design decisions.
 
+[Project status and PR dependencies](docs/PROJECT_STATUS.md) · [Engineering decisions](docs/DECISIONS.md) · [Release criteria](docs/RELEASE_CRITERIA.md)
+
 ## Current numerical prototype
 
 ### 1D Poisson
@@ -55,7 +57,7 @@ on validated four-node tetrahedral meshes using:
 - Pure-Neumann components with compatible source/flux loads and zero volume-weighted mean.
 - Affine harmonic patch, variable-coefficient, mixed-boundary and nodal-convergence tests.
 
-Example: \`examples/diffusion_3d/main.cpp\`.
+Example: `examples/diffusion_3d/main.cpp`.
 
 Pure-Neumann compatibility is checked separately on each connected component without Dirichlet or positive Robin anchoring. The returned field on each such component is normalized to zero volume-weighted mean.
 
@@ -75,7 +77,7 @@ It supports conforming uniform 1-to-4 refinement on a validated 2D mesh:
 
 API: `nova/fem/mesh_refinement_2d.hpp`. This is **uniform** refinement,
 not error-driven adaptive mesh refinement. It does not yet preserve arbitrary
-physical boundary groups or transfer P2 solution DOFs automatically.
+physical boundary groups through a general registry. The H1 transfer and remeshing helpers preserve P1/P2 fields on supported refinements.
 
 ### Transient 2D heat diffusion
 The continuous P1/P2 H1 kernel solves
@@ -127,7 +129,7 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support incomplete Cholesky, stationary 2D pure-Neumann nullspace handling, anisotropic diffusion tensors, error-driven adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The current prototype does not yet support incomplete Cholesky, stationary 2D pure-Neumann nullspace handling, anisotropic diffusion tensors, 3D adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
