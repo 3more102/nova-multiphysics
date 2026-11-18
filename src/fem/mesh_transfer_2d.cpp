@@ -21,53 +21,67 @@ using EdgeKey = EdgeKey2D;
     return std::minmax(first, second);
 }
 
-[[nodiscard]] std::array<double, 2> reference_coordinates(
-    const TriangleMesh2D& mesh,
-    const std::size_t element,
-    const Point2D& point
+[[nodiscard]] std::array<double, 2> reference_coordinates_for_node(
+    const TriangleMesh2D& coarse_mesh,
+    const RefinedTriangleMesh2D& refined,
+    const std::size_t parent_element,
+    const std::size_t fine_node
 ) {
-    const Triangle2D& triangle = mesh.elements.at(element);
-    const Point2D& p0 = mesh.nodes[triangle[0]];
-    const Point2D& p1 = mesh.nodes[triangle[1]];
-    const Point2D& p2 = mesh.nodes[triangle[2]];
-
-    const double j00 = p1.x - p0.x;
-    const double j01 = p2.x - p0.x;
-    const double j10 = p1.y - p0.y;
-    const double j11 = p2.y - p0.y;
-    const double determinant = j00 * j11 - j01 * j10;
-    if (!std::isfinite(determinant) || determinant == 0.0) {
-        throw std::invalid_argument("Cannot transfer through a degenerate parent element.");
-    }
-
-    const double dx = point.x - p0.x;
-    const double dy = point.y - p0.y;
-    const double r = (dx * j11 - dy * j01) / determinant;
-    const double s = (j00 * dy - j10 * dx) / determinant;
-    constexpr double reference_tolerance = 1.0e-10;
-    if (!std::isfinite(r) || !std::isfinite(s) ||
-        r < -reference_tolerance || s < -reference_tolerance ||
-        r + s > 1.0 + reference_tolerance) {
+    const Triangle2D& triangle = coarse_mesh.elements.at(parent_element);
+    if (fine_node < refined.coarse_node_count) {
+        for (std::size_t local = 0; local < 3U; ++local) {
+            if (triangle[local] == fine_node) {
+                if (local == 0U) {
+                    return {0.0, 0.0};
+                }
+                if (local == 1U) {
+                    return {1.0, 0.0};
+                }
+                return {0.0, 1.0};
+            }
+        }
         throw std::invalid_argument(
-            "A refined DOF midpoint is outside its recorded parent element."
+            "A refined edge endpoint is not a vertex of its recorded parent."
         );
     }
-    return {r, s};
+
+    const std::size_t midpoint_index = fine_node - refined.coarse_node_count;
+    if (midpoint_index >= refined.midpoint_parent_edges.size()) {
+        throw std::out_of_range(
+            "A refined edge endpoint has no coarse-edge midpoint record."
+        );
+    }
+    const BoundaryEdge2D& parent_edge =
+        refined.midpoint_parent_edges[midpoint_index];
+    const auto matches = [&](const std::size_t first, const std::size_t second) {
+        return canonical_edge(first, second) ==
+            canonical_edge(parent_edge[0], parent_edge[1]);
+    };
+
+    if (matches(triangle[0], triangle[1])) {
+        return {0.5, 0.0};
+    }
+    if (matches(triangle[1], triangle[2])) {
+        return {0.5, 0.5};
+    }
+    if (matches(triangle[2], triangle[0])) {
+        return {0.0, 0.5};
+    }
+    throw std::invalid_argument(
+        "A refined midpoint is not on an edge of its recorded parent."
+    );
 }
 
 [[nodiscard]] double evaluate_coarse_field(
-    const TriangleMesh2D& coarse_mesh,
     const H1DofManager2D& coarse_dofs,
     const H1TriangleOrder order,
     const std::span<const double> coarse_values,
     const std::size_t parent_element,
-    const Point2D& point
+    const double r,
+    const double s
 ) {
-    const auto reference = reference_coordinates(
-        coarse_mesh, parent_element, point
-    );
     const TriangleH1BasisEvaluation basis =
-        evaluate_triangle_h1_basis(order, reference[0], reference[1]);
+        evaluate_triangle_h1_basis(order, r, s);
     const H1ElementDofMap2D& local_dofs =
         coarse_dofs.element_dofs(parent_element);
 
@@ -79,18 +93,6 @@ using EdgeKey = EdgeKey2D;
         throw std::overflow_error("H1 mesh-transfer evaluation is non-finite.");
     }
     return value;
-}
-
-[[nodiscard]] Point2D edge_midpoint(
-    const TriangleMesh2D& mesh,
-    const EdgeKey& edge
-) {
-    const Point2D& first = mesh.nodes.at(edge.first);
-    const Point2D& second = mesh.nodes.at(edge.second);
-    return {
-        0.5 * first.x + 0.5 * second.x,
-        0.5 * first.y + 0.5 * second.y
-    };
 }
 
 } // namespace
@@ -215,13 +217,22 @@ std::vector<double> prolongate_h1_uniform_2d(
             );
         }
 
-        const Point2D midpoint = edge_midpoint(refined.mesh, edge);
         double transferred_value = 0.0;
         bool first_parent = true;
         for (const std::size_t parent : parents->second) {
+            const auto first_reference = reference_coordinates_for_node(
+                coarse_mesh, refined, parent, edge.first
+            );
+            const auto second_reference = reference_coordinates_for_node(
+                coarse_mesh, refined, parent, edge.second
+            );
+            const double midpoint_r =
+                0.5 * first_reference[0] + 0.5 * second_reference[0];
+            const double midpoint_s =
+                0.5 * first_reference[1] + 0.5 * second_reference[1];
             const double candidate = evaluate_coarse_field(
-                coarse_mesh, coarse_dofs, order, coarse_dof_values,
-                parent, midpoint
+                coarse_dofs, order, coarse_dof_values,
+                parent, midpoint_r, midpoint_s
             );
             if (first_parent) {
                 transferred_value = candidate;

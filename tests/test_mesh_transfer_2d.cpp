@@ -205,3 +205,23 @@ NOVA_TEST(transient_heat_uniform_refinement_rejects_duplicate_boundary_assignmen
     }
     NOVA_REQUIRE(rejected);
 }
+
+
+NOVA_TEST(mesh_transfer_handles_large_coordinate_offsets) {
+    const TriangleMesh2D mesh{{
+        {1000000.1, 1000000.2},
+        {1000000.4, 1000000.3},
+        {1000000.2, 1000000.6}
+    }, {{0U, 1U, 2U}}};
+    const auto refined = nova::fem::refine_triangles_uniformly_2d(mesh);
+    const H1FunctionSpace2D coarse_space(mesh, H1TriangleOrder::P2);
+    const auto coarse_values = coarse_space.interpolate(
+        [](const double, const double) { return 1.0; }
+    );
+    const auto fine_values = nova::fem::prolongate_h1_uniform_2d(
+        mesh, refined, H1TriangleOrder::P2, coarse_values
+    );
+    for (const double value : fine_values) {
+        NOVA_REQUIRE_NEAR(value, 1.0, 2.0e-13);
+    }
+}
