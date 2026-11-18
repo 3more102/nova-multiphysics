@@ -80,6 +80,83 @@ NOVA_TEST(adaptive_refinement_red_green_closure_is_conforming_and_conservative) 
     }
 }
 
+NOVA_TEST(adaptive_refinement_two_and_three_edge_green_transitions_are_conforming) {
+    const double root_three = std::sqrt(3.0);
+    TriangleMesh2D mesh;
+    mesh.nodes = {
+        {0.0, 0.0}, {2.0, 0.0}, {1.0, root_three},
+        {1.0, -0.2},
+        {1.5 + 0.1 * root_three, root_three / 2.0 + 0.1},
+        {0.5 - 0.1 * root_three, root_three / 2.0 + 0.1}
+    };
+    mesh.elements = {
+        {0U, 1U, 2U},
+        {1U, 0U, 3U},
+        {2U, 1U, 4U},
+        {0U, 2U, 5U}
+    };
+    mesh.validate();
+
+    const auto coarse_quality = nova::fem::evaluate_mesh_quality_2d(mesh);
+    const auto coarse_edges = edge_counts(mesh);
+    const auto check = [&](const std::span<const std::size_t> marked,
+                           const std::size_t expected_midpoints,
+                           const std::size_t expected_children,
+                           const std::size_t expected_central_children) {
+        const auto refined = nova::fem::refine_triangles_adaptively_2d(
+            mesh, marked
+        );
+        NOVA_REQUIRE(refined.midpoint_parent_edges.size() == expected_midpoints);
+        NOVA_REQUIRE(refined.mesh.elements.size() == expected_children);
+
+        std::vector<std::size_t> children_per_parent(mesh.elements.size(), 0U);
+        for (const std::size_t parent : refined.parent_elements) {
+            NOVA_REQUIRE(parent < mesh.elements.size());
+            ++children_per_parent[parent];
+        }
+        NOVA_REQUIRE(children_per_parent[0] == expected_central_children);
+
+        const auto fine_edges = edge_counts(refined.mesh);
+        for (const auto& [edge, incidence] : fine_edges) {
+            static_cast<void>(edge);
+            NOVA_REQUIRE(incidence == 1U || incidence == 2U);
+        }
+        for (std::size_t i = 0; i < refined.midpoint_parent_edges.size(); ++i) {
+            const BoundaryEdge2D& parent_edge = refined.midpoint_parent_edges[i];
+            const std::size_t midpoint = refined.coarse_node_count + i;
+            const std::size_t parent_incidence =
+                coarse_edges.at(key(parent_edge[0], parent_edge[1]));
+            NOVA_REQUIRE(!fine_edges.contains(key(parent_edge[0], parent_edge[1])));
+            NOVA_REQUIRE(
+                fine_edges.at(key(parent_edge[0], midpoint)) == parent_incidence
+            );
+            NOVA_REQUIRE(
+                fine_edges.at(key(midpoint, parent_edge[1])) == parent_incidence
+            );
+        }
+
+        const auto fine_quality = nova::fem::evaluate_mesh_quality_2d(refined.mesh);
+        NOVA_REQUIRE_NEAR(
+            fine_quality.total_area, coarse_quality.total_area, 1.0e-12
+        );
+        for (std::size_t child = 0; child < refined.parent_elements.size(); ++child) {
+            const double parent_area =
+                coarse_quality.elements[refined.parent_elements[child]].signed_area;
+            NOVA_REQUIRE(
+                fine_quality.elements[child].signed_area * parent_area > 0.0
+            );
+        }
+    };
+
+    // Two red-refined neighbors give the central cell two split edges.
+    const std::array<std::size_t, 2> two_marks{{1U, 2U}};
+    check(two_marks, 6U, 12U, 3U);
+
+    // Three red-refined neighbors give the central cell all three split edges.
+    const std::array<std::size_t, 3> three_marks{{1U, 2U, 3U}};
+    check(three_marks, 9U, 16U, 4U);
+}
+
 NOVA_TEST(adaptive_refinement_preserves_mixed_element_orientation) {
     auto mesh = nova::fem::make_rectangle_mesh_2d(
         0.0, 1.0, 0.0, 1.0, 1U, 1U
