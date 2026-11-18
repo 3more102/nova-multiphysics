@@ -32,7 +32,8 @@ Implemented:
 - Three-point Gauss Neumann outward-flux integration on validated exterior edges for P1/P2.
 - Three-point Gauss Robin transfer integration on validated exterior edges for P1/P2.
 - Mixed Dirichlet-Neumann and Dirichlet-Robin boundary benchmarks.
-- Triangle orientation-independent integration.
+- Triangle orientation-independent integration, opposite-sided shared-edge checks and rejection of unused vertices.
+- Shared component-wise stationary nullspace treatment for P1/P2 triangles and P1 tetrahedra.
 - Orientation-aware 2D triangle quality analysis (minimum angle, mean ratio, element area and longest edge).
 - 3D tetrahedron quality diagnostics (signed/absolute volume, mean ratio and minimum dihedral angle).
 - Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
@@ -48,7 +49,6 @@ Implemented:
 
 Remaining:
 - Reusable element and integration interfaces shared across physics.
-- 2D pure-Neumann nullspace handling.
 - Multi-level graded refinement closure, residual-based error indicators, quality-aware marking, arbitrary physical-group transfer and automated solve-estimate-mark-refine cycles.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.

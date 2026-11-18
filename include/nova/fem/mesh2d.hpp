@@ -19,6 +19,7 @@ struct TriangleMesh2D {
     std::vector<Triangle2D> elements;
 
     // Checks finite coordinates, valid connectivity, and non-degenerate cells.
+    // Every vertex has cell support. Neighbor cells occupy opposite sides of shared edges.
     void validate() const;
 };
 

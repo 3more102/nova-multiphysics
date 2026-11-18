@@ -32,6 +32,9 @@ void TriangleMesh2D::validate() const {
 
     constexpr double degeneracy_factor = 64.0 * std::numeric_limits<double>::epsilon();
     std::set<std::array<std::size_t, 3>> unique_elements;
+    std::vector<bool> used(nodes.size(), false);
+    // Value is the directed sign of the first CCW cell edge, then zero once paired.
+    std::map<EdgeKey, int> edge_sides;
 
     for (const Triangle2D& element : elements) {
         if (element[0] >= nodes.size() || element[1] >= nodes.size() ||
@@ -67,21 +70,25 @@ void TriangleMesh2D::validate() const {
             std::abs(determinant) <= degeneracy_factor * maximum_edge_squared) {
             throw std::invalid_argument("Mesh contains a degenerate or near-degenerate triangle.");
         }
-    }
-
-    std::map<EdgeKey, std::size_t> edge_incidence;
-    for (const Triangle2D& element : elements) {
-        ++edge_incidence[canonical_edge(element[0], element[1])];
-        ++edge_incidence[canonical_edge(element[1], element[2])];
-        ++edge_incidence[canonical_edge(element[2], element[0])];
-    }
-    for (const auto& [edge, incidence] : edge_incidence) {
-        static_cast<void>(edge);
-        if (incidence > 2U) {
-            throw std::invalid_argument(
-                "Mesh contains a non-manifold edge shared by more than two triangles."
-            );
+        for (std::size_t i = 0; i < 3; ++i) {
+            const auto first = element[i];
+            const auto second = element[(i + 1) % 3];
+            used[first] = true;
+            const int side = ((first < second) == (determinant > 0.0)) ? 1 : -1;
+            const auto [it, inserted] = edge_sides.try_emplace(canonical_edge(first, second), side);
+            if (!inserted) {
+                if (it->second == 0) {
+                    throw std::invalid_argument("More than two triangles share an edge.");
+                }
+                if (it->second == side) {
+                    throw std::invalid_argument("Triangles occupy the same side of a shared edge.");
+                }
+                it->second = 0;
+            }
         }
+    }
+    if (std::find(used.begin(), used.end(), false) != used.end()) {
+        throw std::invalid_argument("Every 2D mesh vertex must belong to a triangle.");
     }
 }
 

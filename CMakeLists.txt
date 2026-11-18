@@ -29,6 +29,8 @@ add_library(nova_core
     src/fem/mesh3d.cpp
     src/fem/tetrahedron_h1.cpp
     src/fem/h1_space_3d.cpp
+    src/fem/constrained_diffusion.cpp
+    src/fem/diffusion_nullspace.cpp
     src/fem/diffusion_3d.cpp
     src/fem/mesh_refinement_2d.cpp
     src/fem/adaptive_mesh_2d.cpp

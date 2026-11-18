@@ -2,7 +2,13 @@
 
 ## Active numerical checkpoint
 
-The integration parent is [PR #17](https://github.com/3more102/nova-multiphysics/pull/17), commit `3a132bc6083adf3ac375bb48673ec60483f920d4`, verified by its [Ubuntu and Windows build](https://github.com/3more102/nova-multiphysics/actions/runs/44372586103). The feature branch `feature/transient-heat-3d` adds fixed-step P1 heat. Its Linux Release build passed 151 registered tests and all seven CTest targets. The corresponding ASan/UBSan build passed all seven with local leak detection disabled. The hosted runner is needed for the separate leak check. The next foundation milestone is stationary 2D component nullspaces for both triangle orders.
+| Checkpoint | Tested scope | Evidence |
+| --- | --- | --- |
+| [#17](https://github.com/3more102/nova-multiphysics/pull/17), `3a132bc6083a` | 3D diffusion integration, mesh quality and diagnostics | 141 registered tests and six CTest targets. [Ubuntu and Windows](https://github.com/3more102/nova-multiphysics/actions/runs/44372586103) |
+| [#18](https://github.com/3more102/nova-multiphysics/pull/18), `7a055a401219` | Transient P1 tetrahedral heat and continuous numerical verification | 151 registered tests and seven CTest targets. [Ubuntu, Windows, ASan with leak detection, UBSan, independent FEM and static analysis](https://github.com/3more102/nova-multiphysics/actions/runs/44375598672) |
+| `feature/component-neumann-2d` on #18 | Stationary component-wise 2D P1/P2 nullspaces and triangle topology | 158 registered tests and seven CTest targets passed in the local GCC 14.2 Release build. The independent 3D reference comparison still passes. |
+
+The next thermal milestone is adaptive 3D step doubling on the verified fixed-step solver. Reuse the accepted/rejected-step logic from 2D, preserve component heat across restarts, reuse static operators on rejected trials and compare adaptive results to a refined fixed-step reference.
 
 ## Baseline audit · 18 November 2026
 
@@ -45,7 +51,7 @@ Three new regressions failed on the original diffusion head and passed after the
 
 ## Numerical and product gaps
 
-- Stationary P1/P2 2D diffusion still requires Dirichlet data. Component-wise nullspaces and the P2 integral mean need verification before insulating-only 2D studies are accepted.
+- Stationary P1/P2 triangles and P1 tetrahedra now share per-component compatibility and normalization. Tests cover a floating component next to Robin- and Dirichlet-anchored components. Pinning is a simple gauge choice. Conditioning and preconditioning on large floating systems still need study.
 - Fixed-step transient 3D heat now passes the element-matrix, mixed-flux, temporal-order, restart and energy checks. Three cooling-cube refinements were cross-checked with independent scikit-fem assembly and SciPy sparse LU. [Verification and timings](THERMAL_3D_VERIFICATION.md)
 - Scalar assembly builds triplet lists and canonicalizes them with ordered maps. Adaptive 2D thermal on this branch reassembles fixed operators during step doubling. Compare #10's operator reuse before changing that path. Serial 3D heat timings and peak resident memory are recorded through 82,944 tetrahedra. Industrial-scale qualification remains open.
 - Branch-local code includes one-level 2D spatial refinement and P1/P2 transfer. P2 tetrahedra, 3D refinement, general physical groups, coupled fields and independent experimental validation remain open.

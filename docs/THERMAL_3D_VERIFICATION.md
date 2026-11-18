@@ -10,7 +10,7 @@ On a distorted unit cube the manufactured field is $T=2+x+2y-z+t$, with $c=1+x$,
 
 For a reference tetrahedron with its $x=0$ face held at zero and the remaining faces insulated, the free P1 degree of freedom satisfies $u'=-10u$. For unit initial amplitude, each scheme is checked against its discrete amplification factor and against $e^{-2}$ at time 0.2. At 10, 20 and 40 steps the successive error orders are 0.976 and 0.988 for Backward Euler, and 2.003 and 2.001 for Crank–Nicolson.
 
-The GCC 14.2 Linux Release build passed 151 registered tests and seven CTest targets. ASan and UBSan passed all seven targets locally with leak detection disabled. With local leak detection enabled the sanitizer runtime terminated at exit because its thread-inspection facility was unavailable. Clang-Tidy 23.1.4 completed six changed numerical translation units with its core/C++ analyzer checks, use-after-move, dangling-handle and range-copy checks enabled and no diagnostics.
+The GCC 14.2 Linux Release build passed 151 registered tests and seven CTest targets. ASan and UBSan passed all seven targets locally with leak detection disabled. With local leak detection enabled the sanitizer runtime terminated at exit because its thread-inspection facility was unavailable. Clang-Tidy 23.1.4 completed six changed numerical translation units with its core/C++ analyzer checks, use-after-move, dangling-handle and range-copy checks enabled and no diagnostics. The hosted Linux runner subsequently passed with leak detection enabled. The same run also passed the independent solver, static checks, Ubuntu Release and Windows Release. [Exact thermal CI run](https://github.com/3more102/nova-multiphysics/actions/runs/44375598672)
 
 ## Independent spatial comparison
 

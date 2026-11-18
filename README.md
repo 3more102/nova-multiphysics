@@ -35,6 +35,7 @@ on continuous triangular P1 and P2 meshes using:
 - Neumann outward-flux integration on validated exterior edges.
 - Robin boundary integration with non-negative transfer coefficients and ambient values.
 - Mixed Dirichlet-Neumann and Dirichlet-Robin benchmarks.
+- Pure-Neumann loads checked per connected component, with a zero area-mean P1 or P2 field. Positive Robin transfer also anchors a component.
 - L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
@@ -135,7 +136,7 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support incomplete Cholesky, stationary 2D pure-Neumann nullspace handling, anisotropic diffusion tensors, 3D adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The current prototype does not yet support incomplete Cholesky, anisotropic diffusion tensors, 3D adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.

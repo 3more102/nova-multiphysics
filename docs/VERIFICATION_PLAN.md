@@ -39,6 +39,8 @@ Implemented regression cases:
 - Duplicate Dirichlet constraint rejection.
 - Structured rectangular mesh topology, boundary-node and boundary-edge counts.
 - Mixed Dirichlet-Neumann and Dirichlet-Robin tests.
+- Nonuniform pure-Neumann P1/P2 affine patches, a P2 quadratic field with nonzero balanced source, and disconnected components with different anchoring conditions.
+- Per-component rejection of globally cancelling loads, including magnitudes of 1e-24. Exact prescribed rows at relaxed CG tolerance, overflow on fully prescribed systems, folded shared edges and unused vertices.
 - Rejection of Neumann/Robin conditions on interior edges.
 - Rejection of duplicate/conflicting natural conditions on one edge.
 - Rejection of negative Robin coefficients.
@@ -54,7 +56,6 @@ Implemented regression cases:
 - Exterior-edge splitting, duplicate/interior boundary rejection and exact affine P1 nodal prolongation.
 
 Current limitations:
-- No pure-Neumann nullspace handling in the 2D solver.
 - No anisotropic diffusion tensor.
 - No arbitrary higher-order elements beyond P2.
 - Uniform and one-level red-green refinement are implemented. Multi-cycle quality control remains open.
