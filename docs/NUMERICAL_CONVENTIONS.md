@@ -110,6 +110,12 @@ indicator is a practical marking heuristic; it is not a guaranteed
 upper bound on the true discretization error and does not replace
 independent convergence studies.
 
+The reference example demonstrates a complete single-cycle thermal
+adaptation: solve on a coarse P2 mesh, recover the conductivity-weighted
+gradient indicator, apply Dörfler marking, transfer the accepted P2 state
+to the locally refined mesh, and continue the transient solve at the
+coarse solution's final physical time.
+
 Selective transient-heat remeshing transfers the optional P1/P2 restart
 state, preserves spatial and time-dependent callbacks, and splits only
 those Dirichlet, Neumann, or Robin edges whose parent edges were bisected.

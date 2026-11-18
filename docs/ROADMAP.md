@@ -36,6 +36,7 @@ Implemented:
 - Exact P1/P2 H1 solution transfer to uniform and locally refined triangular meshes, including continuity checks across coarse-element interfaces.
 - Uniform and selective transient heat remeshing with directed Dirichlet, Neumann and Robin edge splitting and optional P1/P2 restart-state transfer.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
+- End-to-end adaptive thermal example: estimate, Dörfler mark, red-green remesh, P2 restart transfer and re-solve.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
 - Nonlinear 1D P1 diffusion residual and consistent Jacobian assembly.
 - Manufactured nonlinear diffusion benchmark with Newton solution and mesh-refinement regression tests.
