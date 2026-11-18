@@ -56,12 +56,11 @@ evaluate_tetrahedron_p1_physical_gradients_3d(
     const TetrahedralMesh3D& mesh,
     const std::size_t element
 ) {
-    mesh.validate();
     const Tetrahedron3D& tetrahedron = mesh.elements.at(element);
-    const Point3D& p0 = mesh.nodes[tetrahedron[0]];
-    const Vector3 e1 = subtract(mesh.nodes[tetrahedron[1]], p0);
-    const Vector3 e2 = subtract(mesh.nodes[tetrahedron[2]], p0);
-    const Vector3 e3 = subtract(mesh.nodes[tetrahedron[3]], p0);
+    const Point3D& p0 = mesh.nodes.at(tetrahedron[0]);
+    const Vector3 e1 = subtract(mesh.nodes.at(tetrahedron[1]), p0);
+    const Vector3 e2 = subtract(mesh.nodes.at(tetrahedron[2]), p0);
+    const Vector3 e3 = subtract(mesh.nodes.at(tetrahedron[3]), p0);
     const Vector3 c23 = cross(e2, e3);
     const Vector3 c31 = cross(e3, e1);
     const Vector3 c12 = cross(e1, e2);
