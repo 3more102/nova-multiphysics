@@ -12,7 +12,7 @@
 int main(const int argc, char* argv[]) {
     if (argc != 1 && (argc != 3 ||
         std::string_view(argv[1]) != "--vtk")) {
-        std::cerr << "Usage: nova_adaptive_heat_2d [--vtk output.vtk]\\n";
+        std::cerr << "Usage: nova_adaptive_heat_2d [--vtk output.vtk]\n";
         return 2;
     }
     auto grid = nova::fem::make_rectangle_mesh_2d(
@@ -82,7 +82,7 @@ int main(const int argc, char* argv[]) {
     if (argc == 3) {
         std::ofstream vtk_output(argv[2]);
         if (!vtk_output) {
-            std::cerr << "Cannot open VTK output file: " << argv[2] << '\\n';
+            std::cerr << "Cannot open VTK output file: " << argv[2] << '\n';
             return 2;
         }
         const nova::fem::H1FunctionSpace2D space(
@@ -91,7 +91,7 @@ int main(const int argc, char* argv[]) {
         nova::io::write_legacy_vtk_scalar_2d(
             vtk_output, space, solution.temperature
         );
-        std::cout << "VTK result saved: " << argv[2] << '\\n';
+        std::cout << "VTK result saved: " << argv[2] << '\n';
     }
     return 0;
 }
