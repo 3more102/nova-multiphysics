@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -80,6 +81,7 @@ private:
     std::size_t vertex_count_{};
     std::size_t dof_count_{};
     std::vector<EdgeKey2D> edge_keys_;
+    std::map<EdgeKey2D, std::size_t> edge_indices_;
     std::vector<H1ElementDofMap2D> element_dofs_;
 };
 
