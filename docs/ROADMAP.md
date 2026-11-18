@@ -33,6 +33,8 @@ Implemented:
 - Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
 - Selective longest-edge refinement with conforming neighbor closure, supporting one-, two-, and three-edge split templates without hanging nodes.
 - Area-weighted P1/P2 gradient-recovery indicators and deterministic Dörfler bulk marking.
+- P1 residual-based cell and interior-flux-jump indicators for positive elementwise-constant isotropic diffusivity.
+- One-cycle P1 residual-driven selective refinement using the existing Dörfler marker and conforming local-refinement kernel.
 - Exact P1/P2 H1 solution transfer to uniformly or selectively refined triangular meshes, including continuity checks across coarse-element interfaces.
 - Uniform and selective transient heat remeshing with directed Dirichlet, Neumann and Robin edge remapping and optional P1/P2 restart-state transfer.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.

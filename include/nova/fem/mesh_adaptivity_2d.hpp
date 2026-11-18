@@ -1,9 +1,11 @@
 #pragma once
 
 #include "nova/fem/h1_space_2d.hpp"
+#include "nova/fem/error_estimator_2d.hpp"
 #include "nova/fem/mesh_refinement_2d.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -35,6 +37,25 @@ namespace nova::fem {
     const TriangleMesh2D& mesh,
     const std::vector<BoundaryEdge2D>& boundary_edges,
     std::span<const std::size_t> marked_elements
+);
+
+
+struct P1ResidualAdaptation2D {
+    DiffusionResidualIndicators2D estimate;
+    std::vector<std::size_t> marked_elements;
+    RefinedTriangleMesh2D refinement;
+};
+
+// Runs one residual-driven adaptation cycle: estimate, Dörfler-mark, then
+// conformingly refine the marked longest edges. An all-zero estimator returns
+// an unchanged mesh with an empty marked-element list.
+[[nodiscard]] P1ResidualAdaptation2D adapt_p1_diffusion_mesh_by_residual_2d(
+    const TriangleMesh2D& mesh,
+    const std::vector<BoundaryEdge2D>& boundary_edges,
+    std::span<const double> nodal_values,
+    std::span<const double> element_diffusivity,
+    const std::function<double(double, double)>& source,
+    double theta
 );
 
 } // namespace nova::fem
