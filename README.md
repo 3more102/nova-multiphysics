@@ -50,16 +50,20 @@ refinement:
 - Parent-element indices and midpoint-parent edge records for solution transfer.
 - Area-weighted P1/P2 gradient-recovery indicators and deterministic Dörfler
   bulk marking.
+- A P1 residual estimator combining cell-source residuals and interior flux
+  jumps for positive elementwise-constant isotropic diffusivity.
 - Exact P1/P2 H1 solution transfer, including continuity checks across coarse
   interfaces.
 - Selective transient-heat remeshing preserves assigned Dirichlet, Neumann and
   Robin callbacks and transfers optional P1/P2 restart vectors.
 
 APIs: `nova/fem/mesh_refinement_2d.hpp`, `nova/fem/mesh_adaptivity_2d.hpp`,
-and `nova/fem/mesh_transfer_2d.hpp`. The recovery indicator is a refinement
-heuristic, not a guaranteed error bound. Multi-level grading controls,
-residual/flux-jump estimators, arbitrary physical groups, and a fully automatic
-solve-estimate-refine loop remain future work.
+`nova/fem/mesh_transfer_2d.hpp`, and `nova/fem/error_estimator_2d.hpp`.
+Gradient recovery is a P1/P2 heuristic. The residual estimator is P1-only,
+assumes elementwise-constant positive isotropic diffusivity, and omits natural-
+boundary residuals; neither is a certified error bound. Multi-level grading
+controls, P2 residual indicators, arbitrary physical groups, and a fully
+automatic solve-estimate-refine loop remain future work.
 
 ### Transient 2D heat diffusion
 The continuous P1/P2 H1 kernel solves
