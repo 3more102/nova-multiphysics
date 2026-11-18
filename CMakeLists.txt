@@ -60,6 +60,10 @@ if(NOVA_BUILD_EXAMPLES)
     target_link_libraries(nova_transient_heat_2d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_transient_heat_2d)
 
+    add_executable(nova_transient_flux_2d examples/transient_flux_2d/main.cpp)
+    target_link_libraries(nova_transient_flux_2d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_transient_flux_2d)
+
     add_executable(nova_nonlinear_diffusion_1d examples/nonlinear_diffusion_1d/main.cpp)
     target_link_libraries(nova_nonlinear_diffusion_1d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_nonlinear_diffusion_1d)
