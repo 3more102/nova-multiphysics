@@ -1,6 +1,6 @@
 #include "nova/fem/diffusion_3d.hpp"
 
-#include "nova/fem/tetrahedron_h1.hpp"
+#include "p1_integration_3d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -16,25 +16,6 @@
 
 namespace nova::fem {
 namespace {
-
-using FaceKey = BoundaryFace3D;
-
-struct TetrahedronQuadraturePoint {
-    double r{};
-    double s{};
-    double t{};
-    double weight{};
-};
-
-struct FaceQuadraturePoint {
-    std::array<double, 3> shape{};
-    double weight{};
-};
-
-[[nodiscard]] FaceKey canonical_face(FaceKey face) {
-    std::sort(face.begin(), face.end());
-    return face;
-}
 
 class DisjointSet {
 public:
@@ -105,35 +86,6 @@ struct MeshComponents {
     return result;
 }
 
-// Positive, symmetric, degree-two exact rule on the reference tetrahedron.
-// The four weights sum to its volume, 1/6.
-[[nodiscard]] constexpr std::array<TetrahedronQuadraturePoint, 4>
-tetrahedron_degree_two_quadrature() {
-    constexpr double a = 0.5854101966249685;
-    constexpr double b = 0.1381966011250105;
-    constexpr double weight = 1.0 / 24.0;
-    return {{
-        {b, b, b, weight},
-        {a, b, b, weight},
-        {b, a, b, weight},
-        {b, b, a, weight}
-    }};
-}
-
-// Positive, symmetric, degree-two exact rule on a reference triangle.
-// The weights sum to its area, 1/2.
-[[nodiscard]] constexpr std::array<FaceQuadraturePoint, 3>
-triangle_degree_two_quadrature() {
-    constexpr double a = 2.0 / 3.0;
-    constexpr double b = 1.0 / 6.0;
-    constexpr double weight = 1.0 / 6.0;
-    return {{
-        {{a, b, b}, weight},
-        {{b, a, b}, weight},
-        {{b, b, a}, weight}
-    }};
-}
-
 void prescribe(
     std::vector<std::optional<double>>& prescribed,
     const std::size_t node,
@@ -158,45 +110,13 @@ void prescribe(
     prescribed[node] = value;
 }
 
-[[nodiscard]] double twice_face_area(
-    const Point3D& a,
-    const Point3D& b,
-    const Point3D& c
-) {
-    const double ux = b.x - a.x;
-    const double uy = b.y - a.y;
-    const double uz = b.z - a.z;
-    const double vx = c.x - a.x;
-    const double vy = c.y - a.y;
-    const double vz = c.z - a.z;
-    const double nx = uy * vz - uz * vy;
-    const double ny = uz * vx - ux * vz;
-    const double nz = ux * vy - uy * vx;
-    return std::hypot(std::hypot(nx, ny), nz);
-}
-
-[[nodiscard]] Point3D interpolate_face_point(
-    const TetrahedralMesh3D& mesh,
-    const BoundaryFace3D& face,
-    const std::array<double, 3>& shape
-) {
-    const Point3D& a = mesh.nodes[face[0]];
-    const Point3D& b = mesh.nodes[face[1]];
-    const Point3D& c = mesh.nodes[face[2]];
-    return {
-        shape[0] * a.x + shape[1] * b.x + shape[2] * c.x,
-        shape[0] * a.y + shape[1] * b.y + shape[2] * c.y,
-        shape[0] * a.z + shape[1] * b.z + shape[2] * c.z
-    };
-}
-
 } // namespace
 
 ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     const ScalarDiffusion3DProblem& problem,
     const linalg::SolverOptions& solver_options
 ) {
-    const auto boundary_faces = extract_boundary_faces_3d(problem.mesh);
+    detail::ExteriorFaceAssignments3D exterior(problem.mesh);
     const std::size_t node_count = problem.mesh.nodes.size();
     const MeshComponents components = find_mesh_components(problem.mesh);
     const std::size_t component_count = components.nodes.size();
@@ -209,34 +129,6 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
             "3D diffusivity and source functions are required."
         );
     }
-
-    std::set<FaceKey> exterior_faces;
-    for (const BoundaryFace3D& face : boundary_faces) {
-        exterior_faces.insert(canonical_face(face));
-    }
-
-    const auto validate_exterior_face = [&](const BoundaryFace3D& face) {
-        for (const std::size_t node : face) {
-            if (node >= node_count) {
-                throw std::out_of_range(
-                    "3D boundary face references a missing mesh vertex."
-                );
-            }
-        }
-        if (face[0] == face[1] || face[1] == face[2] ||
-            face[2] == face[0]) {
-            throw std::invalid_argument(
-                "A 3D boundary face must contain three distinct vertices."
-            );
-        }
-        const FaceKey key = canonical_face(face);
-        if (exterior_faces.count(key) == 0U) {
-            throw std::invalid_argument(
-                "3D boundary conditions require an exterior tetrahedral face."
-            );
-        }
-        return key;
-    };
 
     std::vector<std::optional<double>> prescribed(node_count);
     std::set<std::size_t> explicit_nodes;
@@ -255,17 +147,13 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         prescribe(prescribed, constraint.node, constraint.value);
     }
 
-    std::set<FaceKey> dirichlet_faces;
     for (const DirichletBoundaryFace3D& condition :
          problem.dirichlet_faces) {
-        const FaceKey key = validate_exterior_face(condition.face);
+        exterior.claim(condition.face);
         if (!condition.value) {
             throw std::invalid_argument(
                 "3D Dirichlet face requires a value function."
             );
-        }
-        if (!dirichlet_faces.insert(key).second) {
-            throw std::invalid_argument("Duplicate 3D Dirichlet boundary face.");
         }
         for (const std::size_t node : condition.face) {
             const Point3D& point = problem.mesh.nodes[node];
@@ -282,33 +170,20 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         }
     }
 
-    std::set<FaceKey> natural_faces;
     for (const NeumannBoundaryFace3D& condition : problem.neumann_faces) {
-        const FaceKey key = validate_exterior_face(condition.face);
+        exterior.claim(condition.face);
         if (!condition.outward_flux) {
             throw std::invalid_argument(
                 "3D Neumann face requires an outward-flux function."
             );
         }
-        if (dirichlet_faces.count(key) != 0U ||
-            !natural_faces.insert(key).second) {
-            throw std::invalid_argument(
-                "Duplicate or incompatible 3D boundary-face conditions."
-            );
-        }
     }
 
     for (const RobinBoundaryFace3D& condition : problem.robin_faces) {
-        const FaceKey key = validate_exterior_face(condition.face);
+        exterior.claim(condition.face);
         if (!condition.transfer_coefficient || !condition.ambient_value) {
             throw std::invalid_argument(
                 "3D Robin face requires transfer and ambient functions."
-            );
-        }
-        if (dirichlet_faces.count(key) != 0U ||
-            !natural_faces.insert(key).second) {
-            throw std::invalid_argument(
-                "Duplicate or incompatible 3D boundary-face conditions."
             );
         }
     }
@@ -336,26 +211,11 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     );
 
     std::vector<double> rhs(node_count, 0.0);
-    constexpr auto volume_quadrature = tetrahedron_degree_two_quadrature();
 
     for (std::size_t element = 0;
          element < problem.mesh.elements.size();
          ++element) {
         const Tetrahedron3D& cell = problem.mesh.elements[element];
-        const Point3D& p0 = problem.mesh.nodes[cell[0]];
-        const Point3D& p1 = problem.mesh.nodes[cell[1]];
-        const Point3D& p2 = problem.mesh.nodes[cell[2]];
-        const Point3D& p3 = problem.mesh.nodes[cell[3]];
-
-        const double j00 = p1.x - p0.x;
-        const double j01 = p2.x - p0.x;
-        const double j02 = p3.x - p0.x;
-        const double j10 = p1.y - p0.y;
-        const double j11 = p2.y - p0.y;
-        const double j12 = p3.y - p0.y;
-        const double j20 = p1.z - p0.z;
-        const double j21 = p2.z - p0.z;
-        const double j22 = p3.z - p0.z;
         const auto physical = evaluate_tetrahedron_p1_physical_gradients_3d(
             problem.mesh, element
         );
@@ -370,23 +230,10 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         std::array<std::array<double, 4>, 4> local_matrix{};
         std::array<double, 4> local_rhs{};
 
-        for (const TetrahedronQuadraturePoint& quadrature :
-             volume_quadrature) {
-            const auto basis = evaluate_tetrahedron_p1_basis_3d(
-                quadrature.r, quadrature.s, quadrature.t
-            );
-            const double x = p0.x +
-                j00 * quadrature.r + j01 * quadrature.s +
-                j02 * quadrature.t;
-            const double y = p0.y +
-                j10 * quadrature.r + j11 * quadrature.s +
-                j12 * quadrature.t;
-            const double z = p0.z +
-                j20 * quadrature.r + j21 * quadrature.s +
-                j22 * quadrature.t;
-
-            const double diffusivity = problem.diffusivity(x, y, z);
-            const double source = problem.source(x, y, z);
+        for (const auto& quadrature : tetrahedron_degree_two_quadrature) {
+            const auto point = detail::simplex_point(problem.mesh, cell, quadrature.shape);
+            const double diffusivity = problem.diffusivity(point.x, point.y, point.z);
+            const double source = problem.source(point.x, point.y, point.z);
             if (!std::isfinite(diffusivity) || diffusivity <= 0.0) {
                 throw std::invalid_argument(
                     "3D diffusivity must be finite and strictly positive."
@@ -401,18 +248,14 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
                 components.node_component[cell[0]];
             for (std::size_t i = 0; i < local_dof_count; ++i) {
                 const double source_load =
-                    source * basis.values[i] * weight;
+                    source * quadrature.shape[i] * weight;
                 local_rhs[i] += source_load;
                 absolute_load_scale[component] += std::abs(
                     static_cast<long double>(source_load)
                 );
                 for (std::size_t j = 0; j < local_dof_count; ++j) {
-                    const double gradient_dot =
-                        physical.gradients[i][0] * physical.gradients[j][0] +
-                        physical.gradients[i][1] * physical.gradients[j][1] +
-                        physical.gradients[i][2] * physical.gradients[j][2];
                     local_matrix[i][j] +=
-                        diffusivity * gradient_dot * weight;
+                        diffusivity * detail::gradient_product(physical, i, j) * weight;
                 }
             }
         }
@@ -438,28 +281,15 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         }
     }
 
-    constexpr auto face_quadrature = triangle_degree_two_quadrature();
-
     const auto integrate_neumann_face = [&](
         const BoundaryFace3D& face,
         const ScalarField3D& outward_flux
     ) {
         const std::size_t component =
             components.node_component[face[0]];
-        const Point3D& a = problem.mesh.nodes[face[0]];
-        const Point3D& b = problem.mesh.nodes[face[1]];
-        const Point3D& c = problem.mesh.nodes[face[2]];
-        const double area_scale = twice_face_area(a, b, c);
-        if (!std::isfinite(area_scale) || area_scale <= 0.0) {
-            throw std::invalid_argument(
-                "3D boundary face area must be finite and positive."
-            );
-        }
-
-        for (const FaceQuadraturePoint& quadrature : face_quadrature) {
-            const Point3D point = interpolate_face_point(
-                problem.mesh, face, quadrature.shape
-            );
+        const double area_scale = detail::face_jacobian(problem.mesh, face);
+        for (const auto& quadrature : triangle_face_degree_two_quadrature) {
+            const auto point = detail::simplex_point(problem.mesh, face, quadrature.shape);
             const double flux = outward_flux(point.x, point.y, point.z);
             if (!std::isfinite(flux)) {
                 throw std::invalid_argument(
@@ -491,20 +321,9 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     ) {
         const std::size_t component =
             components.node_component[face[0]];
-        const Point3D& a = problem.mesh.nodes[face[0]];
-        const Point3D& b = problem.mesh.nodes[face[1]];
-        const Point3D& c = problem.mesh.nodes[face[2]];
-        const double area_scale = twice_face_area(a, b, c);
-        if (!std::isfinite(area_scale) || area_scale <= 0.0) {
-            throw std::invalid_argument(
-                "3D boundary face area must be finite and positive."
-            );
-        }
-
-        for (const FaceQuadraturePoint& quadrature : face_quadrature) {
-            const Point3D point = interpolate_face_point(
-                problem.mesh, face, quadrature.shape
-            );
+        const double area_scale = detail::face_jacobian(problem.mesh, face);
+        for (const auto& quadrature : triangle_face_degree_two_quadrature) {
+            const auto point = detail::simplex_point(problem.mesh, face, quadrature.shape);
             const double transfer = transfer_coefficient(
                 point.x, point.y, point.z
             );

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nova/fem/h1_space_2d.hpp"
+#include "nova/fem/transient_heat.hpp"
 #include "nova/linalg/conjugate_gradient.hpp"
 #include "nova/linalg/csr_matrix.hpp"
 
@@ -15,10 +16,7 @@ using TransientScalarField2D = std::function<double(double, double, double)>;
 
 // Galerkin operators for rho*c*du/dt - div(k*grad(u)) = f.
 // Both matrices use continuous P1/P2 H1 ordering: vertices, then edge DOFs.
-struct ScalarH1Operators2D {
-    linalg::CsrMatrix mass;
-    linalg::CsrMatrix stiffness;
-};
+using ScalarH1Operators2D = ScalarH1Operators;
 
 [[nodiscard]] ScalarH1Operators2D assemble_scalar_h1_operators_2d(
     const TriangleMesh2D& mesh,
@@ -45,17 +43,12 @@ struct TransientRobinEdge2D {
     TransientScalarField2D ambient_temperature;
 };
 
-enum class TransientTimeScheme {
-    BackwardEuler,
-    CrankNicolson
-};
-
 struct TransientHeat2DProblem {
     TriangleMesh2D mesh;
     // rho*c > 0; k > 0. Both are spatially variable, time independent.
     SpatialScalarField2D volumetric_capacity;
     SpatialScalarField2D conductivity;
-    // Volumetric power density f(x,y,t), evaluated at t_(n+1).
+    // Volumetric power density f(x,y,t), evaluated at time levels with nonzero theta weight.
     TransientScalarField2D source;
     SpatialScalarField2D initial_temperature;
     // Optional exact H1 DOF state for restart/adaptive stepping.
@@ -77,35 +70,15 @@ struct TransientHeat2DOptions {
     linalg::SolverOptions solver_options{};
 };
 
-// Per-step *integrated* thermal energy budget in the chosen physical units.
-// Dirichlet energy is computed from the constrained finite-element residual.
-// Energy balance includes discretization/iterative residual, not an exact
-// measurement of physical flux on prescribed-temperature boundaries.
-struct TransientHeatStepDiagnostics2D {
-    double time{};
-    double heat_content{};
-    double source_energy{};
-    double neumann_energy{};
-    double robin_energy{};
-    double dirichlet_energy{};
-    double balance_residual{};
-};
-
-struct TransientHeat2DResult {
-    // Final H1 DOF values, including P2 edge-midpoint DOFs.
-    std::vector<double> temperature;
-    double final_time{};
-    // One linear solver diagnostic per successful time step.
-    std::vector<linalg::SolverResult> linear_solvers;
-    std::vector<TransientHeatStepDiagnostics2D> diagnostics;
-};
+using TransientHeatStepDiagnostics2D = TransientHeatStepDiagnostics;
+using TransientHeat2DResult = TransientHeatResult;
 
 // Theta time integration: theta=1 (Backward Euler), theta=1/2 (Crank-Nicolson).
-// Time-dependent Neumann/Robin terms are integrated at both time levels.
+// Time-dependent Neumann/Robin terms use the time levels with nonzero weight.
 // Boundary-edge conditions must be mutually exclusive; omitted edges are insulated.
 // Prescribed temperatures are enforced symmetrically at each new time level.
 // The initial field is projected onto prescribed boundary temperatures at start_time.
- // Nonempty initial_dof_values allows restarting without nodal reinterpolation.
+// Nonempty initial_dof_values allows restarting without nodal reinterpolation.
 // Material coefficients are positive, spatially varying, time-independent.
 [[nodiscard]] TransientHeat2DResult solve_transient_heat_2d(
     const TransientHeat2DProblem& problem,

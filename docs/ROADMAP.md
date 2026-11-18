@@ -82,7 +82,8 @@ Remaining:
 
 Implemented:
 - Stationary 2D scalar conduction/diffusion with P1/P2 H1 elements and 3D tetrahedral scalar diffusion with P1 H1 elements.
-- Consistent scalar capacity and stiffness FEM operators.
+- Consistent scalar capacity and stiffness FEM operators, including 3D P1 tetrahedra.
+- Fixed-step 3D transient heat with time-dependent Dirichlet, Neumann and Robin faces, restart states and a discrete heat budget. Analytical and independent FEM comparisons are recorded in [thermal verification](THERMAL_3D_VERIFICATION.md).
 - Backward Euler and Crank–Nicolson implicit transient time integration.
 - Adaptive, fixed-mesh time stepping by step doubling, absolute/relative local error control, accepted/rejected attempt histories, minimum/maximum step size and attempt limits.
 - Exact H1 nodal DOF restarts with nonzero physical start times.
@@ -94,10 +95,10 @@ Implemented:
 - Cooling plate, convective boundary-flux, and adaptive time-step example executables.
 
 Remaining:
-- Transient 3D heat diffusion, higher-order tetrahedral spaces, and 3D thermal boundary-condition integration.
-- Nonlinear temperature-dependent constitutive properties and time-dependent materials.
+- Adaptive time stepping for 3D heat, nonlinear thermal properties and higher-order tetrahedral spaces.
+- General material models and time-dependent volume coefficients.
 - Optimized adaptive stepping with shared preassembled FEM operators, factorization/preconditioner reuse and a global temporal error estimator.
-- Independently recovered normal heat fluxes and physical energy-balance cross-checks.
+- General-purpose face flux reconstruction and broader physical validation. An analytical mixed-boundary heat budget is covered by the 3D regression suite.
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.
 

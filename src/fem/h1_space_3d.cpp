@@ -26,12 +26,18 @@ H1FunctionSpace3D::H1FunctionSpace3D(const TetrahedralMesh3D& mesh)
 std::vector<double> H1FunctionSpace3D::interpolate(
     const std::function<double(double, double, double)>& field
 ) const {
+    return interpolate_p1_vertices_3d(mesh_->nodes, field);
+}
+
+std::vector<double> interpolate_p1_vertices_3d(
+    std::span<const Point3D> nodes, const std::function<double(double, double, double)>& field
+) {
     if (!field) {
         throw std::invalid_argument("H1 3D interpolation requires a field callback.");
     }
     std::vector<double> values;
-    values.reserve(mesh_->nodes.size());
-    for (const Point3D& node : mesh_->nodes) {
+    values.reserve(nodes.size());
+    for (const Point3D& node : nodes) {
         const double value = field(node.x, node.y, node.z);
         if (!std::isfinite(value)) {
             throw std::invalid_argument(

@@ -1,5 +1,9 @@
 # NOVA development checkpoint
 
+## Active numerical checkpoint
+
+The integration parent is [PR #17](https://github.com/3more102/nova-multiphysics/pull/17), commit `3a132bc6083adf3ac375bb48673ec60483f920d4`, verified by its [Ubuntu and Windows build](https://github.com/3more102/nova-multiphysics/actions/runs/44372586103). The feature branch `feature/transient-heat-3d` adds fixed-step P1 heat. Its Linux Release build passed 151 registered tests and all seven CTest targets. The corresponding ASan/UBSan build passed all seven with local leak detection disabled. The hosted runner is needed for the separate leak check. The next foundation milestone is stationary 2D component nullspaces for both triangle orders.
+
 ## Baseline audit · 18 November 2026
 
 CMake declares version 0.8.0. The default branch at audit was `0d56a5efe268`. All 15 open PRs had their current base commit as an ancestor of their head. The 3D diffusion head `1a691dbeb091` was 85 commits ahead of main with zero commits missing from main. On an independent Linux Release build with GCC 14.2, this head passed 138 registered tests and all six CTest targets. The diffusion example used 3,072 tetrahedra, 729 DOFs and 50 CG iterations. It reported a true residual of 7.73738e-13 and a maximum nodal error of 0.00255202.
@@ -34,7 +38,7 @@ PRs #5, #6, #7, #10, #13 and #14 are outside the 3D path. #13 and #14 overlap in
 | --- | --- |
 | #15 repeated whole-mesh validation per element gradient | Already corrected in `3f2f354b`. The local gradient evaluates the element's four vertices. The review thread remained open at audit. |
 | #15 scale dependence of dihedral angles | Reproduced on the right tetrahedron at scale 1e-90. The integration branch uses dimensionless edges and unit normals. |
-| #3 Backward Euler evaluates initial loads with zero weight | Present in the 2D fixed-step code on #16. Address when sharing the time integrator. |
+| #3 Backward Euler evaluates initial loads with zero weight | Reproduced by inspection on #16 and corrected in the shared fixed-step integrator on the thermal branch. Both dimensional APIs have regression coverage. |
 | #6 first Picard material evaluation before prescribed initial temperatures | Open review on a sibling branch. Verify start-time projection there before integration. |
 
 Three new regressions failed on the original diffusion head and passed after the corrections. They cover scale/orientation invariance, folded faces and unused vertices, and correspondence between the reported CG residual and the actual gauged iterate. Linux Release then passed 141 registered tests and six CTest targets. Mesh validation checks adjacent cells across shared faces. Global intersection detection for geometrically overlapping, topologically unrelated tetrahedra remains open.
@@ -42,8 +46,8 @@ Three new regressions failed on the original diffusion head and passed after the
 ## Numerical and product gaps
 
 - Stationary P1/P2 2D diffusion still requires Dirichlet data. Component-wise nullspaces and the P2 integral mean need verification before insulating-only 2D studies are accepted.
-- Next vertical milestone is fixed-step transient 3D heat on P1 tetrahedra. Reuse stationary quadrature, the existing theta method and CSR algebra. Acceptance includes exact mass entries, independently evaluated thermal fluxes, temporal convergence, restart equivalence and an energy budget.
-- Scalar assembly builds triplet lists and canonicalizes them with ordered maps. Adaptive 2D thermal on this branch reassembles fixed operators during step doubling. Compare #10's operator reuse before changing that path. Large-model memory and throughput have no qualification baseline.
+- Fixed-step transient 3D heat now passes the element-matrix, mixed-flux, temporal-order, restart and energy checks. Three cooling-cube refinements were cross-checked with independent scikit-fem assembly and SciPy sparse LU. [Verification and timings](THERMAL_3D_VERIFICATION.md)
+- Scalar assembly builds triplet lists and canonicalizes them with ordered maps. Adaptive 2D thermal on this branch reassembles fixed operators during step doubling. Compare #10's operator reuse before changing that path. Serial 3D heat timings and peak resident memory are recorded through 82,944 tetrahedra. Industrial-scale qualification remains open.
 - Branch-local code includes one-level 2D spatial refinement and P1/P2 transfer. P2 tetrahedra, 3D refinement, general physical groups, coupled fields and independent experimental validation remain open.
 - The build links the C++ standard library and the NOVA core. No third-party numerical solver is declared by CMake. Compiler runtimes, optional product dependencies, contributor rights, redistribution terms and deliverable SBOMs still require an artifact-level audit.
 - Desktop, project persistence, packaging, activation and commercial distribution remain open. See [release criteria](RELEASE_CRITERIA.md).

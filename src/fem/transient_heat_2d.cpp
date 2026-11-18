@@ -1,6 +1,7 @@
 #include "nova/fem/transient_heat_2d.hpp"
 
 #include "nova/fem/triangle_p1.hpp"
+#include "heat_time_integration.hpp"
 
 #include <algorithm>
 #include <array>
@@ -227,13 +228,7 @@ void validate_natural_boundaries(
     }
 }
 
-struct NaturalBoundaryAssembly {
-    linalg::CsrMatrix robin_matrix;
-    std::vector<double> neumann_rhs;
-    std::vector<double> robin_ambient_rhs;
-};
-
-[[nodiscard]] NaturalBoundaryAssembly assemble_natural_boundaries(
+[[nodiscard]] detail::HeatLoads assemble_heat_loads(
     const TransientHeat2DProblem& problem,
     const H1FunctionSpace2D& space,
     const double time
@@ -337,22 +332,9 @@ struct NaturalBoundaryAssembly {
     return {
         linalg::CsrMatrix::from_triplets(n, n, robin_entries),
         std::move(neumann_rhs),
-        std::move(robin_ambient_rhs)
+        std::move(robin_ambient_rhs),
+        assemble_load(space, problem.source, time)
     };
-}
-
-[[nodiscard]] double dot_vectors(
-    const std::vector<double>& left,
-    const std::vector<double>& right
-) {
-    if (left.size() != right.size()) {
-        throw std::invalid_argument("Energy diagnostic vector sizes differ.");
-    }
-    double result = 0.0;
-    for (std::size_t i = 0; i < left.size(); ++i) {
-        result += left[i] * right[i];
-    }
-    return result;
 }
 
 } // namespace
@@ -434,214 +416,23 @@ TransientHeat2DResult solve_transient_heat_2d(
     const TransientHeat2DProblem& problem,
     const TransientHeat2DOptions& options
 ) {
-    if (!std::isfinite(options.time_step) || options.time_step <= 0.0 ||
-        options.steps == 0U) {
-        throw std::invalid_argument("Transient time step and number of steps must be positive.");
-    }
-    if (!std::isfinite(options.start_time)) {
-        throw std::invalid_argument("Transient start time must be finite.");
-    }
-    const double final_time =
-        options.start_time + options.time_step * static_cast<double>(options.steps);
-    if (!std::isfinite(final_time) || final_time <= options.start_time) {
-        throw std::invalid_argument("Transient final time must advance and be finite.");
-    }
-    if (!problem.source ||
-        (problem.initial_dof_values.empty() && !problem.initial_temperature)) {
+    const TransientHeatTimeOptions time_options{
+        options.scheme, options.time_step, options.start_time, options.steps, options.solver_options};
+    detail::validate_heat_time_grid(time_options);
+    if (!problem.source || (problem.initial_dof_values.empty() && !problem.initial_temperature)) {
         throw std::invalid_argument("Transient source and initial field/DOFs are required.");
     }
-    if (options.scheme != TransientTimeScheme::BackwardEuler &&
-        options.scheme != TransientTimeScheme::CrankNicolson) {
-        throw std::invalid_argument("Unsupported transient time integration scheme.");
-    }
-    const double theta = options.scheme == TransientTimeScheme::BackwardEuler
-        ? 1.0 : 0.5;
-    const double previous_weight = 1.0 - theta;
-    const double dt = options.time_step;
     const H1FunctionSpace2D space(problem.mesh, options.order);
-    const ScalarH1Operators2D operators = assemble_scalar_h1_operators_2d(
-        problem.mesh, options.order,
-        problem.volumetric_capacity, problem.conductivity
-    );
-    const BoundaryData boundary = prepare_boundary_data(problem, space);
+    const auto boundary = prepare_boundary_data(problem, space);
     validate_natural_boundaries(problem);
-    const std::size_t n = space.dimension();
-
-    std::vector<double> state = problem.initial_dof_values.empty()
-        ? space.interpolate(problem.initial_temperature)
-        : problem.initial_dof_values;
-    if (state.size() != space.dimension()) {
-        throw std::invalid_argument("Initial H1 DOF state dimension mismatch.");
-    }
-    for (const double value : state) {
-        if (!std::isfinite(value)) {
-            throw std::invalid_argument("Initial temperature must be finite.");
-        }
-    }
-    const auto initial_boundary = boundary_values(boundary, options.start_time);
-    for (std::size_t i = 0; i < n; ++i) {
-        if (boundary.constrained[i]) {
-            state[i] = initial_boundary[i];
-        }
-    }
-
-    const std::vector<double> ones(n, 1.0);
-    const auto capacity_weights = operators.mass.multiply(ones);
-    const linalg::CsrMatrix base_system = linalg::CsrMatrix::linear_combination(
-        operators.mass, 1.0, operators.stiffness, theta * dt
-    );
-
-    NaturalBoundaryAssembly previous_natural =
-        assemble_natural_boundaries(problem, space, options.start_time);
-    std::vector<double> previous_volume = assemble_load(
-        space, problem.source, options.start_time
-    );
-
-    TransientHeat2DResult result;
-    result.final_time = final_time;
-    result.linear_solvers.reserve(options.steps);
-    result.diagnostics.reserve(options.steps);
-
-    for (std::size_t step = 1; step <= options.steps; ++step) {
-        const double time =
-            options.start_time + static_cast<double>(step) * dt;
-        if (!std::isfinite(time)) {
-            throw std::overflow_error("Transient step time overflowed.");
-        }
-        const auto prescribed = boundary_values(boundary, time);
-        NaturalBoundaryAssembly current_natural =
-            assemble_natural_boundaries(problem, space, time);
-        std::vector<double> current_volume = assemble_load(space, problem.source, time);
-
-        const linalg::CsrMatrix full_system =
-            linalg::CsrMatrix::linear_combination(
-                base_system, 1.0, current_natural.robin_matrix, theta * dt
-            );
-        std::vector<linalg::Triplet> free_entries;
-        std::vector<linalg::Triplet> boundary_couplings;
-        if (full_system.non_zeros() > free_entries.max_size() - n) {
-            throw std::length_error("Constrained transient matrix is too large.");
-        }
-        free_entries.reserve(full_system.non_zeros() + n);
-        full_system.for_each_nonzero(
-            [&](std::size_t row, std::size_t col, double value) {
-                if (!boundary.constrained[row] && !boundary.constrained[col]) {
-                    free_entries.push_back({row, col, value});
-                } else if (!boundary.constrained[row] && boundary.constrained[col]) {
-                    boundary_couplings.push_back({row, col, value});
-                }
-            }
-        );
-        for (std::size_t i = 0; i < n; ++i) {
-            if (boundary.constrained[i]) {
-                free_entries.push_back({i, i, 1.0});
-            }
-        }
-        const linalg::CsrMatrix system = linalg::CsrMatrix::from_triplets(
-            n, n, free_entries
-        );
-
-        const auto old_mass = operators.mass.multiply(state);
-        const auto old_stiffness = operators.stiffness.multiply(state);
-        const auto old_robin = previous_natural.robin_matrix.multiply(state);
-
-        std::vector<double> rhs(n, 0.0);
-        for (std::size_t i = 0; i < n; ++i) {
-            const double old_force =
-                previous_volume[i] +
-                previous_natural.neumann_rhs[i] +
-                previous_natural.robin_ambient_rhs[i];
-            const double new_force =
-                current_volume[i] +
-                current_natural.neumann_rhs[i] +
-                current_natural.robin_ambient_rhs[i];
-            rhs[i] = old_mass[i] -
-                dt * previous_weight * (old_stiffness[i] + old_robin[i]) +
-                dt * (previous_weight * old_force + theta * new_force);
-            if (!std::isfinite(rhs[i])) {
-                throw std::overflow_error("Transient right-hand side overflowed.");
-            }
-        }
-        for (const auto& entry : boundary_couplings) {
-            rhs[entry.row] -= entry.value * prescribed[entry.column];
-            if (!std::isfinite(rhs[entry.row])) {
-                throw std::overflow_error("Transient Dirichlet RHS correction overflowed.");
-            }
-        }
-        for (std::size_t i = 0; i < n; ++i) {
-            if (boundary.constrained[i]) {
-                rhs[i] = prescribed[i];
-            }
-        }
-
-        linalg::SolverResult step_result = linalg::solve_conjugate_gradient(
-            system, std::span<const double>(rhs), options.solver_options
-        );
-        if (!step_result.converged) {
-            throw std::runtime_error(
-                "Transient linear solve failed at step " +
-                std::to_string(step) + ": " + step_result.message
-            );
-        }
-        const auto& next_state = step_result.solution;
-        const auto new_mass = operators.mass.multiply(next_state);
-        const auto new_stiffness = operators.stiffness.multiply(next_state);
-        const auto new_robin = current_natural.robin_matrix.multiply(next_state);
-
-        TransientHeatStepDiagnostics2D diagnostic;
-        diagnostic.time = time;
-        diagnostic.heat_content = dot_vectors(capacity_weights, next_state);
-        const double old_heat = dot_vectors(capacity_weights, state);
-        for (std::size_t i = 0; i < n; ++i) {
-            diagnostic.source_energy += dt * (
-                theta * current_volume[i] + previous_weight * previous_volume[i]
-            );
-            diagnostic.neumann_energy += dt * (
-                theta * current_natural.neumann_rhs[i] +
-                previous_weight * previous_natural.neumann_rhs[i]
-            );
-            diagnostic.robin_energy += dt * (
-                theta * (current_natural.robin_ambient_rhs[i] - new_robin[i]) +
-                previous_weight *
-                    (previous_natural.robin_ambient_rhs[i] - old_robin[i])
-            );
-            if (boundary.constrained[i]) {
-                const double old_force =
-                    previous_volume[i] +
-                    previous_natural.neumann_rhs[i] +
-                    previous_natural.robin_ambient_rhs[i];
-                const double new_force =
-                    current_volume[i] +
-                    current_natural.neumann_rhs[i] +
-                    current_natural.robin_ambient_rhs[i];
-                diagnostic.dirichlet_energy +=
-                    new_mass[i] - old_mass[i] +
-                    dt * (
-                        theta * (new_stiffness[i] + new_robin[i] - new_force) +
-                        previous_weight *
-                            (old_stiffness[i] + old_robin[i] - old_force)
-                    );
-            }
-        }
-        diagnostic.balance_residual =
-            diagnostic.heat_content - old_heat -
-            diagnostic.source_energy - diagnostic.neumann_energy -
-            diagnostic.robin_energy - diagnostic.dirichlet_energy;
-        if (!std::isfinite(diagnostic.balance_residual)) {
-            throw std::overflow_error("Transient energy diagnostic overflowed.");
-        }
-
-        // Copy the new state before moving step_result into diagnostic history.
-        // next_state is a reference into step_result.solution.
-        state = next_state;
-        result.diagnostics.push_back(diagnostic);
-        result.linear_solvers.push_back(std::move(step_result));
-        previous_natural = std::move(current_natural);
-        previous_volume = std::move(current_volume);
-    }
-
-    result.temperature = std::move(state);
-    return result;
+    const auto operators = assemble_scalar_h1_operators_2d(
+        problem.mesh, options.order, problem.volumetric_capacity, problem.conductivity);
+    auto state = problem.initial_dof_values.empty() ? space.interpolate(problem.initial_temperature)
+                                                    : problem.initial_dof_values;
+    return detail::integrate_heat(
+        operators, time_options, std::move(state), boundary.constrained,
+        [&](double time) { return boundary_values(boundary, time); },
+        [&](double time) { return assemble_heat_loads(problem, space, time); });
 }
 
 } // namespace nova::fem

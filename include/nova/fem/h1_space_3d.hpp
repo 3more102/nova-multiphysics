@@ -5,9 +5,15 @@
 #include <array>
 #include <cstddef>
 #include <functional>
+#include <span>
 #include <vector>
 
 namespace nova::fem {
+
+// Nodal P1 interpolation in the supplied vertex ordering.
+[[nodiscard]] std::vector<double> interpolate_p1_vertices_3d(
+    std::span<const Point3D> nodes, const std::function<double(double, double, double)>& field
+);
 
 // Continuous H1 P1 numbering for tetrahedral meshes. The initial 3D space
 // uses one global degree of freedom per mesh vertex.

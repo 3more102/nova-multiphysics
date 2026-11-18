@@ -164,9 +164,7 @@ that component. The original iterate in `linear_solver.solution` and its true
 residual describe the same pinned system.
 Anisotropic tensors remain unsupported.
 
-The 3D diffusion kernel is P1 only. Higher-order tetrahedral spaces,
-transient 3D heat, 3D adaptive refinement, and independent large-scale
-verification remain future milestones.
+The 3D diffusion kernel is P1 only. Higher-order tetrahedral spaces and 3D adaptive refinement remain open.
 
 ## Boundary-edge integration
 
@@ -216,17 +214,16 @@ Backward Euler has first-order temporal accuracy; Crank–Nicolson has second-or
 
 ### Adaptive time-stepping convention
 
-For a candidate interval of width (Delta t), the adaptive driver performs one full theta-method step and two half steps from the **same initial H1 state**. Define (p=1) for Backward Euler or (p=2) for Crank–Nicolson. Its local error indicator at each DOF is
+For a candidate interval of width $\Delta t$, the 2D adaptive driver takes one full step and two half steps from the same initial state. Use $p=1$ for Backward Euler and $p=2$ for Crank–Nicolson. Let $T_h$ be the endpoint after two half steps and $T_f$ the endpoint after one full step.
 
-[
-e_i=rac{T_{2	imesmathrm{half},i}-T_{mathrm{full},i}}{2^p-1},
-qquad
-r_i=rac{e_i}{mathrm{atol}+mathrm{rtol}max(|T_{n,i}|,|T_{2	imesmathrm{half},i}|)}.
-]
+$$
+e_i=\frac{T_{h,i}-T_{f,i}}{2^p-1},\qquad
+r_i=\frac{e_i}{\mathrm{atol}+\mathrm{rtol}\max(|T_{n,i}|,|T_{h,i}|)}.
+$$
 
-It accepts a trial when (sqrt{sum_i r_i^2/N}le 1). On acceptance it stores the **two-half-step** solution, not Richardson extrapolation, and aggregates their energy diagnostics. On rejection the physical state does not advance. A bounded controller adjusts the next step using the local-error exponent (1/(p+1)), while enforcing the configured step bounds, time interval and attempt limit.
+The driver accepts when $\sqrt{\sum_i r_i^2/N}\leq 1$. It stores the result of the two half steps and combines their energy diagnostics. A rejected trial leaves the accepted time and field intact. The controller uses the local-error exponent $1/(p+1)$ and obeys the time interval, step bounds and attempt limit.
 
-This is a local DOF-RMS temporal error criterion, not a global error bound or a spatial error estimate. Very sharp transients, stiff dynamics, and discontinuous coefficients can require tighter controls. The current reference implementation reassembles its matrices on each full/half trial and is intended for small benchmarks rather than high-performance production use.
+This is a local time-error indicator. Sharp transients and stiff dynamics can require tighter controls. The 2D controller on this branch reassembles its volume operators on each full or half trial.
 
 ## Error-norm quadrature
 
@@ -299,3 +296,27 @@ The nonlinear FEM benchmark is a verification example; it is not yet a general n
 ## Reproducibility
 
 Every benchmark must record the NOVA revision, compiler, build configuration, mesh, element order, material coefficients, units, boundary conditions, solver type, preconditioner, tolerances, GMRES restart length, nonlinear line-search parameters, norm definitions, and reference solution.
+
+
+## Transient P1 tetrahedral heat
+
+For volume capacity $c=\rho c_p>0$ and isotropic conductivity $k>0$,
+$M_{ij}=\int cN_iN_j$ and $K_{ij}=\int k\nabla N_i\cdot\nabla N_j$.
+On an affine tetrahedron with constant $c$, $M^e_{ij}=cV(1+\delta_{ij})/20$.
+The positive four-point degree-two rule integrates this mass exactly.
+Variable coefficients are sampled at the same quadrature points. Their products with basis functions can exceed the quadrature degree.
+
+On a Robin face let $R_{ij}=\int hN_iN_j$, with $h\ge0$.
+Let $F_i=\int QN_i-\int_{\Gamma_N}q_nN_i+\int_{\Gamma_R}hT_{amb}N_i$.
+The outward flux is $q_n=-k\nabla T\cdot n$. Each boundary face accepts one condition, independent of the vertex permutation. Unassigned faces are insulated.
+
+For $L(t)=K+R(t)$ the shared time integrator uses
+
+$$
+[M+\theta\Delta t L_{n+1}]T_{n+1}
+=M T_n+\Delta t[(1-\theta)(F_n-L_n T_n)+\theta F_{n+1}].
+$$
+
+Backward Euler ($\theta=1$) evaluates forcing only at the new endpoint. Crank–Nicolson ($\theta=1/2$) uses both endpoints. Initial/restart values are projected onto the prescribed start-time trace. At each subsequent endpoint the identity rows begin at their exact prescribed temperatures and receive zero CG updates. An insulated transient component retains its absolute temperature through the capacity term.
+
+Heat content is $H=\mathbf{1}^{T}MT$. Source and boundary exchanges are integrated over each step, positive into the domain. Dirichlet energy is the sum of the constrained-row residuals of the unmodified heat equation. The reported imbalance is the change in $H$ minus all four signed energy inputs. The manufactured mixed-face test checks each exchange against an independent analytical surface or volume integral.

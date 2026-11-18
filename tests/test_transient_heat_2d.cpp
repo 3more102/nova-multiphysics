@@ -559,3 +559,27 @@ NOVA_TEST(transient_heat_p1_mixed_neumann_robin_energy_budget) {
         NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 1.0e-9);
     }
 }
+
+NOVA_TEST(heat_2d_backward_euler_requires_loads_only_at_positive_weight_times) {
+    using namespace nova::fem;
+    TransientHeat2DProblem p;
+    p.mesh = {{{0,0}, {1,0}, {0,1}}, {{0,1,2}}};
+    p.volumetric_capacity = [](double, double) { return 1.0; };
+    p.conductivity = p.volumetric_capacity;
+    p.initial_temperature = p.volumetric_capacity;
+    const auto zero_after_start = [](double, double, double t) {
+        if (t == 0.0) throw std::domain_error("No initial load.");
+        return 0.0;
+    };
+    p.source = zero_after_start;
+    p.neumann_edges.push_back({{0,1}, zero_after_start});
+    p.robin_edges.push_back({{1,2}, zero_after_start, zero_after_start});
+    TransientHeat2DOptions o;
+    const auto r = solve_transient_heat_2d(p, o);
+    for (double value : r.temperature) NOVA_REQUIRE_NEAR(value, 1.0, 1.0e-12);
+    o.scheme = TransientTimeScheme::CrankNicolson;
+    bool rejected = false;
+    try { (void)solve_transient_heat_2d(p, o); }
+    catch (const std::domain_error&) { rejected = true; }
+    NOVA_REQUIRE(rejected);
+}

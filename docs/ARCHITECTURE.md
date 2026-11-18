@@ -98,8 +98,8 @@ The prototype currently contains:
 - A validated 2D triangle mesh and structured rectangular mesh generator.
 - Reusable H1 P1/P2 reference-triangle basis functions and positive degree-four quadrature.
 - A shared H1 P1/P2 isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric sources, strong nodal and boundary-edge Dirichlet constraints, and P1/P2 Neumann/Robin edge terms.
-- Reusable consistent capacity/mass and stiffness operators for P1/P2 triangular H1 elements.
-- A theta-method (Backward Euler or Crank–Nicolson) 2D transient heat solver with time-dependent sources, Dirichlet temperatures, Neumann flux, Robin convection, and per-step linear/energy diagnostics.
+- Reusable consistent capacity/mass and stiffness operators for P1/P2 triangles and P1 tetrahedra. The 3D stationary and transient assemblies share barycentric quadrature, physical point mapping, gradient products and exterior-face assignment checks.
+- A geometry-independent theta method in `src/fem/heat_time_integration.cpp`. The 2D P1/P2 and 3D P1 adapters supply material operators, time-level volume and face/edge loads, and prescribed traces. Both receive the same solver and energy reports.
 - An independent adaptive time-step controller with full-step/two-half-step error estimation, accepted/rejected trial recording, and exact DOF restarts. Its current prototype calls the fixed-step solver repeatedly rather than caching assembled operators.
 - A 1D nonlinear P1 diffusion benchmark with a consistent tangent/Jacobian for (k(u)=1+u^2).
 - Harmonic patch, mixed-boundary, manufactured-solution, and nonlinear diffusion benchmarks.
@@ -131,3 +131,10 @@ The core FEM algorithms must not silently depend on a third-party multiphysics s
 | Results and visualization | Results own field values and diagnostic metadata. Viewers and exporters consume immutable results tied to mesh and time. |
 | Desktop and Python | Planned Qt and Python clients submit the same versioned study description to the engine. Verify round trips, cancellation and stable public entry points. |
 | Commercial infrastructure | An entitlement service owns product feature grants. Its public verification interface belongs at application entry points. Numerical assembly has no dependency on license state. |
+
+
+## Fixed-step thermal data flow
+
+A solver call borrows the problem and owns its assembled CSR matrices. The 3D adapter stores one absolute element Jacobian for reuse in time-dependent volume loads. The time integrator retains the current mass action and the previous heat rate only when the scheme needs it. The matrix with fixed Dirichlet topology is reused on steps with zero Robin matrix. Time-dependent Robin exchange is assembled at each required endpoint. The mesh, callbacks and initial DOF state are never modified.
+
+Both dimensional APIs expose their existing dimensional names for the common operator, diagnostic and result types. Results retain one CG solution vector per accepted step, so solution-history memory grows with DOFs times steps. Streaming result storage is an open design requirement.

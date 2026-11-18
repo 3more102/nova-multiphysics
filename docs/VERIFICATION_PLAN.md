@@ -76,6 +76,15 @@ Required next verification:
 - Retain rejection coverage for invalid diffusivity, interior boundary faces, and negative Robin coefficients.
 - Cross-check 3D results on distorted meshes and against an independent reference implementation.
 
+## Gate 3D thermal
+
+- Compare every entry of a stretched tetrahedron's mass and stiffness matrices to analytical values in both orientations.
+- Check the volume and face rules against every barycentric quadratic moment.
+- On a distorted mixed-orientation cube, test both schemes against an affine space/time field with variable capacity/conductivity and mixed boundaries. Evaluate all four energy terms from analytical integrals.
+- Compare one-DOF decay to the exact generalized eigenmode and check temporal orders under two time-step halvings.
+- Check disconnected insulated components, fixed material callback counts, restart equivalence, initial projection, zero-weight endpoint semantics and solver failure propagation.
+- Run the optional independent FEM comparison on three refined cooling cubes. Record the maximum nodal difference and the integrated spatial error. [Evidence and commands](THERMAL_3D_VERIFICATION.md)
+
 ## Gate 4: nonlinear solver and nonlinear FEM
 - Scalar square-root residual (F(x)=x^2-2) with analytical root (sqrt{2}).
 - Verify Newton convergence from a moderate initial guess.
