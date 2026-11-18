@@ -52,6 +52,8 @@ refinement:
   bulk marking.
 - A P1 residual estimator combining cell-source residuals and interior flux
   jumps for positive elementwise-constant isotropic diffusivity.
+- One-cycle P1 residual-driven local refinement connecting estimation,
+  Dörfler marking and conforming longest-edge refinement.
 - Exact P1/P2 H1 solution transfer, including continuity checks across coarse
   interfaces.
 - Selective transient-heat remeshing preserves assigned Dirichlet, Neumann and
