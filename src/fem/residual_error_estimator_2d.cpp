@@ -215,7 +215,7 @@ struct EdgeQuadraturePoint {
     };
 }
 
-[[nodiscard]] constexpr std::array<EdgeQuadraturePoint, 3>
+[[nodiscard]] std::array<EdgeQuadraturePoint, 3>
 edge_quadrature() {
     const double offset = 0.5 * std::sqrt(3.0 / 5.0);
     return {{
@@ -266,12 +266,8 @@ DiffusionResidualIndicators2D estimate_diffusion_residual_error_2d(
     }
 
     std::vector<double> indicator_squared(mesh.elements.size(), 0.0);
-    std::vector<ElementGeometry2D> geometries;
-    geometries.reserve(mesh.elements.size());
-
     for (std::size_t element = 0; element < mesh.elements.size(); ++element) {
         const ElementGeometry2D geometry = element_geometry(mesh, element);
-        geometries.push_back(geometry);
         const double conductivity = element_conductivity[element];
         const double laplacian = evaluate_element_laplacian(
             mesh, dofs, order, dof_values, element
@@ -327,7 +323,7 @@ DiffusionResidualIndicators2D estimate_diffusion_residual_error_2d(
         );
     }
 
-    constexpr auto quadrature = edge_quadrature();
+    const auto quadrature = edge_quadrature();
     for (const auto& [edge, uses] : edge_uses) {
         if (uses.size() == 1U) {
             // Natural-boundary residual terms are intentionally omitted.
