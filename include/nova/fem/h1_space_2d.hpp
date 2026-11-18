@@ -56,7 +56,7 @@ public:
         return vertex_count_;
     }
     [[nodiscard]] std::size_t edge_dof_count() const noexcept {
-        return edge_keys_.size();
+        return order_ == H1TriangleOrder::P2 ? edge_keys_.size() : 0U;
     }
 
     [[nodiscard]] std::size_t vertex_dof(std::size_t vertex) const;
