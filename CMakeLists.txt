@@ -103,5 +103,7 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_transient_heat_smoke COMMAND nova_transient_heat_2d)
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)
+        add_test(NAME nova_adaptive_vtk_smoke
+            COMMAND nova_adaptive_heat_2d --vtk ${CMAKE_CURRENT_BINARY_DIR}/nova_adaptive_heat_2d.vtk)
     endif()
 endif()
