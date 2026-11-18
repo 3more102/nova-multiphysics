@@ -58,6 +58,21 @@ using:
 
 Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), and examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating).
 
+### ParaView / VTK result export
+The results IO module writes ASCII legacy VTK UNSTRUCTURED_GRID scalar fields using the H1 finite-element DOF map:
+- P1 triangles use VTK cell type 5, with one point per mesh vertex.
+- P2 triangles use VTK quadratic-triangle cell type 22, with shared edge-midpoint points in the same order as the solver's quadratic DOFs.
+- Scalar point data preserves nodal values without converting quadratic fields to linear cells.
+- The writer rejects non-finite scalar fields, mismatched DOF sizes, invalid field names, and failed output streams.
+
+To save and view an adaptive P2 heat solution:
+
+~~~bash
+./build/nova_adaptive_heat_2d --vtk adaptive_temperature.vtk
+~~~
+
+Open `adaptive_temperature.vtk` in ParaView and color by `temperature`. The export writes the **final state**, not a time series. The current grid is made from straight-sided triangles; curved quadratic geometry, XML VTK, vector/tensor results, and time-series collection files remain future work.
+
 Limitations: no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
 
 ### Nonlinear 1D diffusion

@@ -112,6 +112,15 @@ Remaining:
 - Coupled electrothermal and thermoelastic examples.
 
 ## M7 — Geometry, meshing, and visualization
+
+**In progress: first visualization export implemented.**
+
+Implemented:
+- Legacy ASCII VTK UNSTRUCTURED_GRID export for P1/P2 H1 scalar nodal fields.
+- Shared P2 edge-midpoint DOF export as VTK quadratic triangles (type 22).
+- ParaView-ready final-temperature export in the adaptive thermal example and CTest validation.
+
+Remaining:
 - CAD import and geometry model.
 - Mesh generation and quality inspection.
 - 2D and 3D results visualization.

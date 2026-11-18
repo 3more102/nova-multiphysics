@@ -34,6 +34,7 @@ add_library(nova_core
     src/fem/error_norms_2d.cpp
     src/fem/nonlinear_diffusion_1d.cpp
     src/fem/h1_space_2d.cpp
+    src/io/vtk_legacy_2d.cpp
 )
 
 add_library(NOVA::Core ALIAS nova_core)
@@ -92,6 +93,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_mesh_topology_2d.cpp
         tests/test_nonlinear_diffusion_1d.cpp
         tests/test_h1_space_2d.cpp
+        tests/test_vtk_legacy_2d.cpp
     )
     target_include_directories(nova_tests PRIVATE tests)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)
@@ -101,5 +103,7 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_transient_heat_smoke COMMAND nova_transient_heat_2d)
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)
+        add_test(NAME nova_adaptive_vtk_smoke
+            COMMAND nova_adaptive_heat_2d --vtk ${CMAKE_CURRENT_BINARY_DIR}/nova_adaptive_heat_2d.vtk)
     endif()
 endif()
