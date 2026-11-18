@@ -438,13 +438,17 @@ TransientHeat2DResult solve_transient_heat_2d(
         options.steps == 0U) {
         throw std::invalid_argument("Transient time step and number of steps must be positive.");
     }
-    const double final_time =
-        options.time_step * static_cast<double>(options.steps);
-    if (!std::isfinite(final_time)) {
-        throw std::invalid_argument("Transient final time must be finite.");
+    if (!std::isfinite(options.start_time)) {
+        throw std::invalid_argument("Transient start time must be finite.");
     }
-    if (!problem.source || !problem.initial_temperature) {
-        throw std::invalid_argument("Transient source and initial field are required.");
+    const double final_time =
+        options.start_time + options.time_step * static_cast<double>(options.steps);
+    if (!std::isfinite(final_time) || final_time <= options.start_time) {
+        throw std::invalid_argument("Transient final time must advance and be finite.");
+    }
+    if (!problem.source ||
+        (problem.initial_dof_values.empty() && !problem.initial_temperature)) {
+        throw std::invalid_argument("Transient source and initial field/DOFs are required.");
     }
     if (options.scheme != TransientTimeScheme::BackwardEuler &&
         options.scheme != TransientTimeScheme::CrankNicolson) {
@@ -463,13 +467,18 @@ TransientHeat2DResult solve_transient_heat_2d(
     validate_natural_boundaries(problem);
     const std::size_t n = space.dimension();
 
-    std::vector<double> state = space.interpolate(problem.initial_temperature);
+    std::vector<double> state = problem.initial_dof_values.empty()
+        ? space.interpolate(problem.initial_temperature)
+        : problem.initial_dof_values;
+    if (state.size() != space.dimension()) {
+        throw std::invalid_argument("Initial H1 DOF state dimension mismatch.");
+    }
     for (const double value : state) {
         if (!std::isfinite(value)) {
             throw std::invalid_argument("Initial temperature must be finite.");
         }
     }
-    const auto initial_boundary = boundary_values(boundary, 0.0);
+    const auto initial_boundary = boundary_values(boundary, options.start_time);
     for (std::size_t i = 0; i < n; ++i) {
         if (boundary.constrained[i]) {
             state[i] = initial_boundary[i];
@@ -483,8 +492,10 @@ TransientHeat2DResult solve_transient_heat_2d(
     );
 
     NaturalBoundaryAssembly previous_natural =
-        assemble_natural_boundaries(problem, space, 0.0);
-    std::vector<double> previous_volume = assemble_load(space, problem.source, 0.0);
+        assemble_natural_boundaries(problem, space, options.start_time);
+    std::vector<double> previous_volume = assemble_load(
+        space, problem.source, options.start_time
+    );
 
     TransientHeat2DResult result;
     result.final_time = final_time;
@@ -492,7 +503,11 @@ TransientHeat2DResult solve_transient_heat_2d(
     result.diagnostics.reserve(options.steps);
 
     for (std::size_t step = 1; step <= options.steps; ++step) {
-        const double time = static_cast<double>(step) * dt;
+        const double time =
+            options.start_time + static_cast<double>(step) * dt;
+        if (!std::isfinite(time)) {
+            throw std::overflow_error("Transient step time overflowed.");
+        }
         const auto prescribed = boundary_values(boundary, time);
         NaturalBoundaryAssembly current_natural =
             assemble_natural_boundaries(problem, space, time);
