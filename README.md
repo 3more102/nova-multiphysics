@@ -36,6 +36,28 @@ on continuous triangular P1 and P2 meshes using:
 - L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
+### 3D scalar diffusion
+The tetrahedral P1 H1 kernel solves
+
+\[
+-\nabla\cdot(k\nabla u)=f \quad \text{in }\Omega
+\]
+
+on validated four-node tetrahedral meshes using:
+- Positive four-point degree-two tetrahedron quadrature.
+- Three-point degree-two triangular-face quadrature.
+- Signed-Jacobian physical P1 gradients and orientation-independent volume integration.
+- Positive spatially varying isotropic diffusivity and volumetric sources.
+- Strong Dirichlet conditions on vertices or complete exterior faces.
+- Neumann outward-flux integration and Robin exchange on validated exterior faces.
+- Homogeneous natural (zero-flux) conditions on unassigned faces.
+- Symmetric Dirichlet elimination and conjugate-gradient solution.
+- Affine harmonic patch, variable-coefficient, mixed-boundary and nodal-convergence tests.
+
+Example: \`examples/diffusion_3d/main.cpp\`.
+
+Limitations: P1 tetrahedra only; no transient 3D heat, anisotropic tensors, pure-Neumann nullspace handling, 3D adaptive refinement, or independent large-scale validation.
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
@@ -74,7 +96,7 @@ using:
 
 Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), and examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating).
 
-Limitations: no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
+Limitations: no temperature-dependent coefficients, multi-cycle adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
@@ -128,6 +150,7 @@ Run the examples:
 ~~~bash
 ./build/nova_poisson_1d
 ./build/nova_diffusion_2d
+./build/nova_diffusion_3d
 ./build/nova_transient_heat_2d
 ./build/nova_transient_flux_2d
 ./build/nova_adaptive_heat_2d

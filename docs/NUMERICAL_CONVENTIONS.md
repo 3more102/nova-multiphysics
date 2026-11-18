@@ -146,8 +146,18 @@ angle is reported in radians. Boundary faces are extracted once and
 oriented outward using the opposite tetrahedron vertex.
 
 The first 3D H1 space is continuous P1 with one global degree of freedom
-per mesh vertex. Higher-order tetrahedral spaces, 3D quadrature and
-3D physics assembly are separate milestones.
+per mesh vertex. The scalar diffusion kernel assembles
+\(-\nabla\cdot(k\nabla u)=f\) on affine tetrahedra, using a positive
+four-point degree-two tetrahedron rule. It supports spatially varying
+positive isotropic diffusivity, volumetric source terms, strong Dirichlet
+vertex/face values, outward Neumann fluxes, and Robin transfer on validated
+exterior triangular faces. Three-point degree-two face quadrature integrates
+linear Neumann loads and quadratic Robin matrices. Unassigned faces are
+insulated; pure-Neumann systems and anisotropic tensors remain unsupported.
+
+The 3D diffusion kernel is P1 only. Higher-order tetrahedral spaces,
+transient 3D heat, 3D adaptive refinement, and independent large-scale
+verification remain future milestones.
 
 ## Boundary-edge integration
 

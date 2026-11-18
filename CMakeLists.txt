@@ -29,6 +29,7 @@ add_library(nova_core
     src/fem/mesh3d.cpp
     src/fem/tetrahedron_h1.cpp
     src/fem/h1_space_3d.cpp
+    src/fem/diffusion_3d.cpp
     src/fem/mesh_refinement_2d.cpp
     src/fem/adaptive_mesh_2d.cpp
     src/fem/mesh_transfer_2d.cpp
@@ -64,6 +65,10 @@ if(NOVA_BUILD_EXAMPLES)
     add_executable(nova_diffusion_2d examples/diffusion_2d/main.cpp)
     target_link_libraries(nova_diffusion_2d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_diffusion_2d)
+
+    add_executable(nova_diffusion_3d examples/diffusion_3d/main.cpp)
+    target_link_libraries(nova_diffusion_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_diffusion_3d)
 
     add_executable(nova_transient_heat_2d examples/transient_heat_2d/main.cpp)
     target_link_libraries(nova_transient_heat_2d PRIVATE NOVA::Core)
@@ -104,6 +109,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_mesh_topology_2d.cpp
         tests/test_mesh_topology_3d.cpp
         tests/test_h1_space_3d.cpp
+        tests/test_diffusion_3d.cpp
         tests/test_mesh_refinement_2d.cpp
         tests/test_mesh_transfer_2d.cpp
         tests/test_adaptive_mesh_2d.cpp

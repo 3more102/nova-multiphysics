@@ -21,6 +21,8 @@ Implemented:
 - Structured rectangular mesh generator with two P1 triangles per cell.
 - Linear P1 and quadratic P2 reference-triangle H1 basis functions.
 - 3D reference-tetrahedron P1 H1 basis, physical gradient transformation and continuous vertex DOF space.
+- Positive four-point degree-two tetrahedron quadrature and three-point triangular-face quadrature.
+- 3D P1 scalar diffusion assembly and CG solve with spatially varying positive isotropic diffusivity, volume sources, strong Dirichlet faces/vertices, Neumann fluxes and Robin face exchange.
 - Positive six-point degree-four triangle quadrature.
 - Jacobian-based physical basis gradients.
 - Consistent P1/P2 scalar H1 mass and stiffness matrix assembly for transient physics.
@@ -79,7 +81,7 @@ Remaining:
 **In progress: transient thermal prototypes with P1/P2 elements implemented.**
 
 Implemented:
-- Stationary scalar conduction/diffusion with P1/P2 H1 elements.
+- Stationary 2D scalar conduction/diffusion with P1/P2 H1 elements and 3D tetrahedral scalar diffusion with P1 H1 elements.
 - Consistent scalar capacity and stiffness FEM operators.
 - Backward Euler and Crank–Nicolson implicit transient time integration.
 - Adaptive, fixed-mesh time stepping by step doubling, absolute/relative local error control, accepted/rejected attempt histories, minimum/maximum step size and attempt limits.
@@ -92,6 +94,7 @@ Implemented:
 - Cooling plate, convective boundary-flux, and adaptive time-step example executables.
 
 Remaining:
+- Transient 3D heat diffusion, higher-order tetrahedral spaces, and 3D thermal boundary-condition integration.
 - Nonlinear temperature-dependent constitutive properties and time-dependent materials.
 - Optimized adaptive stepping with shared preassembled FEM operators, factorization/preconditioner reuse and a global temporal error estimator.
 - Independently recovered normal heat fluxes and physical energy-balance cross-checks.
