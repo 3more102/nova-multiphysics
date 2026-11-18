@@ -1,4 +1,5 @@
 #include "nova/fem/mesh_transfer_2d.hpp"
+#include "nova/fem/mesh_adaptivity_2d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -95,7 +96,7 @@ using EdgeKey = EdgeKey2D;
 
 } // namespace
 
-std::vector<double> prolongate_h1_uniform_2d(
+std::vector<double> prolongate_h1_refined_2d(
     const TriangleMesh2D& coarse_mesh,
     const RefinedTriangleMesh2D& refined,
     const H1TriangleOrder order,
@@ -254,6 +255,17 @@ std::vector<double> prolongate_h1_uniform_2d(
     return fine_values;
 }
 
+std::vector<double> prolongate_h1_uniform_2d(
+    const TriangleMesh2D& coarse_mesh,
+    const RefinedTriangleMesh2D& refined,
+    const H1TriangleOrder order,
+    const std::span<const double> coarse_dof_values
+) {
+    return prolongate_h1_refined_2d(
+        coarse_mesh, refined, order, coarse_dof_values
+    );
+}
+
 RefinedTransientHeat2DProblem
 refine_transient_heat_problem_uniformly_2d(
     const TransientHeat2DProblem& problem,
@@ -353,6 +365,109 @@ refine_transient_heat_problem_uniformly_2d(
         second.edge = segments[1];
         result.problem.robin_edges.push_back(std::move(first));
         result.problem.robin_edges.push_back(std::move(second));
+    }
+
+    return result;
+}
+
+RefinedTransientHeat2DProblem
+refine_transient_heat_problem_adaptively_2d(
+    const TransientHeat2DProblem& problem,
+    const H1TriangleOrder order,
+    const std::span<const std::size_t> marked_elements
+) {
+    problem.mesh.validate();
+
+    std::vector<BoundaryEdge2D> assigned_edges;
+    std::set<EdgeKey> unique_edges;
+    const auto collect_edge = [&](const BoundaryEdge2D& edge) {
+        if (!unique_edges.insert(canonical_edge(edge[0], edge[1])).second) {
+            throw std::invalid_argument(
+                "A transient heat boundary edge is assigned more than once."
+            );
+        }
+        assigned_edges.push_back(edge);
+    };
+    for (const auto& condition : problem.dirichlet_edges) {
+        collect_edge(condition.edge);
+    }
+    for (const auto& condition : problem.neumann_edges) {
+        collect_edge(condition.edge);
+    }
+    for (const auto& condition : problem.robin_edges) {
+        collect_edge(condition.edge);
+    }
+
+    RefinedTransientHeat2DProblem result;
+    result.refinement = refine_triangles_by_marked_elements_2d(
+        problem.mesh, assigned_edges, marked_elements
+    );
+    result.problem = problem;
+    result.problem.mesh = result.refinement.mesh;
+
+    if (!problem.initial_dof_values.empty()) {
+        result.problem.initial_dof_values = prolongate_h1_refined_2d(
+            problem.mesh, result.refinement, order,
+            problem.initial_dof_values
+        );
+    }
+
+    std::map<EdgeKey, std::size_t> midpoint_ids;
+    for (std::size_t i = 0;
+         i < result.refinement.midpoint_parent_edges.size();
+         ++i) {
+        const BoundaryEdge2D& edge =
+            result.refinement.midpoint_parent_edges[i];
+        midpoint_ids.emplace(
+            canonical_edge(edge[0], edge[1]),
+            result.refinement.coarse_node_count + i
+        );
+    }
+
+    const auto split_edge = [&](const BoundaryEdge2D& edge) {
+        const auto midpoint = midpoint_ids.find(
+            canonical_edge(edge[0], edge[1])
+        );
+        if (midpoint == midpoint_ids.end()) {
+            return std::vector<BoundaryEdge2D>{edge};
+        }
+        return std::vector<BoundaryEdge2D>{
+            {edge[0], midpoint->second},
+            {midpoint->second, edge[1]}
+        };
+    };
+
+    result.problem.dirichlet_edges.clear();
+    for (const auto& condition : problem.dirichlet_edges) {
+        for (const BoundaryEdge2D& segment : split_edge(condition.edge)) {
+            auto refined_condition = condition;
+            refined_condition.edge = segment;
+            result.problem.dirichlet_edges.push_back(
+                std::move(refined_condition)
+            );
+        }
+    }
+
+    result.problem.neumann_edges.clear();
+    for (const auto& condition : problem.neumann_edges) {
+        for (const BoundaryEdge2D& segment : split_edge(condition.edge)) {
+            auto refined_condition = condition;
+            refined_condition.edge = segment;
+            result.problem.neumann_edges.push_back(
+                std::move(refined_condition)
+            );
+        }
+    }
+
+    result.problem.robin_edges.clear();
+    for (const auto& condition : problem.robin_edges) {
+        for (const BoundaryEdge2D& segment : split_edge(condition.edge)) {
+            auto refined_condition = condition;
+            refined_condition.edge = segment;
+            result.problem.robin_edges.push_back(
+                std::move(refined_condition)
+            );
+        }
     }
 
     return result;
