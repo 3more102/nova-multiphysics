@@ -58,6 +58,9 @@ struct TransientHeat2DProblem {
     // Volumetric power density f(x,y,t), evaluated at t_(n+1).
     TransientScalarField2D source;
     SpatialScalarField2D initial_temperature;
+    // Optional exact H1 DOF state for restart/adaptive stepping.
+    // If nonempty, overrides initial_temperature at the start time.
+    std::vector<double> initial_dof_values;
     // Omitted edges have homogeneous natural (zero outward flux) conditions.
     std::vector<TransientDirichletEdge2D> dirichlet_edges;
     std::vector<TransientNeumannEdge2D> neumann_edges;
@@ -68,6 +71,8 @@ struct TransientHeat2DOptions {
     H1TriangleOrder order{H1TriangleOrder::P1};
     TransientTimeScheme scheme{TransientTimeScheme::BackwardEuler};
     double time_step{0.1};
+    // Physical start time; default zero preserves existing behavior.
+    double start_time{0.0};
     std::size_t steps{1U};
     linalg::SolverOptions solver_options{};
 };
@@ -99,7 +104,8 @@ struct TransientHeat2DResult {
 // Time-dependent Neumann/Robin terms are integrated at both time levels.
 // Boundary-edge conditions must be mutually exclusive; omitted edges are insulated.
 // Prescribed temperatures are enforced symmetrically at each new time level.
-// The initial field is projected onto t=0 prescribed boundary temperatures.
+// The initial field is projected onto prescribed boundary temperatures at start_time.
+ // Nonempty initial_dof_values allows restarting without nodal reinterpolation.
 // Material coefficients are positive, spatially varying, time-independent.
 [[nodiscard]] TransientHeat2DResult solve_transient_heat_2d(
     const TransientHeat2DProblem& problem,
