@@ -18,6 +18,14 @@ namespace nova::fem {
     std::span<const double> coarse_dof_values
 );
 
+// Backward-compatible name for the uniform-refinement transfer operation.
+[[nodiscard]] std::vector<double> prolongate_h1_uniform_2d(
+    const TriangleMesh2D& coarse_mesh,
+    const RefinedTriangleMesh2D& refined,
+    H1TriangleOrder order,
+    std::span<const double> coarse_dof_values
+);
+
 struct RefinedTransientHeat2DProblem {
     TransientHeat2DProblem problem;
     RefinedTriangleMesh2D refinement;
@@ -31,6 +39,15 @@ struct RefinedTransientHeat2DProblem {
 refine_transient_heat_problem_uniformly_2d(
     const TransientHeat2DProblem& problem,
     H1TriangleOrder order
+);
+
+// Selectively refines longest edges requested by marked elements, remaps
+// assigned thermal boundary edges, and transfers an optional P1/P2 restart.
+[[nodiscard]] RefinedTransientHeat2DProblem
+refine_transient_heat_problem_adaptively_2d(
+    const TransientHeat2DProblem& problem,
+    H1TriangleOrder order,
+    std::span<const std::size_t> marked_elements
 );
 
 } // namespace nova::fem
