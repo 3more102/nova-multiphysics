@@ -7,8 +7,9 @@
 | [#17](https://github.com/3more102/nova-multiphysics/pull/17), `3a132bc6083a` | 3D diffusion integration, mesh quality and diagnostics | 141 registered tests and six CTest targets. [Ubuntu and Windows](https://github.com/3more102/nova-multiphysics/actions/runs/44372586103) |
 | [#18](https://github.com/3more102/nova-multiphysics/pull/18), `7a055a401219` | Transient P1 tetrahedral heat and continuous numerical verification | 151 registered tests and seven CTest targets. [Ubuntu, Windows, ASan with leak detection, UBSan, independent FEM and static analysis](https://github.com/3more102/nova-multiphysics/actions/runs/44375598672) |
 | `feature/component-neumann-2d` on #18 | Stationary component-wise 2D P1/P2 nullspaces and triangle topology | 158 registered tests and seven CTest targets passed in the local GCC 14.2 Release build. The independent 3D reference comparison still passes. |
+| `feature/adaptive-heat-3d` at `e6710787c252` | Adaptive P1 tetrahedral Backward Euler/Crank–Nicolson step doubling, static operator reuse, exact restarts and energy diagnostics | Implementation, CMake wiring, example and five regression tests are committed. Remote CI and refined-reference acceptance are pending. |
 
-The next thermal milestone is adaptive 3D step doubling on the verified fixed-step solver. Reuse the accepted/rejected-step logic from 2D, preserve component heat across restarts, reuse static operators on rejected trials and compare adaptive results to a refined fixed-step reference.
+The next thermal milestone is implemented on `feature/adaptive-heat-3d`: full-step/two-half-step error control, accepted/rejected trials, component heat preservation, exact restart vectors and one-time static operator assembly. The branch is not yet validated or merged. After acceptance, prioritize nonlinear thermal material properties and higher-order tetrahedral spaces.
 
 ## Baseline audit · 18 November 2026
 
