@@ -219,7 +219,7 @@ NOVA_TEST(mesh_transfer_handles_large_coordinate_offsets) {
     const auto coarse_values = coarse_space.interpolate(
         [](const double, const double) { return 1.0; }
     );
-    const auto fine_values = nova::fem::prolongate_h1_uniform_2d(
+    const auto fine_values = nova::fem::prolongate_h1_refined_2d(
         mesh, refined, H1TriangleOrder::P2, coarse_values
     );
     for (const double value : fine_values) {

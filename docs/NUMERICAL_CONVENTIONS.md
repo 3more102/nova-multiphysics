@@ -85,6 +85,38 @@ Their original physical-coordinate callbacks are retained unchanged.
 This is uniform remeshing; it does not yet implement error-driven local
 refinement or transfer arbitrary user-defined physical groups.
 
+## Local adaptive refinement and spatial error indicators
+
+The one-level adaptive triangle refiner marks selected parent cells for
+red refinement into four children. Every edge of a marked cell receives
+one globally shared midpoint. Adjacent unmarked cells are green-refined
+with one-, two-, or three-edge transition patterns, so neighboring cells
+share the same split edges and no hanging nodes are introduced. Each
+child retains its parent-cell index. A supplied boundary edge remains
+one directed segment when untouched and becomes two directed segments
+when bisected.
+
+The spatial indicator uses area-weighted patch averaging of element
+gradients to recover a continuous nodal gradient. It compares the P1
+interpolation of that recovered gradient with the P1/P2 finite-element
+gradient using the conductivity-weighted element energy norm:
+
+eta_K^2 = integral_K k * |grad(T_recovered) - grad(T_h)|^2 dOmega.
+
+Dörfler bulk marking selects the smallest deterministic set of cells,
+ordered by descending indicator, whose squared indicators reach the
+configured fraction of the global squared indicator sum. The recovery
+indicator is a practical marking heuristic; it is not a guaranteed
+upper bound on the true discretization error and does not replace
+independent convergence studies.
+
+Selective transient-heat remeshing transfers the optional P1/P2 restart
+state, preserves spatial and time-dependent callbacks, and splits only
+those Dirichlet, Neumann, or Robin edges whose parent edges were bisected.
+This first adaptive refiner performs one conforming refinement level per
+call; repeated marking cycles and more advanced grading/quality controls
+remain application-level work.
+
 ## Boundary-edge integration
 
 Neumann conditions supply outward physical flux \(q_n\) and contribute \(-\int_{\Gamma_N}q_n N_i\,d\Gamma\) to the right-hand side. Robin conditions contribute \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side. Three-point Gauss-Legendre quadrature is used on P1 and P2 boundary edges (exact for polynomials through degree five). Neumann and Robin conditions cannot be assigned to the same edge.

@@ -97,7 +97,7 @@ using EdgeKey = EdgeKey2D;
 
 } // namespace
 
-std::vector<double> prolongate_h1_uniform_2d(
+std::vector<double> prolongate_h1_refined_2d(
     const TriangleMesh2D& coarse_mesh,
     const RefinedTriangleMesh2D& refined,
     const H1TriangleOrder order,
@@ -112,6 +112,14 @@ std::vector<double> prolongate_h1_uniform_2d(
             refined.midpoint_parent_edges.size() ||
         refined.parent_elements.size() != refined.mesh.elements.size()) {
         throw std::invalid_argument("Refined mesh transfer metadata is inconsistent.");
+    }
+
+    for (const std::size_t parent : refined.parent_elements) {
+        if (parent >= coarse_mesh.elements.size()) {
+            throw std::invalid_argument(
+                "Refinement parent-element map references a missing coarse cell."
+            );
+        }
     }
 
     for (std::size_t node = 0; node < coarse_mesh.nodes.size(); ++node) {
@@ -263,6 +271,18 @@ std::vector<double> prolongate_h1_uniform_2d(
         }
     }
     return fine_values;
+}
+
+
+std::vector<double> prolongate_h1_uniform_2d(
+    const TriangleMesh2D& coarse_mesh,
+    const RefinedTriangleMesh2D& refined,
+    const H1TriangleOrder order,
+    const std::span<const double> coarse_dof_values
+) {
+    return prolongate_h1_refined_2d(
+        coarse_mesh, refined, order, coarse_dof_values
+    );
 }
 
 RefinedTransientHeat2DProblem
