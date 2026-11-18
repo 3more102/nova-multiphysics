@@ -102,13 +102,15 @@ using:
 
 Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), and examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating).
 
-Limitations: no temperature-dependent coefficients, multi-cycle adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
+Limitations: no temperature-dependent coefficients, multi-cycle adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. The 2D adaptive prototype reassembles FEM matrices for each trial; the new 3D adaptive path reuses static mass/stiffness operators but still rebuilds time-step-dependent systems and time-dependent loads. This prototype is not validated for engineering design use.
 
 ### Transient 3D heat
 
 The tetrahedral P1 solver supports consistent thermal mass, fixed-step Backward Euler and Crank–Nicolson, spatially varying positive capacity and conductivity, time-dependent Dirichlet, outward Neumann and Robin face conditions, exact nodal restarts and per-step energy accounting. The stationary and transient solvers share quadrature and exterior-face validation. Insulated transient components preserve their initial heat content.
 
-Run `nova_transient_heat_3d 8 20` for a cooling cube with a known analytical solution. The optional third argument `--csv` writes all final nodal temperatures. [Verification results and reproduction commands](docs/THERMAL_3D_VERIFICATION.md)
+The adaptive 3D path adds full-step/two-half-step control for Backward Euler and Crank–Nicolson, automatic acceptance/rejection, RMS absolute/relative tolerances, exact P1 restart states, combined energy diagnostics, and one-time assembly of static mass/stiffness operators per study. Its implementation is on `feature/adaptive-heat-3d`; CI and independent adaptive-reference acceptance are pending.
+
+Run `nova_transient_heat_3d 8 20` for a cooling cube with a known analytical solution, or `nova_adaptive_heat_3d` for adaptive P1 heating. The optional third argument `--csv` writes all final nodal temperatures. [Fixed-step verification results and reproduction commands](docs/THERMAL_3D_VERIFICATION.md)
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
