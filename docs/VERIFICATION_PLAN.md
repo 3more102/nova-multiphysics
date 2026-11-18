@@ -85,6 +85,8 @@ Required next verification:
 - Compare one-DOF decay to the exact generalized eigenmode and check temporal orders under two time-step halvings.
 - Check disconnected insulated components, fixed material callback counts, restart equivalence, initial projection, zero-weight endpoint semantics and solver failure propagation.
 - Run the optional independent FEM comparison on three refined cooling cubes. Record the maximum nodal difference and the integrated spatial error. [Evidence and commands](THERMAL_3D_VERIFICATION.md)
+- Adaptive 3D step doubling: verify Backward Euler rejection under a time-dependent source, Crank–Nicolson tolerance tightening against a refined fixed-step reference, exact nonzero-time restart with mixed Dirichlet/Neumann data, disconnected insulated-component heat preservation, and discrete energy-budget closure.
+- Count material callback evaluations to prove static capacity/conductivity operators are assembled once per adaptive study, including across rejected trials. Verify attempt-limit and non-finite restart failures.
 
 ## Gate 4: nonlinear solver and nonlinear FEM
 - Scalar square-root residual (F(x)=x^2-2) with analytical root (sqrt{2}).
