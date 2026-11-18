@@ -33,6 +33,7 @@ Implemented:
 - Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
 - One-level conforming red-green adaptive refinement with unique edge midpoints, transition elements, parent-cell maps and directed boundary-edge remapping.
 - Area-weighted H1 gradient recovery indicators and deterministic Dörfler bulk marking for P1/P2 fields.
+- P1/P2 diffusion residual estimator with element source/Laplacian residuals and interior normal-flux jumps for positive elementwise-constant conductivity.
 - Exact P1/P2 H1 solution transfer to uniform and locally refined triangular meshes, including continuity checks across coarse-element interfaces.
 - Uniform and selective transient heat remeshing with directed Dirichlet, Neumann and Robin edge splitting and optional P1/P2 restart-state transfer.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
@@ -44,7 +45,8 @@ Implemented:
 Remaining:
 - Reusable element and integration interfaces shared across physics.
 - Pure-Neumann nullspace handling.
-- Multi-level graded refinement closure, residual-based error indicators, quality-aware marking, arbitrary physical-group transfer and automated solve-estimate-mark-refine cycles.
+- Variable-coefficient residual terms and natural-boundary residual contributions; validate estimator efficiency and reliability on singular and boundary-layer benchmarks.
+- Multi-level graded refinement closure, quality-aware marking, arbitrary physical-group transfer and automated solve-estimate-mark-refine cycles.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.
 
