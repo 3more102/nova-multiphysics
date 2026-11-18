@@ -2,6 +2,7 @@
 
 #include "heat_time_integration.hpp"
 #include "p1_integration_3d.hpp"
+#include "transient_heat_3d_internal.hpp"
 
 #include <algorithm>
 #include <array>
@@ -158,22 +159,17 @@ struct ThermalVolume {
 
 } // namespace
 
-ScalarH1Operators3D assemble_scalar_h1_operators_3d(
-    const TetrahedralMesh3D& mesh, const SpatialScalarField3D& capacity,
-    const SpatialScalarField3D& conductivity
-) {
-    mesh.validate();
-    return assemble_volume(mesh, capacity, conductivity).operators;
-}
+namespace detail {
 
-TransientHeat3DResult solve_transient_heat_3d(
-    const TransientHeat3DProblem& problem, const TransientHeat3DOptions& options
+PreparedTransientHeat3D prepare_transient_heat_3d(
+    const TransientHeat3DProblem& problem
 ) {
-    detail::validate_heat_time_grid(options);
-    if (!problem.source || (problem.initial_dof_values.empty() && !problem.initial_temperature)) {
+    if (!problem.source ||
+        (problem.initial_dof_values.empty() && !problem.initial_temperature)) {
         throw std::invalid_argument("3D heat source and initial field/DOFs are required.");
     }
-    detail::ExteriorFaceAssignments3D exterior(problem.mesh);
+
+    ExteriorFaceAssignments3D exterior(problem.mesh);
     std::vector<bool> constrained(problem.mesh.nodes.size(), false);
     for (const auto& bc : problem.dirichlet_faces) {
         exterior.claim(bc.face);
@@ -196,14 +192,60 @@ TransientHeat3DResult solve_transient_heat_3d(
             throw std::invalid_argument("3D Robin coefficient and ambient temperature are required.");
         }
     }
+
+    auto volume = assemble_volume(problem.mesh, problem.volumetric_capacity, problem.conductivity);
+    return {
+        std::move(volume.operators),
+        std::move(volume.jacobians),
+        std::move(constrained)
+    };
+}
+
+std::vector<double> initial_transient_heat_state_3d(
+    const TransientHeat3DProblem& problem
+) {
     auto state = problem.initial_dof_values.empty()
         ? interpolate_p1_vertices_3d(problem.mesh.nodes, problem.initial_temperature)
         : problem.initial_dof_values;
-    const auto volume = assemble_volume(problem.mesh, problem.volumetric_capacity, problem.conductivity);
-    return detail::integrate_heat(
-        volume.operators, options, std::move(state), constrained,
-        [&](double t) { return boundary_values(problem, t); },
-        [&](double t) { return assemble_loads(problem, volume.jacobians, t); });
+    if (state.size() != problem.mesh.nodes.size() ||
+        !std::all_of(state.begin(), state.end(), [](double value) { return std::isfinite(value); })) {
+        throw std::invalid_argument("3D initial temperature must be finite at every P1 vertex.");
+    }
+    return state;
+}
+
+TransientHeat3DResult solve_prepared_transient_heat_3d(
+    const TransientHeat3DProblem& problem,
+    const TransientHeat3DOptions& options,
+    const PreparedTransientHeat3D& prepared,
+    std::vector<double> initial_state
+) {
+    validate_heat_time_grid(options);
+    return integrate_heat(
+        prepared.operators, options, std::move(initial_state), prepared.constrained,
+        [&](double time) { return boundary_values(problem, time); },
+        [&](double time) { return assemble_loads(problem, prepared.jacobians, time); }
+    );
+}
+
+} // namespace detail
+
+ScalarH1Operators3D assemble_scalar_h1_operators_3d(
+    const TetrahedralMesh3D& mesh, const SpatialScalarField3D& capacity,
+    const SpatialScalarField3D& conductivity
+) {
+    mesh.validate();
+    return assemble_volume(mesh, capacity, conductivity).operators;
+}
+
+TransientHeat3DResult solve_transient_heat_3d(
+    const TransientHeat3DProblem& problem, const TransientHeat3DOptions& options
+) {
+    const auto prepared = detail::prepare_transient_heat_3d(problem);
+    auto state = detail::initial_transient_heat_state_3d(problem);
+    return detail::solve_prepared_transient_heat_3d(
+        problem, options, prepared, std::move(state)
+    );
 }
 
 } // namespace nova::fem
