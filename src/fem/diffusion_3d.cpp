@@ -241,9 +241,6 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     constexpr std::size_t local_dof_count = 4U;
     constexpr std::size_t volume_entries_per_element =
         local_dof_count * local_dof_count;
-    constexpr std::size_t robin_entries_per_face =
-        3U * local_dof_count - 3U; // overwritten below with exact face count
-    static_cast<void>(robin_entries_per_face);
     constexpr std::size_t robin_matrix_entries_per_face = 3U * 3U * 3U;
 
     std::vector<linalg::Triplet> entries;
@@ -356,9 +353,10 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
 
     constexpr auto face_quadrature = triangle_degree_two_quadrature();
 
-    const auto integrate_face = [&](const BoundaryFace3D& face,
-                                    const auto& callback,
-                                    const bool robin) {
+    const auto integrate_neumann_face = [&](
+        const BoundaryFace3D& face,
+        const ScalarField3D& outward_flux
+    ) {
         const Point3D& a = problem.mesh.nodes[face[0]];
         const Point3D& b = problem.mesh.nodes[face[1]];
         const Point3D& c = problem.mesh.nodes[face[2]];
@@ -373,89 +371,101 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
             const Point3D point = interpolate_face_point(
                 problem.mesh, face, quadrature.shape
             );
-            const double weight = area_scale * quadrature.weight;
-            if (robin) {
-                const auto [transfer, ambient] = callback(
-                    point.x, point.y, point.z
+            const double flux = outward_flux(point.x, point.y, point.z);
+            if (!std::isfinite(flux)) {
+                throw std::invalid_argument(
+                    "3D Neumann outward flux must be finite."
                 );
-                if (!std::isfinite(transfer) || transfer < 0.0) {
-                    throw std::invalid_argument(
-                        "3D Robin transfer coefficient must be finite and nonnegative."
-                    );
-                }
-                if (!std::isfinite(ambient)) {
-                    throw std::invalid_argument(
-                        "3D Robin ambient value must be finite."
-                    );
-                }
-                const double ambient_load = transfer * ambient;
-                if (!std::isfinite(ambient_load)) {
+            }
+            const double weight = area_scale * quadrature.weight;
+            for (std::size_t i = 0; i < 3U; ++i) {
+                const std::size_t global_i = face[i];
+                rhs[global_i] -= flux * quadrature.shape[i] * weight;
+                if (!std::isfinite(rhs[global_i])) {
                     throw std::overflow_error(
-                        "3D Robin ambient load is non-finite."
+                        "3D Neumann load-vector accumulation overflowed."
                     );
                 }
-                for (std::size_t i = 0; i < 3U; ++i) {
-                    const std::size_t global_i = face[i];
-                    rhs[global_i] +=
-                        ambient_load * quadrature.shape[i] * weight;
-                    if (!std::isfinite(rhs[global_i])) {
-                        throw std::overflow_error(
-                            "3D Robin load-vector accumulation overflowed."
-                        );
-                    }
-                    for (std::size_t j = 0; j < 3U; ++j) {
-                        const double value =
-                            transfer * quadrature.shape[i] *
-                            quadrature.shape[j] * weight;
-                        if (!std::isfinite(value)) {
-                            throw std::overflow_error(
-                                "3D Robin matrix entry is non-finite."
-                            );
-                        }
-                        entries.push_back({global_i, face[j], value});
-                    }
-                }
-            } else {
-                const double flux = callback(point.x, point.y, point.z);
-                if (!std::isfinite(flux)) {
-                    throw std::invalid_argument(
-                        "3D Neumann outward flux must be finite."
+            }
+        }
+    };
+
+    const auto integrate_robin_face = [&](
+        const BoundaryFace3D& face,
+        const ScalarField3D& transfer_coefficient,
+        const ScalarField3D& ambient_value
+    ) {
+        const Point3D& a = problem.mesh.nodes[face[0]];
+        const Point3D& b = problem.mesh.nodes[face[1]];
+        const Point3D& c = problem.mesh.nodes[face[2]];
+        const double area_scale = twice_face_area(a, b, c);
+        if (!std::isfinite(area_scale) || area_scale <= 0.0) {
+            throw std::invalid_argument(
+                "3D boundary face area must be finite and positive."
+            );
+        }
+
+        for (const FaceQuadraturePoint& quadrature : face_quadrature) {
+            const Point3D point = interpolate_face_point(
+                problem.mesh, face, quadrature.shape
+            );
+            const double transfer = transfer_coefficient(
+                point.x, point.y, point.z
+            );
+            const double ambient = ambient_value(
+                point.x, point.y, point.z
+            );
+            if (!std::isfinite(transfer) || transfer < 0.0) {
+                throw std::invalid_argument(
+                    "3D Robin transfer coefficient must be finite and nonnegative."
+                );
+            }
+            if (!std::isfinite(ambient)) {
+                throw std::invalid_argument(
+                    "3D Robin ambient value must be finite."
+                );
+            }
+            const double ambient_load = transfer * ambient;
+            if (!std::isfinite(ambient_load)) {
+                throw std::overflow_error(
+                    "3D Robin ambient load is non-finite."
+                );
+            }
+
+            const double weight = area_scale * quadrature.weight;
+            for (std::size_t i = 0; i < 3U; ++i) {
+                const std::size_t global_i = face[i];
+                rhs[global_i] +=
+                    ambient_load * quadrature.shape[i] * weight;
+                if (!std::isfinite(rhs[global_i])) {
+                    throw std::overflow_error(
+                        "3D Robin load-vector accumulation overflowed."
                     );
                 }
-                for (std::size_t i = 0; i < 3U; ++i) {
-                    const std::size_t global_i = face[i];
-                    rhs[global_i] -=
-                        flux * quadrature.shape[i] * weight;
-                    if (!std::isfinite(rhs[global_i])) {
+                for (std::size_t j = 0; j < 3U; ++j) {
+                    const double value =
+                        transfer * quadrature.shape[i] *
+                        quadrature.shape[j] * weight;
+                    if (!std::isfinite(value)) {
                         throw std::overflow_error(
-                            "3D Neumann load-vector accumulation overflowed."
+                            "3D Robin matrix entry is non-finite."
                         );
                     }
+                    entries.push_back({global_i, face[j], value});
                 }
             }
         }
     };
 
     for (const NeumannBoundaryFace3D& condition : problem.neumann_faces) {
-        integrate_face(
-            condition.face,
-            [&](const double x, const double y, const double z) {
-                return condition.outward_flux(x, y, z);
-            },
-            false
-        );
+        integrate_neumann_face(condition.face, condition.outward_flux);
     }
 
     for (const RobinBoundaryFace3D& condition : problem.robin_faces) {
-        integrate_face(
+        integrate_robin_face(
             condition.face,
-            [&](const double x, const double y, const double z) {
-                return std::pair{
-                    condition.transfer_coefficient(x, y, z),
-                    condition.ambient_value(x, y, z)
-                };
-            },
-            true
+            condition.transfer_coefficient,
+            condition.ambient_value
         );
     }
 

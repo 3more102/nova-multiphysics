@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -266,11 +267,11 @@ NOVA_TEST(diffusion_3d_rejects_invalid_inputs_and_boundary_faces) {
 
     problem.diffusivity = [](double, double, double) { return 1.0; };
     problem.neumann_faces.push_back({
-        box.mesh.elements[0].first == 0U
-            ? BoundaryFace3D{box.mesh.elements[0][0], box.mesh.elements[0][1],
-                             box.mesh.elements[0][2]}
-            : BoundaryFace3D{box.mesh.elements[0][0], box.mesh.elements[0][1],
-                             box.mesh.elements[0][2]},
+        BoundaryFace3D{
+            box.mesh.elements[0][0],
+            box.mesh.elements[0][1],
+            box.mesh.elements[0][3]
+        },
         [](double, double, double) { return 0.0; }
     });
 
