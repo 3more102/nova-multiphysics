@@ -58,7 +58,20 @@ using:
 
 Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), and examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating).
 
-Limitations: no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
+Limitations: the linear/adaptive thermal path has no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
+
+### Temperature-dependent 2D heat conduction (experimental)
+A separate P1/P2 Backward Euler solver freezes positive nonlinear conductivity
+`k(x,y,T)` at each Picard iteration, then reuses the linear thermal assembler
+and solver. It supports the same time-dependent sources and Dirichlet, Neumann,
+and Robin boundary-condition inputs. Scaled DOF updates, under-relaxation and
+an explicit iteration limit control convergence. It rejects invalid
+conductivity and nonconvergence rather than returning partial results.
+
+See `docs/NONLINEAR_THERMAL_PICARD.md` and
+`examples/nonlinear_heat_2d/main.cpp`. This is not yet an assembly-native
+Newton solver. Material evaluation currently performs a linear triangle
+search at each quadrature request and is unsuitable for large meshes.
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
@@ -115,6 +128,7 @@ Run the examples:
 ./build/nova_transient_heat_2d
 ./build/nova_transient_flux_2d
 ./build/nova_adaptive_heat_2d
+./build/nova_nonlinear_heat_2d
 ./build/nova_nonlinear_diffusion_1d
 ~~~
 
