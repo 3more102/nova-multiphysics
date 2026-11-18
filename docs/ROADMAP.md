@@ -31,6 +31,8 @@ Implemented:
 - Triangle orientation-independent integration.
 - Orientation-aware 2D triangle quality analysis (minimum angle, mean ratio, element area and longest edge).
 - Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
+- Exact P1/P2 H1 solution transfer to uniformly refined triangular meshes, including continuity checks across coarse-element interfaces.
+- Transient heat problem remeshing with directed Dirichlet, Neumann and Robin edge splitting and optional P1/P2 restart-state transfer.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
 - Nonlinear 1D P1 diffusion residual and consistent Jacobian assembly.
@@ -39,7 +41,7 @@ Implemented:
 Remaining:
 - Reusable element and integration interfaces shared across physics.
 - Pure-Neumann nullspace handling.
-- Local/graded adaptive mesh refinement, error indicators, quality-based marking and solver mesh-transfer workflows.
+- Local/graded adaptive mesh refinement, residual or recovery-based error indicators, quality-based marking and selective solver mesh-transfer workflows.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.
 

@@ -65,6 +65,26 @@ This refinement is geometric and uniform, not a residual-based error
 estimator or selective adaptive refinement. The reported quality is a
 shape metric, not an independent solution-accuracy guarantee.
 
+## H1 solution transfer and thermal remeshing
+
+A conforming uniform refinement preserves all coarse vertices and adds
+one mesh vertex at the midpoint of every unique coarse edge. For P1,
+the new vertex value is the average of the two endpoint values. For P2,
+the new vertex value is the existing coarse edge-midpoint DOF.
+
+P2 transfer also evaluates the original quadratic finite-element
+polynomial at every midpoint of a fine-mesh edge. When a fine edge lies
+on a coarse-element interface, both parent-element traces are checked
+for continuity before the value is accepted. This preserves the
+piecewise-quadratic field exactly up to floating-point evaluation error.
+
+The transient-heat remeshing helper applies the same conforming mesh
+refinement, transfers an optional P1/P2 restart vector, and splits
+Dirichlet, Neumann and Robin boundary edges into two directed segments.
+Their original physical-coordinate callbacks are retained unchanged.
+This is uniform remeshing; it does not yet implement error-driven local
+refinement or transfer arbitrary user-defined physical groups.
+
 ## Boundary-edge integration
 
 Neumann conditions supply outward physical flux \(q_n\) and contribute \(-\int_{\Gamma_N}q_n N_i\,d\Gamma\) to the right-hand side. Robin conditions contribute \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side. Three-point Gauss-Legendre quadrature is used on P1 and P2 boundary edges (exact for polynomials through degree five). Neumann and Robin conditions cannot be assigned to the same edge.
