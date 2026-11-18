@@ -71,6 +71,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_newton_solver.cpp
         tests/test_poisson_1d.cpp
         tests/test_diffusion_2d.cpp
+        tests/test_diffusion_h1_2d.cpp
         tests/test_error_norms_2d.cpp
         tests/test_mesh_topology_2d.cpp
         tests/test_nonlinear_diffusion_1d.cpp
