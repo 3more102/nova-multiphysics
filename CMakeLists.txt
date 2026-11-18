@@ -26,6 +26,9 @@ add_library(nova_core
     src/linalg/gmres.cpp
     src/nonlinear/newton_solver.cpp
     src/fem/mesh2d.cpp
+    src/fem/mesh3d.cpp
+    src/fem/tetrahedron_h1.cpp
+    src/fem/h1_space_3d.cpp
     src/fem/mesh_refinement_2d.cpp
     src/fem/adaptive_mesh_2d.cpp
     src/fem/mesh_transfer_2d.cpp
@@ -99,6 +102,8 @@ if(NOVA_BUILD_TESTS)
         tests/test_adaptive_heat_2d.cpp
         tests/test_error_norms_2d.cpp
         tests/test_mesh_topology_2d.cpp
+        tests/test_mesh_topology_3d.cpp
+        tests/test_h1_space_3d.cpp
         tests/test_mesh_refinement_2d.cpp
         tests/test_mesh_transfer_2d.cpp
         tests/test_adaptive_mesh_2d.cpp

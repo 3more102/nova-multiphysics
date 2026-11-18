@@ -17,8 +17,10 @@ A milestone is complete only when its acceptance tests, verification evidence, a
 
 Implemented:
 - Triangle mesh data model with scale-aware geometric validation.
+- Tetrahedral 3D mesh data model with scale-aware volume validation, manifold face checks, structured box generation and outward boundary-face extraction.
 - Structured rectangular mesh generator with two P1 triangles per cell.
 - Linear P1 and quadratic P2 reference-triangle H1 basis functions.
+- 3D reference-tetrahedron P1 H1 basis, physical gradient transformation and continuous vertex DOF space.
 - Positive six-point degree-four triangle quadrature.
 - Jacobian-based physical basis gradients.
 - Consistent P1/P2 scalar H1 mass and stiffness matrix assembly for transient physics.
@@ -30,6 +32,7 @@ Implemented:
 - Mixed Dirichlet-Neumann and Dirichlet-Robin boundary benchmarks.
 - Triangle orientation-independent integration.
 - Orientation-aware 2D triangle quality analysis (minimum angle, mean ratio, element area and longest edge).
+- 3D tetrahedron quality diagnostics (signed/absolute volume, mean ratio and minimum dihedral angle).
 - Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
 - One-level conforming red-green adaptive refinement with unique edge midpoints, transition elements, parent-cell maps and directed boundary-edge remapping.
 - Area-weighted H1 gradient recovery indicators and deterministic Dörfler bulk marking for P1/P2 fields.

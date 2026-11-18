@@ -123,6 +123,32 @@ This first adaptive refiner performs one conforming refinement level per
 call; repeated marking cycles and more advanced grading/quality controls
 remain application-level work.
 
+## Tetrahedral 3D mesh and P1 H1 convention
+
+The initial 3D geometry kernel uses four-node linear tetrahedra. The
+reference tetrahedron has vertices (0,0,0), (1,0,0), (0,1,0), and
+(0,0,1), with shape functions N0=1-r-s-t, N1=r, N2=s, N3=t.
+The physical gradient is transformed by the inverse transpose of the
+signed element Jacobian; the absolute determinant is used for volume
+integration, while the signed determinant preserves orientation.
+
+Tetrahedron validation rejects repeated/duplicate cells, invalid node
+indices, non-finite coordinates, near-zero signed volume relative to
+the cube of the longest edge, and non-manifold faces. Both element
+orientations are accepted. Structured boxes use six tetrahedra per
+hexahedral cell with a globally consistent face triangulation.
+
+The tetrahedron mean-ratio quality is
+q = 12 * (3V)^(2/3) / sum_i(edge_length_i^2),
+where V is positive tetrahedron volume and the sum includes all six
+edges. A regular tetrahedron has q=1. The minimum interior dihedral
+angle is reported in radians. Boundary faces are extracted once and
+oriented outward using the opposite tetrahedron vertex.
+
+The first 3D H1 space is continuous P1 with one global degree of freedom
+per mesh vertex. Higher-order tetrahedral spaces, 3D quadrature and
+3D physics assembly are separate milestones.
+
 ## Boundary-edge integration
 
 Neumann conditions supply outward physical flux \(q_n\) and contribute \(-\int_{\Gamma_N}q_n N_i\,d\Gamma\) to the right-hand side. Robin conditions contribute \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side. Three-point Gauss-Legendre quadrature is used on P1 and P2 boundary edges (exact for polynomials through degree five). Neumann and Robin conditions cannot be assigned to the same edge.
