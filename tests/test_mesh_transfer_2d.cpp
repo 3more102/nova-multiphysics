@@ -13,6 +13,7 @@ namespace {
 using nova::fem::H1FunctionSpace2D;
 using nova::fem::H1TriangleOrder;
 using nova::fem::TransientHeat2DProblem;
+using nova::fem::TriangleMesh2D;
 
 void check_exact_uniform_transfer(
     const H1TriangleOrder order,
