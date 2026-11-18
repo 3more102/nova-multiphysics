@@ -144,6 +144,11 @@ natural-boundary residuals are known to vanish). It provides practical
 element indicators, not a certified global error bound. The existing
 area-weighted gradient-recovery indicator remains available for both
 P1 and P2 fields and is a separate heuristic.
+The one-cycle adaptation helper feeds these element indicators into
+Dörfler bulk marking and then into conforming longest-edge refinement.
+If the global estimator is zero, it returns the unchanged mesh and no
+marked elements. Repeated solve-estimate-refine orchestration remains a
+separate higher-level workflow.
 
 ## Boundary-edge integration
 
