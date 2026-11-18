@@ -66,22 +66,24 @@ Remaining:
 
 ## M3 — General scalar physics
 
-**In progress: first transient thermal prototype implemented.**
+**In progress: transient thermal prototypes with P1/P2 elements implemented.**
 
 Implemented:
 - Stationary scalar conduction/diffusion with P1/P2 H1 elements.
-- Consistent scalar capacity and stiffness operators.
-- Backward Euler transient heat conduction with spatially varying, time-independent material coefficients.
-- Volumetric time-dependent heat source.
-- Time-dependent strong Dirichlet temperature traces, including P2 edge DOFs.
-- Homogeneous natural (zero-flux) boundaries for transient problems.
-- Exact space-time manufactured solution, temporal convergence, and cooling-plate example.
+- Consistent scalar capacity and stiffness FEM operators.
+- Backward Euler and Crank–Nicolson implicit transient time integration.
+- Spatially varying positive (time-independent) volumetric heat capacity and conductivity.
+- Time-dependent volumetric heating, essential Dirichlet temperatures, Neumann outward heat fluxes, and Robin ambient convection.
+- Validated, mutually exclusive exterior-edge boundary assignment; other edges insulated by default.
+- Integrated discrete heat budget with Dirichlet reaction contributions.
+- Manufactured-solution temporal convergence and source/boundary energy-balance tests.
+- Cooling plate and convective boundary-flux example executables.
 
 Remaining:
-- Transient nonzero Neumann and Robin flux support.
-- Temperature-dependent and time-dependent material coefficients.
-- Crank-Nicolson and adaptive time integration.
-- Energy and heat-flux balance diagnostics.
+- Nonlinear temperature-dependent constitutive properties and time-dependent materials.
+- Adaptive time stepping and temporal error estimation.
+- Independently recovered normal heat fluxes and physical energy-balance cross-checks.
+- Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.
 
 ## M4 — Structural mechanics
