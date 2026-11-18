@@ -52,15 +52,22 @@ Implemented regression cases:
 - Exact area preservation and unchanged element quality under uniform refinement.
 - Parent-child element mapping and refinement of mixed clockwise/counterclockwise cells.
 - Exterior-edge splitting, duplicate/interior boundary rejection and exact affine P1 nodal prolongation.
+- P1/P2 gradient recovery gives near-zero indicators for affine fields and positive indicators for curved fields.
+- Deterministic Dörfler bulk marking, including zero indicators and invalid-parameter rejection.
+- Selective longest-edge refinement with shared-edge closure, no hanging nodes, preserved orientation and domain area.
+- Directed boundary-edge splitting only where selected; unselected boundary edges remain unchanged.
+- Exact P1/P2 transfer and one-step transient heat solve after selective remeshing.
 
 Current limitations:
 - No pure Neumann nullspace handling.
 - No anisotropic diffusion tensor.
 - No arbitrary higher-order elements beyond P2.
-- Uniform conforming refinement is implemented; no error-indicator-driven adaptive refinement.
+- Recovery-based indicators and one-level selective conforming refinement are implemented; no certified residual/flux-jump estimator, multi-level grading control, or automated adaptive solve loop.
 
 Required next verification:
 - Compare error norms and observed convergence rates with an independent reference implementation.
+- Calibrate recovery indicators against known singular and boundary-layer solutions; compare marking efficiency with residual/flux-jump estimators.
+- Verify multi-level grading behavior and quality bounds under repeated selective refinement.
 - Add boundary flux and energy-balance checks for more general Neumann and Robin problems.
 - Evaluate distorted meshes and conditioning sensitivity.
 
