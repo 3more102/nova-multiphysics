@@ -22,7 +22,7 @@ Implemented:
 - Linear P1 and quadratic P2 reference-triangle H1 basis functions.
 - 3D reference-tetrahedron P1 H1 basis, physical gradient transformation and continuous vertex DOF space.
 - Positive four-point degree-two tetrahedron quadrature and three-point triangular-face quadrature.
-- 3D P1 scalar diffusion assembly and CG solve with spatially varying positive isotropic diffusivity, volume sources, strong Dirichlet faces/vertices, Neumann fluxes and Robin face exchange.
+- 3D P1 scalar diffusion assembly and CG solve with spatially varying positive isotropic diffusivity, volume sources, strong Dirichlet faces/vertices, Neumann fluxes, Robin face exchange, and component-wise pure-Neumann compatibility and zero-mean handling.
 - Positive six-point degree-four triangle quadrature.
 - Jacobian-based physical basis gradients.
 - Consistent P1/P2 scalar H1 mass and stiffness matrix assembly for transient physics.
@@ -48,7 +48,7 @@ Implemented:
 
 Remaining:
 - Reusable element and integration interfaces shared across physics.
-- Pure-Neumann nullspace handling.
+- 2D pure-Neumann nullspace handling.
 - Multi-level graded refinement closure, residual-based error indicators, quality-aware marking, arbitrary physical-group transfer and automated solve-estimate-mark-refine cycles.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.

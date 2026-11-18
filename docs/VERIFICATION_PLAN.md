@@ -54,7 +54,7 @@ Implemented regression cases:
 - Exterior-edge splitting, duplicate/interior boundary rejection and exact affine P1 nodal prolongation.
 
 Current limitations:
-- No pure Neumann nullspace handling.
+- No pure-Neumann nullspace handling in the 2D solver.
 - No anisotropic diffusion tensor.
 - No arbitrary higher-order elements beyond P2.
 - Uniform conforming refinement is implemented; no error-indicator-driven adaptive refinement.
@@ -63,6 +63,16 @@ Required next verification:
 - Compare error norms and observed convergence rates with an independent reference implementation.
 - Add boundary flux and energy-balance checks for more general Neumann and Robin problems.
 - Evaluate distorted meshes and conditioning sensitivity.
+
+## Gate 3D: tetrahedral scalar diffusion
+- Reproduce affine harmonic fields and variable-coefficient manufactured solutions.
+- Verify mixed Dirichlet-Neumann and Dirichlet-Robin cases, reversed element orientation, and mesh-refinement convergence.
+- For pure-Neumann problems, verify source/outward-flux compatibility separately on disconnected mesh components.
+- Verify incompatible component loads are rejected even when their global sum cancels.
+- Verify zero volume-weighted mean independently on each unanchored connected component.
+- Verify positive Robin transfer anchors a component without Dirichlet data; zero transfer does not.
+- Retain rejection coverage for invalid diffusivity, interior boundary faces, and negative Robin coefficients.
+- Cross-check 3D results on distorted meshes and against an independent reference implementation.
 
 ## Gate 4: nonlinear solver and nonlinear FEM
 - Scalar square-root residual (F(x)=x^2-2) with analytical root (sqrt{2}).

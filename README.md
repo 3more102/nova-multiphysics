@@ -52,11 +52,14 @@ on validated four-node tetrahedral meshes using:
 - Neumann outward-flux integration and Robin exchange on validated exterior faces.
 - Homogeneous natural (zero-flux) conditions on unassigned faces.
 - Symmetric Dirichlet elimination and conjugate-gradient solution.
+- Pure-Neumann components with compatible source/flux loads and zero volume-weighted mean.
 - Affine harmonic patch, variable-coefficient, mixed-boundary and nodal-convergence tests.
 
 Example: \`examples/diffusion_3d/main.cpp\`.
 
-Limitations: P1 tetrahedra only; no transient 3D heat, anisotropic tensors, pure-Neumann nullspace handling, 3D adaptive refinement, or independent large-scale validation.
+Pure-Neumann compatibility is checked separately on each connected component without Dirichlet or positive Robin anchoring. The returned field on each such component is normalized to zero volume-weighted mean.
+
+Limitations: P1 tetrahedra only; no transient 3D heat, anisotropic tensors, 3D adaptive refinement, or independent large-scale validation.
 
 ### Triangle mesh quality and uniform refinement
 
@@ -124,7 +127,7 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support incomplete Cholesky, stationary pure-Neumann nullspace handling, anisotropic diffusion tensors, error-driven adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The current prototype does not yet support incomplete Cholesky, stationary 2D pure-Neumann nullspace handling, anisotropic diffusion tensors, error-driven adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.

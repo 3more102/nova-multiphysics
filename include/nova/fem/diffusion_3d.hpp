@@ -52,8 +52,10 @@ struct ScalarDiffusion3DResult {
 // Solves -div(k grad(u)) = f with continuous P1 tetrahedral elements.
 // Dirichlet data may be supplied as vertex constraints or exterior faces.
 // Neumann and Robin data are integrated on validated exterior triangular faces.
-// Unassigned faces are insulated. At least one Dirichlet value is required;
-// pure-Neumann systems and anisotropic diffusion tensors are not supported.
+// Unassigned faces are insulated. Each connected component needs a Dirichlet
+// value or positive Robin transfer to be anchored. Otherwise, source and
+// outward-flux loads must balance; the returned solution then has zero
+// volume-weighted mean on that component. Anisotropic tensors are unsupported.
 [[nodiscard]] ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     const ScalarDiffusion3DProblem& problem,
     const linalg::SolverOptions& solver_options = {}

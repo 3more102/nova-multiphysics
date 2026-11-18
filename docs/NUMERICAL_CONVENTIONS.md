@@ -153,7 +153,12 @@ positive isotropic diffusivity, volumetric source terms, strong Dirichlet
 vertex/face values, outward Neumann fluxes, and Robin transfer on validated
 exterior triangular faces. Three-point degree-two face quadrature integrates
 linear Neumann loads and quadratic Robin matrices. Unassigned faces are
-insulated; pure-Neumann systems and anisotropic tensors remain unsupported.
+insulated. On each connected component without Dirichlet or positive Robin
+anchoring, the integrated source must equal the integrated outward Neumann
+flux within a relative tolerance of 1e-10 against the assembled absolute
+load. The solver fixes the constant nullspace by imposing a temporary vertex
+gauge, then shifts the result to zero volume-weighted mean on that component.
+Anisotropic tensors remain unsupported.
 
 The 3D diffusion kernel is P1 only. Higher-order tetrahedral spaces,
 transient 3D heat, 3D adaptive refinement, and independent large-scale

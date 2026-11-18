@@ -6,9 +6,11 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -32,6 +34,85 @@ struct FaceQuadraturePoint {
 [[nodiscard]] FaceKey canonical_face(FaceKey face) {
     std::sort(face.begin(), face.end());
     return face;
+}
+
+class DisjointSet {
+public:
+    explicit DisjointSet(const std::size_t size)
+        : parent_(size), rank_(size, 0U) {
+        for (std::size_t node = 0; node < size; ++node) {
+            parent_[node] = node;
+        }
+    }
+
+    [[nodiscard]] std::size_t find(const std::size_t node) {
+        if (parent_[node] != node) {
+            parent_[node] = find(parent_[node]);
+        }
+        return parent_[node];
+    }
+
+    void unite(const std::size_t first, const std::size_t second) {
+        std::size_t first_root = find(first);
+        std::size_t second_root = find(second);
+        if (first_root == second_root) {
+            return;
+        }
+        if (rank_[first_root] < rank_[second_root]) {
+            std::swap(first_root, second_root);
+        }
+        parent_[second_root] = first_root;
+        if (rank_[first_root] == rank_[second_root]) {
+            ++rank_[first_root];
+        }
+    }
+
+private:
+    std::vector<std::size_t> parent_;
+    std::vector<std::size_t> rank_;
+};
+
+struct MeshComponents {
+    std::vector<std::size_t> node_component;
+    std::vector<std::vector<std::size_t>> nodes;
+};
+
+[[nodiscard]] MeshComponents find_mesh_components(
+    const TetrahedralMesh3D& mesh
+) {
+    DisjointSet sets(mesh.nodes.size());
+    std::vector<bool> referenced(mesh.nodes.size(), false);
+    for (const Tetrahedron3D& cell : mesh.elements) {
+        for (const std::size_t node : cell) {
+            referenced[node] = true;
+            sets.unite(cell[0], node);
+        }
+    }
+
+    for (std::size_t node = 0; node < mesh.nodes.size(); ++node) {
+        if (!referenced[node]) {
+            throw std::invalid_argument(
+                "Every 3D mesh vertex must belong to a tetrahedron."
+            );
+        }
+    }
+
+    MeshComponents result;
+    result.node_component.resize(mesh.nodes.size());
+    std::map<std::size_t, std::size_t> component_for_root;
+    for (std::size_t node = 0; node < mesh.nodes.size(); ++node) {
+        const std::size_t root = sets.find(node);
+        const auto [entry, inserted] = component_for_root.emplace(
+            root, component_for_root.size()
+        );
+        if (inserted) {
+            result.nodes.emplace_back();
+        }
+        const std::size_t component = entry->second;
+        result.node_component[node] = component;
+        result.nodes[component].push_back(node);
+    }
+    return result;
 }
 
 // Positive, symmetric, degree-two exact rule on the reference tetrahedron.
@@ -128,16 +209,15 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     problem.mesh.validate();
     const H1FunctionSpace3D space(problem.mesh);
     const std::size_t node_count = space.dimension();
+    const MeshComponents components = find_mesh_components(problem.mesh);
+    const std::size_t component_count = components.nodes.size();
+    std::vector<bool> anchored_component(component_count, false);
+    std::vector<long double> absolute_load_scale(component_count, 0.0L);
+    std::vector<long double> nodal_volume_weights(node_count, 0.0L);
 
     if (!problem.diffusivity || !problem.source) {
         throw std::invalid_argument(
             "3D diffusivity and source functions are required."
-        );
-    }
-    if (problem.dirichlet_constraints.empty() &&
-        problem.dirichlet_faces.empty()) {
-        throw std::invalid_argument(
-            "At least one 3D Dirichlet constraint or boundary face is required."
         );
     }
 
@@ -204,6 +284,12 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
                 prescribed, node,
                 condition.value(point.x, point.y, point.z)
             );
+        }
+    }
+
+    for (std::size_t node = 0; node < node_count; ++node) {
+        if (prescribed[node].has_value()) {
+            anchored_component[components.node_component[node]] = true;
         }
     }
 
@@ -286,6 +372,11 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         );
         const double absolute_determinant =
             std::abs(physical.signed_jacobian_determinant);
+        const long double nodal_volume_weight =
+            static_cast<long double>(absolute_determinant) / 24.0L;
+        for (const std::size_t node : cell) {
+            nodal_volume_weights[node] += nodal_volume_weight;
+        }
 
         std::array<std::array<double, 4>, 4> local_matrix{};
         std::array<double, 4> local_rhs{};
@@ -317,8 +408,15 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
             }
 
             const double weight = absolute_determinant * quadrature.weight;
+            const std::size_t component =
+                components.node_component[cell[0]];
             for (std::size_t i = 0; i < local_dof_count; ++i) {
-                local_rhs[i] += source * basis.values[i] * weight;
+                const double source_load =
+                    source * basis.values[i] * weight;
+                local_rhs[i] += source_load;
+                absolute_load_scale[component] += std::abs(
+                    static_cast<long double>(source_load)
+                );
                 for (std::size_t j = 0; j < local_dof_count; ++j) {
                     const double gradient_dot =
                         physical.gradients[i][0] * physical.gradients[j][0] +
@@ -357,6 +455,8 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         const BoundaryFace3D& face,
         const ScalarField3D& outward_flux
     ) {
+        const std::size_t component =
+            components.node_component[face[0]];
         const Point3D& a = problem.mesh.nodes[face[0]];
         const Point3D& b = problem.mesh.nodes[face[1]];
         const Point3D& c = problem.mesh.nodes[face[2]];
@@ -380,7 +480,12 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
             const double weight = area_scale * quadrature.weight;
             for (std::size_t i = 0; i < 3U; ++i) {
                 const std::size_t global_i = face[i];
-                rhs[global_i] -= flux * quadrature.shape[i] * weight;
+                const double boundary_load =
+                    flux * quadrature.shape[i] * weight;
+                rhs[global_i] -= boundary_load;
+                absolute_load_scale[component] += std::abs(
+                    static_cast<long double>(boundary_load)
+                );
                 if (!std::isfinite(rhs[global_i])) {
                     throw std::overflow_error(
                         "3D Neumann load-vector accumulation overflowed."
@@ -395,6 +500,8 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         const ScalarField3D& transfer_coefficient,
         const ScalarField3D& ambient_value
     ) {
+        const std::size_t component =
+            components.node_component[face[0]];
         const Point3D& a = problem.mesh.nodes[face[0]];
         const Point3D& b = problem.mesh.nodes[face[1]];
         const Point3D& c = problem.mesh.nodes[face[2]];
@@ -420,6 +527,9 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
                     "3D Robin transfer coefficient must be finite and nonnegative."
                 );
             }
+            if (transfer > 0.0) {
+                anchored_component[component] = true;
+            }
             if (!std::isfinite(ambient)) {
                 throw std::invalid_argument(
                     "3D Robin ambient value must be finite."
@@ -435,8 +545,12 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
             const double weight = area_scale * quadrature.weight;
             for (std::size_t i = 0; i < 3U; ++i) {
                 const std::size_t global_i = face[i];
-                rhs[global_i] +=
+                const double boundary_load =
                     ambient_load * quadrature.shape[i] * weight;
+                rhs[global_i] += boundary_load;
+                absolute_load_scale[component] += std::abs(
+                    static_cast<long double>(boundary_load)
+                );
                 if (!std::isfinite(rhs[global_i])) {
                     throw std::overflow_error(
                         "3D Robin load-vector accumulation overflowed."
@@ -467,6 +581,34 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
             condition.transfer_coefficient,
             condition.ambient_value
         );
+    }
+
+    std::vector<std::size_t> pure_neumann_components;
+    for (std::size_t component = 0;
+         component < component_count;
+         ++component) {
+        if (anchored_component[component]) {
+            continue;
+        }
+
+        long double net_load = 0.0L;
+        for (const std::size_t node : components.nodes[component]) {
+            net_load += static_cast<long double>(rhs[node]);
+        }
+        constexpr long double compatibility_relative_tolerance = 1.0e-10L;
+        const long double compatibility_tolerance =
+            compatibility_relative_tolerance * absolute_load_scale[component];
+        if (std::abs(net_load) > compatibility_tolerance) {
+            throw std::invalid_argument(
+                "Pure-Neumann 3D component " + std::to_string(component) +
+                " is incompatible: the integrated source must equal the "
+                "integrated outward Neumann flux."
+            );
+        }
+
+        pure_neumann_components.push_back(component);
+        const std::size_t gauge_node = components.nodes[component].front();
+        prescribed[gauge_node] = 0.0;
     }
 
     // Symmetric strong Dirichlet elimination preserves CG's SPD requirement.
@@ -503,6 +645,39 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     linalg::SolverResult solver = linalg::solve_conjugate_gradient(
         matrix, std::span<const double>(rhs), solver_options
     );
+
+    for (const std::size_t component : pure_neumann_components) {
+        long double weighted_value_sum = 0.0L;
+        long double component_volume = 0.0L;
+        for (const std::size_t node : components.nodes[component]) {
+            const long double weight = nodal_volume_weights[node];
+            weighted_value_sum +=
+                weight * static_cast<long double>(solver.solution[node]);
+            component_volume += weight;
+        }
+        if (!std::isfinite(component_volume) || component_volume <= 0.0L) {
+            throw std::logic_error(
+                "Pure-Neumann 3D component has no finite positive volume."
+            );
+        }
+        const long double weighted_mean =
+            weighted_value_sum / component_volume;
+        const double mean = static_cast<double>(weighted_mean);
+        if (!std::isfinite(weighted_mean) || !std::isfinite(mean)) {
+            throw std::overflow_error(
+                "Pure-Neumann 3D component mean is non-finite."
+            );
+        }
+        for (const std::size_t node : components.nodes[component]) {
+            solver.solution[node] -= mean;
+            if (!std::isfinite(solver.solution[node])) {
+                throw std::overflow_error(
+                    "Pure-Neumann 3D zero-mean normalization overflowed."
+                );
+            }
+        }
+    }
+
     return {solver.solution, std::move(solver)};
 }
 
