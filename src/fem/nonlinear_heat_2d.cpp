@@ -268,30 +268,12 @@ NonlinearHeatSystem2D assemble_nonlinear_heat_be_system_2d(
                 problem.volumetric_capacity(x, y), "Volumetric heat capacity"
             );
 
-            double conductivity_value = 0.0;
-            try {
-                conductivity_value = problem.conductivity(x, y, temperature);
-            } catch (const std::exception& error) {
-                throw InvalidMaterialTrial(
-                    std::string("Thermal conductivity evaluation failed: ") +
-                    error.what()
-                );
-            }
             const double k = valid_trial_positive(
-                conductivity_value, "Thermal conductivity"
+                problem.conductivity(x, y, temperature),
+                "Thermal conductivity"
             );
-
-            double dk = 0.0;
-            try {
-                dk = problem.conductivity_temperature_derivative(
-                    x, y, temperature
-                );
-            } catch (const std::exception& error) {
-                throw InvalidMaterialTrial(
-                    std::string("Thermal conductivity derivative evaluation failed: ") +
-                    error.what()
-                );
-            }
+            const double dk =
+                problem.conductivity_temperature_derivative(x, y, temperature);
             if (!std::isfinite(dk)) {
                 throw InvalidMaterialTrial(
                     "Thermal conductivity derivative is non-finite at the current Newton trial temperature."
