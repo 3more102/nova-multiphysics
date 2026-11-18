@@ -384,3 +384,49 @@ NOVA_TEST(nonlinear_heat_rejects_overlapping_boundary_conditions) {
     }
     NOVA_REQUIRE(rejected);
 }
+
+
+NOVA_TEST(nonlinear_heat_line_search_rejects_overflowing_conductivity_trials) {
+    auto problem = make_nonlinear_problem(2U);
+    problem.initial_temperature = [](double, double) { return 0.0; };
+    problem.conductivity = [](double, double, double temperature) {
+        return std::exp(temperature);
+    };
+    problem.conductivity_temperature_derivative =
+        [](double, double, double temperature) {
+            return std::exp(temperature);
+        };
+    problem.source = [](double, double, double) { return 100000.0; };
+    apply_all_dirichlet(problem, [](double, double, double) {
+        return 0.0;
+    });
+
+    NonlinearHeat2DOptions options;
+    options.order = H1TriangleOrder::P1;
+    options.time_step = 1.0;
+    options.steps = 1U;
+    options.newton_options.residual_tolerance = 5.0e-12;
+    options.newton_options.max_iterations = 50U;
+    options.newton_options.max_backtracks = 24U;
+
+    const auto result = nova::fem::solve_nonlinear_heat_2d(
+        problem, options
+    );
+    NOVA_REQUIRE(result.newton_steps.size() == 1U);
+    NOVA_REQUIRE(result.newton_steps[0].converged);
+    NOVA_REQUIRE(result.newton_steps[0].residual_norm < 5.0e-12);
+
+    std::size_t center_node = problem.mesh.nodes.size();
+    for (std::size_t node = 0; node < problem.mesh.nodes.size(); ++node) {
+        const auto& point = problem.mesh.nodes[node];
+        if (std::abs(point.x - 0.5) < 1.0e-13 &&
+            std::abs(point.y - 0.5) < 1.0e-13) {
+            center_node = node;
+            break;
+        }
+    }
+    NOVA_REQUIRE(center_node < problem.mesh.nodes.size());
+    NOVA_REQUIRE(std::isfinite(result.temperature[center_node]));
+    NOVA_REQUIRE(result.temperature[center_node] > 9.0);
+    NOVA_REQUIRE(result.temperature[center_node] < 12.0);
+}

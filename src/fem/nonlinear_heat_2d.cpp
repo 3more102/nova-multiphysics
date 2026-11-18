@@ -155,10 +155,28 @@ struct EdgeGeometry {
     }};
 }
 
+class InvalidMaterialTrial : public std::invalid_argument {
+public:
+    using std::invalid_argument::invalid_argument;
+};
+
 [[nodiscard]] double valid_positive(const double value, const char* label) {
     if (!std::isfinite(value) || value <= 0.0) {
         throw std::invalid_argument(
             std::string(label) + " must be finite and strictly positive."
+        );
+    }
+    return value;
+}
+
+[[nodiscard]] double valid_trial_positive(
+    const double value,
+    const char* label
+) {
+    if (!std::isfinite(value) || value <= 0.0) {
+        throw InvalidMaterialTrial(
+            std::string(label) +
+            " is invalid at the current Newton trial temperature."
         );
     }
     return value;
@@ -249,14 +267,40 @@ NonlinearHeatSystem2D assemble_nonlinear_heat_be_system_2d(
             const double c = valid_positive(
                 problem.volumetric_capacity(x, y), "Volumetric heat capacity"
             );
-            const double k = valid_positive(
-                problem.conductivity(x, y, temperature), "Thermal conductivity"
+
+            double conductivity_value = 0.0;
+            try {
+                conductivity_value = problem.conductivity(x, y, temperature);
+            } catch (const std::exception& error) {
+                throw InvalidMaterialTrial(
+                    std::string("Thermal conductivity evaluation failed: ") +
+                    error.what()
+                );
+            }
+            const double k = valid_trial_positive(
+                conductivity_value, "Thermal conductivity"
             );
-            const double dk =
-                problem.conductivity_temperature_derivative(x, y, temperature);
+
+            double dk = 0.0;
+            try {
+                dk = problem.conductivity_temperature_derivative(
+                    x, y, temperature
+                );
+            } catch (const std::exception& error) {
+                throw InvalidMaterialTrial(
+                    std::string("Thermal conductivity derivative evaluation failed: ") +
+                    error.what()
+                );
+            }
+            if (!std::isfinite(dk)) {
+                throw InvalidMaterialTrial(
+                    "Thermal conductivity derivative is non-finite at the current Newton trial temperature."
+                );
+            }
+
             const double f = problem.source(x, y, time);
-            if (!std::isfinite(dk) || !std::isfinite(f)) {
-                throw std::invalid_argument("Nonlinear material tangent or source is non-finite.");
+            if (!std::isfinite(f)) {
+                throw std::invalid_argument("Nonlinear heat source is non-finite.");
             }
 
             const double weight = std::abs(det) * q.weight;
@@ -449,9 +493,18 @@ NonlinearHeat2DResult solve_nonlinear_heat_2d(
             }
         }
         const auto residual_fn = [&](const std::span<const double> trial) {
-            return assemble_nonlinear_heat_be_system_2d(
-                problem, options.order, state, trial, options.time_step, time
-            ).residual;
+            try {
+                return assemble_nonlinear_heat_be_system_2d(
+                    problem, options.order, state, trial,
+                    options.time_step, time
+                ).residual;
+            } catch (const InvalidMaterialTrial&) {
+                // An invalid temperature-dependent material evaluation is a
+                // rejected line-search point, not a fatal Newton-step error.
+                return std::vector<double>(
+                    trial.size(), std::numeric_limits<double>::quiet_NaN()
+                );
+            }
         };
         const auto jacobian_fn = [&](const std::span<const double> trial) {
             return assemble_nonlinear_heat_be_system_2d(
