@@ -282,3 +282,105 @@ NOVA_TEST(nonlinear_heat_fails_loudly_on_newton_iteration_limit) {
     }
     NOVA_REQUIRE(caught);
 }
+
+
+namespace {
+
+void check_nonlinear_mixed_boundary(
+    H1TriangleOrder order, bool use_robin
+) {
+    auto problem = make_nonlinear_problem(3U);
+    problem.initial_temperature = [](double x, double y) { return x + y; };
+    problem.source = [](double x, double y, double t) {
+        return 1.0 - 4.0 * (x + y + t);
+    };
+    std::map<std::pair<std::size_t, std::size_t>, std::size_t> incidence;
+    for (const auto& cell : problem.mesh.elements) {
+        ++incidence[std::minmax(cell[0], cell[1])];
+        ++incidence[std::minmax(cell[1], cell[2])];
+        ++incidence[std::minmax(cell[2], cell[0])];
+    }
+    for (const auto& [edge, count] : incidence) {
+        if (count != 1U) {
+            continue;
+        }
+        const auto& a = problem.mesh.nodes[edge.first];
+        const auto& b = problem.mesh.nodes[edge.second];
+        const nova::fem::BoundaryEdge2D boundary{{
+            edge.first, edge.second
+        }};
+        if (a.x == 1.0 && b.x == 1.0) {
+            if (use_robin) {
+                // On x=1, n=(1,0). Exact outward q=-k(T).
+                // Choose h=2 and ambient=T+k(T)/2.
+                problem.robin_edges.push_back({
+                    boundary,
+                    [](double, double, double) { return 2.0; },
+                    [](double x, double y, double time) {
+                        const double t = x + y + time;
+                        return t + 0.5 * (1.0 + t * t);
+                    }
+                });
+            } else {
+                problem.neumann_edges.push_back({
+                    boundary,
+                    [](double x, double y, double time) {
+                        const double t = x + y + time;
+                        return -(1.0 + t * t);
+                    }
+                });
+            }
+        } else {
+            problem.dirichlet_edges.push_back({
+                boundary,
+                [](double x, double y, double time) {
+                    return x + y + time;
+                }
+            });
+        }
+    }
+
+    NonlinearHeat2DOptions options;
+    options.order = order;
+    options.time_step = 0.1;
+    options.steps = 2U;
+    const auto result = nova::fem::solve_nonlinear_heat_2d(problem, options);
+    nova::fem::H1FunctionSpace2D space(problem.mesh, order);
+    const auto exact = space.interpolate([](double x, double y) {
+        return x + y + 0.2;
+    });
+    NOVA_REQUIRE(exact.size() == result.temperature.size());
+    for (std::size_t i = 0; i < exact.size(); ++i) {
+        NOVA_REQUIRE_NEAR(result.temperature[i], exact[i], 3.0e-8);
+    }
+}
+
+} // namespace
+
+NOVA_TEST(nonlinear_heat_p1_p2_exact_manufactured_neumann_flux) {
+    check_nonlinear_mixed_boundary(H1TriangleOrder::P1, false);
+    check_nonlinear_mixed_boundary(H1TriangleOrder::P2, false);
+}
+
+NOVA_TEST(nonlinear_heat_p1_p2_exact_manufactured_robin_convection) {
+    check_nonlinear_mixed_boundary(H1TriangleOrder::P1, true);
+    check_nonlinear_mixed_boundary(H1TriangleOrder::P2, true);
+}
+
+NOVA_TEST(nonlinear_heat_rejects_overlapping_boundary_conditions) {
+    auto problem = make_nonlinear_problem(1U);
+    apply_all_dirichlet(problem, [](double, double, double) {
+        return 0.0;
+    });
+    const auto edge = problem.dirichlet_edges.front().edge;
+    problem.neumann_edges.push_back({
+        edge, [](double, double, double) { return 0.0; }
+    });
+    bool rejected = false;
+    try {
+        static_cast<void>(nova::fem::solve_nonlinear_heat_2d(problem));
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    NOVA_REQUIRE(rejected);
+}
