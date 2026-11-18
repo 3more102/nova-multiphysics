@@ -28,6 +28,7 @@ add_library(nova_core
     src/fem/mesh2d.cpp
     src/fem/poisson_1d.cpp
     src/fem/diffusion_2d.cpp
+    src/fem/diffusion_h1_2d.cpp
     src/fem/error_norms_2d.cpp
     src/fem/nonlinear_diffusion_1d.cpp
     src/fem/h1_space_2d.cpp
