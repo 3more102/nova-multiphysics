@@ -9,6 +9,7 @@ namespace nova::linalg {
 
 // Solves A*x=b using conjugate gradients. A must be symmetric positive-definite.
 // Jacobi preconditioning requires a finite, strictly positive matrix diagonal.
+// IncompleteCholesky0 builds one unshifted, zero-fill factor per solve.
 [[nodiscard]] SolverResult solve_conjugate_gradient(
     const CsrMatrix& matrix,
     std::span<const double> right_hand_side,

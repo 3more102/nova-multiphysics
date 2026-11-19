@@ -1,5 +1,19 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · zero-fill incomplete Cholesky
+
+The solver increment builds on the verified tensor branch at `92960e071255`. Select `PreconditionerType::IncompleteCholesky0` in the existing CG options for stationary or transient problems. The public factor also supports repeated triangular solves. Seven additional regressions cover a four-cycle with known fill, exact one-iteration CG and its true residual, scaling, nonsymmetric input, breakdown on a verified SPD matrix, an anisotropic stationary patch and adaptive heat history. GCC 14.2 Release passed all 177 unit tests and all nine CTest targets. [Parent Windows/Linux, sanitizer and reference CI](https://github.com/3more102/nova-multiphysics/actions/runs/44478548702)
+
+The stationary cubic solution uses unit scalar diffusivity, prescribed zero temperatures on both x-faces, insulated lateral faces and CG relative tolerance 1e-11. The example reports the Euclidean true residual and maximum nodal error. Wall time covers the complete process, including mesh generation, assembly and factor setup. Medians use five alternating runs per method after one warm-up per method on one pinned AMD EPYC 9V74 logical CPU.
+
+| Tetrahedra | DOFs | Iterations, Jacobi / IC(0) | True residual, Jacobi / IC(0) | Max nodal error, both | Wall time (s), Jacobi / IC(0) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 3,072 | 729 | 50 / 21 | 7.74e-13 / 3.28e-13 | 2.55202e-3 | 0.0071 / 0.0071 |
+| 24,576 | 4,913 | 98 / 39 | 3.80e-13 / 2.76e-13 | 6.53796e-4 | 0.0494 / 0.0503 |
+| 82,944 | 15,625 | 142 / 56 | 1.96e-13 / 1.73e-13 | 2.91934e-4 | 0.2143 / 0.2211 |
+
+Reproduce the last row with `nova_diffusion_3d jacobi 24` and `nova_diffusion_3d ic0 24`. IC(0) reduced iterations on every mesh. Its total time on the largest case was about 3% higher. The next solver milestone is reuse of a prepared factor across identical heat-step matrices, with explicit invalidation on step size, material, constraint or Robin-matrix changes.
+
 ## 19 November 2026 · tensor diffusion and adaptive thermal verification
 
 The pre-change audit found 19 open PRs. All current base commits were ancestors of their PR heads. The default head was `0d56a5efe268`, and the full tetrahedral stack ended at #20 (`b68cbd326a4b`). Its clean Linux Release build passed 163 unit tests and eight CTest targets. The stationary 3D example used 3,072 tetrahedra, 50 CG iterations and had a true residual of 7.74e-13 with maximum nodal error 0.00255202. The dependency table below identifies the six open sibling PRs outside the 3D path.
@@ -8,7 +22,7 @@ The pre-change audit found 19 open PRs. All current base commits were ancestors 
 
 The adaptive comparison covers eight combinations of mesh, scheme and tolerance. The Linux suite including the new example passed 170 unit tests and nine CTest targets. The largest same-step difference from independent sparse direct solves was 6.15e-12 or less. The separate time-adaptive Radau comparison and serial timings through 82,944 tetrahedra are recorded in the [verification dossier](THERMAL_3D_VERIFICATION.md#adaptive-tensor-heat). Remaining work includes stronger sparse preconditioning, higher-order tetrahedra, material calibration and independent physical validation.
 
-## Active numerical checkpoint
+## Numerical checkpoint through 18 November 2026
 
 | Checkpoint | Tested scope | Evidence |
 | --- | --- | --- |

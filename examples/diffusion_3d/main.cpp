@@ -1,15 +1,32 @@
 #include "nova/fem/diffusion_3d.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <iostream>
+#include <string_view>
 
-int main() {
+int main(int argc, char** argv) {
     using namespace nova::fem;
 
+    const std::string_view method = argc > 1 ? argv[1] : "jacobi";
+    std::size_t n = 8;
+    if (argc > 3 || (method != "jacobi" && method != "ic0")) {
+        std::cerr << "Usage: nova_diffusion_3d [jacobi|ic0 [subdivisions]]\n";
+        return 1;
+    }
+    if (argc == 3) {
+        const std::string_view arg = argv[2];
+        const auto end = arg.data() + arg.size();
+        const auto parsed = std::from_chars(arg.data(), end, n);
+        if (parsed.ec != std::errc{} || parsed.ptr != end || n == 0) {
+            std::cerr << "Subdivisions must be a positive integer.\n";
+            return 1;
+        }
+    }
     const auto box = make_box_mesh_3d(
         0.0, 1.0, 0.0, 1.0, 0.0, 1.0,
-        8U, 8U, 8U
+        n, n, n
     );
 
     ScalarDiffusion3DProblem problem;
@@ -39,7 +56,8 @@ int main() {
     }
 
     nova::linalg::SolverOptions solver_options;
-    solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    solver_options.preconditioner = method == "jacobi"
+        ? nova::linalg::PreconditionerType::Jacobi : nova::linalg::PreconditionerType::IncompleteCholesky0;
     solver_options.relative_tolerance = 1.0e-11;
 
     const auto result = solve_scalar_diffusion_3d(problem, solver_options);

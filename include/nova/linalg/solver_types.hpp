@@ -8,7 +8,8 @@ namespace nova::linalg {
 
 enum class PreconditionerType {
     None,
-    Jacobi
+    Jacobi,
+    IncompleteCholesky0 // CG only
 };
 
 struct SolverOptions {

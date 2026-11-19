@@ -131,14 +131,15 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 - Conjugate Gradient for symmetric positive-definite systems.
 - BiCGSTAB and restarted GMRES for general nonsymmetric systems.
 - Optional Jacobi diagonal preconditioning for all three iterative linear solvers.
+- Zero-fill incomplete Cholesky for CG on symmetric systems with suitable pivots.
 - Newton nonlinear solver with GMRES or BiCGSTAB linear subsolves.
 - Armijo backtracking, including rejection of non-finite trial residuals.
 - Explicit breakdown and convergence reporting.
 - True-residual recomputation before linear convergence is accepted.
 
-Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
+Use `solver_options.preconditioner = nova::linalg::PreconditionerType::IncompleteCholesky0` to select IC(0). Use `nova_diffusion_3d ic0 24` or `nova_diffusion_3d jacobi 24` to compare the same manufactured problem. [Iteration counts, true residuals and full-process timings](docs/PROJECT_STATUS.md#19-november-2026--zero-fill-incomplete-cholesky)
 
-Open milestones include incomplete Cholesky, P2 tetrahedra, adaptive 3D meshing and a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+Open milestones include factor reuse across heat steps, P2 tetrahedra, adaptive 3D meshing and a general multiphysics field registry. A general nonlinear material framework would extend the existing 1D verification model.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.

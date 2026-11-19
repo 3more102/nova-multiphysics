@@ -60,6 +60,7 @@ Remaining:
 Implemented:
 - Conjugate Gradient for symmetric positive-definite systems.
 - Optional Jacobi diagonal preconditioning for CG.
+- Natural-order zero-fill incomplete Cholesky for CG with reusable triangular solves and explicit pivot diagnostics.
 - BiCGSTAB for nonsymmetric systems.
 - Optional Jacobi preconditioning for BiCGSTAB.
 - Restarted GMRES with modified Gram-Schmidt reorthogonalization and Givens rotations.
@@ -70,7 +71,7 @@ Implemented:
 - Input validation, breakdown diagnostics, and nonlinear regression tests.
 
 Remaining:
-- Incomplete Cholesky preconditioning.
+- Reuse of prepared factors for repeated heat-step matrices, plus ordering and shifted-factor studies for difficult SPD systems.
 - Sparse matrix block operations.
 - Inexact Newton forcing terms and nonlinear convergence diagnostics.
 - Continuation and parameter-dependent nonlinear studies.

@@ -254,6 +254,9 @@ Conjugate Gradient is intended for symmetric positive-definite systems. BiCGSTAB
 Supported preconditioners:
 - **None:** no preconditioning.
 - **Jacobi:** diagonal preconditioning \(M^{-1}=\operatorname{diag}(A)^{-1}\). CG requires every diagonal entry to be finite and strictly positive. BiCGSTAB and GMRES require every diagonal entry to be finite and nonzero.
+- **IncompleteCholesky0** uses natural-order IC(0) with CG. Setup requires finite positive diagonal entries and a symmetric sparsity pattern. Transposed entries must agree to within 64 times double machine epsilon times the larger magnitude. The factorization uses the diagonally equilibrated matrix. Each updated unit-scale pivot must exceed 32 times machine epsilon. Breakdown identifies the failing row and can occur even for an SPD matrix when eliminated fill would be needed.
+
+The factor stores one diagonal and the strict lower entries of the original CSR pattern. Two triangular solves apply the inverse of $L L^T$ using linear work in the stored factor size. `IncompleteCholesky0::apply` can reuse an immutable factor on several right-hand sides. The CG option constructs a factor once per invocation. The heat adapters invoke CG for each linear solve.
 
 GMRES uses right Jacobi preconditioning, modified Gram-Schmidt Arnoldi orthogonalization with a second reorthogonalization pass, and Givens rotations. Its restart length limits the Krylov subspace memory.
 
