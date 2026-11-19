@@ -78,6 +78,10 @@ if(NOVA_BUILD_EXAMPLES)
     target_link_libraries(nova_diffusion_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_diffusion_3d)
 
+    add_executable(nova_gmsh_diffusion_3d examples/gmsh_diffusion_3d/main.cpp)
+    target_link_libraries(nova_gmsh_diffusion_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_gmsh_diffusion_3d)
+
     add_executable(nova_transient_heat_3d examples/transient_heat_3d/main.cpp)
     target_link_libraries(nova_transient_heat_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_transient_heat_3d)
@@ -155,5 +159,7 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_adaptive_spatial_heat_smoke COMMAND nova_adaptive_spatial_heat_2d)
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
         add_test(NAME nova_diffusion_3d_smoke COMMAND nova_diffusion_3d)
+        add_test(NAME nova_gmsh_diffusion_3d_smoke COMMAND nova_gmsh_diffusion_3d
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh 7)
     endif()
 endif()
