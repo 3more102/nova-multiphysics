@@ -34,6 +34,12 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 | `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
 
+**Named physical groups:** In ASCII Gmsh MSH 2.2, `$PhysicalNames` can define quoted names for solid and surface groups. `--material`, `--heat-source`, `--temperature`, `--flux`, and `--convection` accept either an integer physical tag or the exact group name. Names are scoped by geometric dimension (3 for solids, 2 for surfaces); quote multiword names in your shell. Numeric tag 0 continues to represent untagged regions. Malformed or ambiguous records are rejected. For example:
+
+```sh
+nova_gmsh_diffusion_3d tests/data/unit_tetrahedron.msh --material solid 1 --temperature fixed-temperature 0 --heat-source solid 20
+```
+
 Use meters for mesh coordinates. Supply conforming four-node tetrahedra with shared
 interface vertices. Surface triangle records identify *exterior* faces. An interior
 physical triangle record is rejected. Omit interior surface records and identify

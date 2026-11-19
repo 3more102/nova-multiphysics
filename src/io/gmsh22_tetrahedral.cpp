@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <iomanip>
 #include <istream>
 #include <limits>
 #include <locale>
@@ -123,11 +124,37 @@ GmshTetrahedralMesh3D read_gmsh22_tetrahedra(std::istream& input) {
     }
     expect_line(input, "$EndMeshFormat");
 
+    GmshTetrahedralMesh3D result;
     std::string section = line_or_throw(input);
     if (section == "$PhysicalNames") {
         const std::size_t n = single_count(input);
+        std::set<std::pair<int, std::string>> dimension_names;
         for (std::size_t i = 0; i < n; ++i) {
-            static_cast<void>(line_or_throw(input));
+            std::istringstream entry(line_or_throw(input));
+            entry.imbue(std::locale::classic());
+            int dimension = -1;
+            int tag = 0;
+            std::string name;
+            if (!(entry >> dimension >> tag)) {
+                throw std::invalid_argument("Invalid Gmsh physical group dimension or tag.");
+            }
+            entry >> std::ws;
+            if (entry.peek() != '"') {
+                throw std::invalid_argument("Gmsh physical group name must be quoted.");
+            }
+            if (!(entry >> std::quoted(name)) || name.empty()) {
+                throw std::invalid_argument("Invalid Gmsh physical group name.");
+            }
+            entry >> std::ws;
+            if (!entry.eof() || dimension < 0 || dimension > 3 || tag <= 0) {
+                throw std::invalid_argument("Invalid Gmsh physical group record.");
+            }
+            if (!result.physical_names.emplace(std::make_pair(dimension, tag), name).second) {
+                throw std::invalid_argument("Duplicate Gmsh physical group dimension and tag.");
+            }
+            if (!dimension_names.emplace(dimension, name).second) {
+                throw std::invalid_argument("Ambiguous Gmsh physical group name within one dimension.");
+            }
         }
         expect_line(input, "$EndPhysicalNames");
         section = line_or_throw(input);
@@ -136,7 +163,6 @@ GmshTetrahedralMesh3D read_gmsh22_tetrahedra(std::istream& input) {
         throw std::invalid_argument("Expected $Nodes in Gmsh MSH 2.2 file.");
     }
 
-    GmshTetrahedralMesh3D result;
     std::map<std::uint64_t, std::size_t> ids;
     const std::size_t node_count = single_count(input);
     for (std::size_t i = 0; i < node_count; ++i) {

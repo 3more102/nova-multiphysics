@@ -73,6 +73,9 @@ NOVA_TEST(gmsh22_import_remaps_sparse_node_ids_and_preserves_physical_tags) {
     NOVA_REQUIRE(imported.mesh.elements.size() == 1U);
     NOVA_REQUIRE(imported.mesh.elements[0] == (nova::fem::Tetrahedron3D{1, 2, 3, 0}));
     NOVA_REQUIRE(imported.volume_physical_tags == std::vector<int>{42});
+    NOVA_REQUIRE(imported.physical_names.size() == 2U);
+    NOVA_REQUIRE(imported.physical_names.at({2, 7}) == "wall");
+    NOVA_REQUIRE(imported.physical_names.at({3, 42}) == "solid");
     NOVA_REQUIRE(imported.exterior_faces.size() == 4U);
     NOVA_REQUIRE(imported.exterior_physical_tags.size() == 4U);
     NOVA_REQUIRE(std::count(imported.exterior_physical_tags.begin(),
@@ -173,4 +176,32 @@ NOVA_TEST(gmsh22_import_rejects_unused_3d_vertices) {
     );
     file = replaced(file, "$EndNodes", "100 0.5 0.5 0.5\n$EndNodes");
     reject(file);
+}
+
+NOVA_TEST(gmsh22_import_preserves_named_groups_with_spaces_and_escaped_quotes) {
+    auto content = replaced(sample_mesh(), "2 7 \"wall\"", "2 7 \"hot exterior surface\"");
+    content = replaced(content, "3 42 \"solid\"", "3 42 \"solid \\\"core\\\" material\"");
+    const auto imported = parse(content);
+    NOVA_REQUIRE(imported.physical_names.at({2, 7}) == "hot exterior surface");
+    NOVA_REQUIRE(imported.physical_names.at({3, 42}) == "solid \"core\" material");
+
+    // Gmsh physical names are scoped by geometric dimension.
+    const auto cross_dimension = replaced(
+        sample_mesh(), "3 42 \"solid\"", "3 42 \"wall\"");
+    NOVA_REQUIRE(parse(cross_dimension).physical_names.size() == 2U);
+}
+
+NOVA_TEST(gmsh22_import_rejects_ambiguous_or_corrupt_physical_names) {
+    const auto with_extra_name = replaced(
+        sample_mesh(), "$PhysicalNames\n2\n", "$PhysicalNames\n3\n");
+    reject(replaced(with_extra_name, "$EndPhysicalNames",
+                    "2 8 \"wall\"\n$EndPhysicalNames")); // same name and dimension
+    reject(replaced(with_extra_name, "$EndPhysicalNames",
+                    "2 7 \"another\"\n$EndPhysicalNames")); // duplicate dimension/tag
+    reject(replaced(sample_mesh(), "2 7 \"wall\"", "4 7 \"wall\""));
+    reject(replaced(sample_mesh(), "2 7 \"wall\"", "2 0 \"wall\""));
+    reject(replaced(sample_mesh(), "2 7 \"wall\"", "2 7 wall"));
+    reject(replaced(sample_mesh(), "2 7 \"wall\"", "2 7 \"wall"));
+    reject(replaced(sample_mesh(), "2 7 \"wall\"", "2 7 \"wall\" garbage"));
+    reject(replaced(sample_mesh(), "2 7 \"wall\"", "2 nope \"wall\""));
 }

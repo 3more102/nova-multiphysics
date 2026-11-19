@@ -26,11 +26,11 @@ namespace fs = std::filesystem;
 using namespace nova::fem;
 
 constexpr const char* usage =
-    "Usage: nova_gmsh_diffusion_3d mesh.msh <dirichlet-tag>\n"
-    "   or: nova_gmsh_diffusion_3d mesh.msh --material volume-tag k ...\n"
-    "       [--temperature face-tag T] [--flux face-tag q_out]\n"
-    "       [--convection face-tag h T_ambient] [--source Q]\n"
-    "       [--heat-source volume-tag Q] ... [--vtk result.vtk]\n"
+    "Usage: nova_gmsh_diffusion_3d mesh.msh <dirichlet-tag-or-name>\n"
+    "   or: nova_gmsh_diffusion_3d mesh.msh --material volume-tag-or-name k ...\n"
+    "       [--temperature face-tag-or-name T] [--flux face-tag-or-name q_out]\n"
+    "       [--convection face-tag-or-name h T_ambient] [--source Q]\n"
+    "       [--heat-source volume-tag-or-name Q] ... [--vtk result.vtk]\n"
     "       [--flux-report]";
 
 template<class T>
@@ -44,10 +44,18 @@ T number(std::string_view token) {
     return value;
 }
 
-int physical_tag(std::string_view token) {
-    const int tag = number<int>(token);
-    if (tag < 0) throw std::invalid_argument("Physical tags must be nonnegative.");
-    return tag;
+int physical_tag(std::string_view token, int dimension,
+                 const nova::io::GmshTetrahedralMesh3D& mesh) {
+    int numeric{};
+    const auto parsed = std::from_chars(token.data(), token.data() + token.size(), numeric);
+    if (parsed.ec == std::errc{} && parsed.ptr == token.data() + token.size()) {
+        if (numeric < 0) throw std::invalid_argument("Physical tags must be nonnegative.");
+        return numeric;
+    }
+    for (const auto& [key, name] : mesh.physical_names) {
+        if (key.first == dimension && name == token) return key.second;
+    }
+    throw std::invalid_argument("Unknown Gmsh physical group: " + std::string(token));
 }
 
 ScalarField3D constant(double value) {
@@ -71,11 +79,12 @@ struct Settings {
     bool flux_report{};
 };
 
-Settings read_settings(int argc, char** argv) {
+Settings read_settings(int argc, char** argv,
+                       const nova::io::GmshTetrahedralMesh3D& mesh) {
     if (argc < 3) throw std::invalid_argument(usage);
     Settings settings;
     if (argc == 3 && !std::string_view(argv[2]).starts_with("--")) {
-        const int tag = physical_tag(argv[2]);
+        const int tag = physical_tag(argv[2], 2, mesh);
         if (tag == 0) throw std::invalid_argument("The example needs a positive Dirichlet tag.");
         settings.unit_example = true;
         settings.source = 1.0;
@@ -91,14 +100,14 @@ Settings read_settings(int argc, char** argv) {
     while (index < argc) {
         const auto option = next();
         if (option == "--material") {
-            const int tag = physical_tag(next());
+            const int tag = physical_tag(next(), 3, mesh);
             const double k = number<double>(next());
             if (!(k > 0.0)) throw std::invalid_argument("Material conductivity must be positive.");
             if (!settings.materials.emplace(tag, k).second) {
                 throw std::invalid_argument("Duplicate material tag " + std::to_string(tag));
             }
         } else if (option == "--heat-source") {
-            const int tag = physical_tag(next());
+            const int tag = physical_tag(next(), 3, mesh);
             const double heat = number<double>(next());
             if (!settings.heat_sources.emplace(tag, heat).second) {
                 throw std::invalid_argument("Duplicate heat source for volume tag " + std::to_string(tag));
@@ -113,7 +122,7 @@ Settings read_settings(int argc, char** argv) {
             if (settings.flux_report) throw std::invalid_argument("Duplicate --flux-report.");
             settings.flux_report = true;
         } else if (option == "--temperature" || option == "--flux" || option == "--convection") {
-            const int tag = physical_tag(next());
+            const int tag = physical_tag(next(), 2, mesh);
             Boundary condition{BoundaryKind::temperature, number<double>(next())};
             if (option == "--flux") condition.kind = BoundaryKind::flux;
             if (option == "--convection") {
@@ -229,13 +238,14 @@ void export_result(const fs::path& target, const ScalarDiffusion3DProblem& probl
 
 int main(int argc, char** argv) {
     try {
-        const auto settings = read_settings(argc, argv);
+        if (argc < 3) throw std::invalid_argument(usage);
         std::ifstream input(argv[1]);
         if (!input) throw std::runtime_error("Cannot open Gmsh input: " + std::string(argv[1]));
+        auto imported = nova::io::read_gmsh22_tetrahedra(input);
+        const auto settings = read_settings(argc, argv, imported);
         if (settings.vtk && fs::exists(*settings.vtk) && fs::equivalent(*settings.vtk, argv[1])) {
             throw std::invalid_argument("VTK output would overwrite the input mesh.");
         }
-        auto imported = nova::io::read_gmsh22_tetrahedra(input);
         auto problem = bind_problem(imported, settings);
 
         nova::linalg::SolverOptions options;
