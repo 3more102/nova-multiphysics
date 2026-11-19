@@ -55,6 +55,23 @@ with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
 per-volume sources add to the optional uniform `--source Q`. The verification suite also measures temperature and flux convergence
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
 
+### Transient 3D heat conduction (experimental C++ API)
+
+NOVA's P1 tetrahedral FEM heat solver now advances an initial temperature field
+with a consistent capacity matrix and existing stationary 3D conductivity
+assembly. It supports Backward Euler and Crank–Nicolson, fixed positive time
+steps, volumetric source terms, prescribed nodal and face temperatures,
+outward Neumann heat flux, Robin convection, and all current spatial/cellwise
+scalar or symmetric positive-definite tensor conductivity representations.
+Each step reports a discrete energy budget including prescribed-temperature
+reactions. The constrained CSR matrix is assembled once and reused.
+
+API: `nova/fem/transient_heat_3d.hpp`. Example:
+`./build/nova_transient_heat_3d`. See
+[formulation, verification and limitations](docs/TRANSIENT_HEAT_3D.md).
+This fixed-coefficient C++ prototype is not a validated 3D production
+thermal design tool.
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
@@ -148,6 +165,7 @@ Run the examples:
 ./build/nova_poisson_1d
 ./build/nova_diffusion_2d
 ./build/nova_transient_heat_2d
+./build/nova_transient_heat_3d
 ./build/nova_transient_flux_2d
 ./build/nova_adaptive_heat_2d
 ./build/nova_nonlinear_diffusion_1d
