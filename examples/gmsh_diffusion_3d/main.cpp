@@ -1,5 +1,6 @@
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
+#include "nova/fem/tagged_boundary_flux_3d.hpp"
 #include "nova/io/gmsh22_tetrahedral.hpp"
 #include "nova/io/vtk_legacy_3d.hpp"
 
@@ -11,6 +12,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <limits>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -27,7 +29,8 @@ constexpr const char* usage =
     "Usage: nova_gmsh_diffusion_3d mesh.msh <dirichlet-tag>\n"
     "   or: nova_gmsh_diffusion_3d mesh.msh --material volume-tag k ...\n"
     "       [--temperature face-tag T] [--flux face-tag q_out]\n"
-    "       [--convection face-tag h T_ambient] [--source Q] [--vtk result.vtk]";
+    "       [--convection face-tag h T_ambient] [--source Q] [--vtk result.vtk]\n"
+    "       [--flux-report]";
 
 template<class T>
 T number(std::string_view token) {
@@ -63,6 +66,7 @@ struct Settings {
     std::optional<double> source;
     std::optional<fs::path> vtk;
     bool unit_example{};
+    bool flux_report{};
 };
 
 Settings read_settings(int argc, char** argv) {
@@ -97,6 +101,9 @@ Settings read_settings(int argc, char** argv) {
         } else if (option == "--vtk") {
             if (settings.vtk) throw std::invalid_argument("Duplicate --vtk.");
             settings.vtk = fs::path(next());
+        } else if (option == "--flux-report") {
+            if (settings.flux_report) throw std::invalid_argument("Duplicate --flux-report.");
+            settings.flux_report = true;
         } else if (option == "--temperature" || option == "--flux" || option == "--convection") {
             const int tag = physical_tag(next());
             Boundary condition{BoundaryKind::temperature, number<double>(next())};
@@ -212,6 +219,27 @@ int main(int argc, char** argv) {
         const auto result = solve_scalar_diffusion_3d(problem, options);
         if (!result.linear_solver.converged) throw std::runtime_error(result.linear_solver.message);
         if (settings.vtk) export_result(*settings.vtk, problem, result.values, imported.volume_physical_tags);
+        if (settings.flux_report) {
+            const auto fields = evaluate_p1_tetrahedral_flux_3d(problem, result.values);
+            const auto report = evaluate_tagged_boundary_flux_3d(
+                problem.mesh, imported.exterior_faces, imported.exterior_physical_tags, fields);
+            long double net_rate = 0;
+            std::cout << std::setprecision(17)
+                      << "Boundary conductive flux (raw P1, non-equilibrated):\n";
+            for (const auto& group : report) {
+                std::cout << "  physical tag " << group.physical_tag
+                          << ": faces=" << group.face_count
+                          << " area_m2=" << group.area
+                          << " outward_W=" << group.outward_heat_rate << '\n';
+                net_rate += group.outward_heat_rate;
+            }
+            if (!std::isfinite(net_rate) ||
+                std::abs(net_rate) > static_cast<long double>(std::numeric_limits<double>::max())) {
+                throw std::overflow_error("Net outward heat rate is not finite.");
+            }
+            std::cout << "Net outward conductive heat rate [W]: "
+                      << static_cast<double>(net_rate) << '\n';
+        }
         const auto [lo, hi] = std::minmax_element(result.values.begin(), result.values.end());
         std::cout << std::setprecision(17)
                   << "NOVA imported Gmsh P1 tetrahedral diffusion\n"
