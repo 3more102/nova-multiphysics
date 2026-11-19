@@ -196,3 +196,49 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         (void)solve_transient_heat_3d(p, options);
     }));
 }
+
+NOVA_TEST(transient_heat_3d_time_refinement_recovers_expected_orders) {
+    // Independent semidiscrete reference: for the unit tetrahedron with
+    // nodes 0,1,2 held at zero, M_33=1/60 and K_33=1/6, so
+    // dT_3/dt = -10*T_3 and T_3(t)=10*exp(-10*t).
+    const auto p0 = unit_heat();
+    auto p = p0;
+    p.initial_temperature = {0.0, 0.0, 0.0, 10.0};
+    p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
+    const double exact = 10.0 * std::exp(-1.0);
+    const std::array<std::size_t, 3> step_counts{10U, 20U, 40U};
+
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        std::array<double, 3> errors{};
+        for (std::size_t i = 0; i < step_counts.size(); ++i) {
+            TransientHeat3DOptions options;
+            options.scheme = scheme;
+            options.steps = step_counts[i];
+            options.time_step = 0.1 / static_cast<double>(options.steps);
+            options.solver_options.relative_tolerance = 1e-13;
+            options.solver_options.preconditioner =
+                nova::linalg::PreconditionerType::Jacobi;
+
+            const auto result = solve_transient_heat_3d(p, options);
+            NOVA_REQUIRE_NEAR(result.final_time, 0.1, 1e-14);
+            NOVA_REQUIRE(result.linear_solvers.size() == options.steps);
+            errors[i] = std::abs(result.temperature[3] - exact);
+            NOVA_REQUIRE(errors[i] > 1e-8);
+            for (std::size_t node = 0; node < 3; ++node) {
+                NOVA_REQUIRE_NEAR(result.temperature[node], 0.0, 1e-14);
+            }
+        }
+
+        NOVA_REQUIRE(errors[0] > errors[1] && errors[1] > errors[2]);
+        const double minimum_ratio =
+            scheme == TransientHeat3DScheme::BackwardEuler ? 1.7 : 3.6;
+        const double maximum_ratio =
+            scheme == TransientHeat3DScheme::BackwardEuler ? 2.3 : 4.4;
+        for (std::size_t i = 0; i < errors.size() - 1; ++i) {
+            const double ratio = errors[i] / errors[i + 1];
+            NOVA_REQUIRE(ratio > minimum_ratio);
+            NOVA_REQUIRE(ratio < maximum_ratio);
+        }
+    }
+}
