@@ -90,6 +90,19 @@ Remaining:
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.
 
+### M3 extension — transient P1 tetrahedral conduction
+
+**Implemented as an experimental 3D C++ API; validation ongoing.**
+
+- Fixed-step Backward Euler and Crank–Nicolson with consistent tetrahedral thermal mass.
+- Spatial or cellwise positive volumetric heat capacity; all supported steady 3D scalar/tensor material forms.
+- Time-independent volumetric generation, prescribed temperatures, outward fluxes and convection.
+- Once-assembled sparse time-step operators, correction-form CG and per-step energy budgets.
+- Single-tetra closed-form, insulated source, heterogeneous tensor patch and boundary-exchange regressions.
+
+Remaining: transient Gmsh model configuration, adaptive 3D steps, time-varying functions,
+streaming simulation results, cross-mesh convergence and independent solver comparison.
+
 ## M4 — Structural mechanics
 - Vector-valued H1 spaces.
 - Linear elasticity.
