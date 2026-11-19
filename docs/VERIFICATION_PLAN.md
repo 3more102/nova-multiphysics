@@ -123,6 +123,14 @@ Structural:
 - Rigid-body mode checks.
 - Reaction-force equilibrium.
 
+## Experimental electrostatics on P1 tetrahedra
+- Parallel-plate capacitor: exact affine potential, capacitance 2 F and stored energy 100 J.
+- Anisotropic SPD permittivity tensor: exact affine E and D and stored energy 36.5 J.
+- One-free-DOF tetrahedral space-charge solution with exact potential and energy.
+- Additive spatial plus per-cell charge and cell-only charge with omitted spatial callback.
+- Rejection of non-positive permittivity, conflicting material representations and non-finite charge.
+- Installed SDK consumer solves the parallel-plate benchmark.
+
 ## Gate 6: multiphysics coupling
 - Electrothermal Joule-heating benchmark.
 - Segregated versus monolithic comparison on a controlled problem.
