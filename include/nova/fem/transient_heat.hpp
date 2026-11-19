@@ -4,6 +4,7 @@
 #include "nova/linalg/solver_types.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace nova::fem {
@@ -21,6 +22,10 @@ struct TransientHeatTimeOptions {
     double start_time{0.0};
     std::size_t steps{1U};
     linalg::SolverOptions solver_options{};
+    // Optional streaming observer, called for the projected initial state and
+    // after each successful step. References remain valid only during the call.
+    // An observer exception aborts the simulation and is not suppressed.
+    std::function<void(double, const std::vector<double>&)> step_observer{};
 };
 
 // Each energy term is integrated over the step, positive into the domain.
