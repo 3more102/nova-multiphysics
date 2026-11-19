@@ -118,14 +118,14 @@ int main(int argc, char** argv) {
               << "Time [s]: " << result.final_time << '\n'
               << "Temperature range [K]: " << *lo << " ... " << *hi << '\n'
               << "Final-step energy residual [J]: " << energy.balance_residual << '\n'
-              << "Final-step CG iterations: " << result.linear_solvers.back().iterations << '\\n';
+              << "Final-step CG iterations: " << result.linear_solvers.back().iterations << '\n';
     if (series) {
         std::cout << "ParaView collection: " << destination.string()
-                  << " (" << frames.size() << " frames)\\n";
+                  << " (" << frames.size() << " frames)\n";
     }
     return 0;
     } catch (const std::exception& error) {
-        std::cerr << "NOVA transient heat error: " << error.what() << '\\n';
+        std::cerr << "NOVA transient heat error: " << error.what() << '\n';
         return 1;
     }
 }
