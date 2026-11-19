@@ -79,6 +79,17 @@ See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_
 This is a C++ API and a structured-box demonstration, not yet an imported
 Gmsh transient study with ParaView time-series output.
 
+### ParaView 3D thermal time-series export (experimental)
+
+Run `nova_transient_heat_3d --vtk-series cooling` to write one legacy VTK
+scalar-temperature frame for the initial state and each of the example's
+five thermal steps, together with a `cooling.pvd` collection for ParaView.
+The collection contains physical timestamps with full double precision.
+Only safe filename prefixes are accepted. The generic C++
+`nova/io/vtk_series.hpp` writer validates strictly increasing times and
+safe, unique frame basenames before writing XML. This is an example-level
+export facility, not yet a Gmsh-tagged transient study interface.
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior

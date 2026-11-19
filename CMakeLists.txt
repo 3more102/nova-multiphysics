@@ -42,6 +42,7 @@ add_library(nova_core
     src/fem/energy_balance_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
+    src/io/vtk_series.cpp
     src/fem/mesh_refinement_2d.cpp
     src/fem/poisson_1d.cpp
     src/fem/diffusion_2d.cpp
@@ -125,6 +126,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_transient_heat_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
+        tests/test_vtk_series.cpp
         tests/test_diffusion_h1_2d.cpp
         tests/test_transient_heat_2d.cpp
         tests/test_adaptive_heat_2d.cpp
@@ -170,6 +172,9 @@ if(NOVA_BUILD_TESTS)
             PASS_REGULAR_EXPRESSION "FEM signed energy balance defect")
         find_package(Python3 COMPONENTS Interpreter QUIET)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME nova_transient_3d_pvd_verification COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_transient_pvd_3d.py"
+                "$<TARGET_FILE:nova_transient_heat_3d>")
             add_test(NAME nova_tagged_wall_verification COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_tagged_conduction_3d.py"
                 "$<TARGET_FILE:nova_gmsh_diffusion_3d>"

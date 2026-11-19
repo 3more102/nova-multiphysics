@@ -65,6 +65,21 @@ const auto output = solve_transient_heat_3d(problem, options);
 
 The `diffusion` member also accepts the existing steady 3D `dirichlet_constraints`, `dirichlet_faces`, `neumann_faces`, `robin_faces`, `cell_source`, scalar and tensor conductivity representations. Heat capacity must be provided **either** as `volumetric_capacity` **or** a `cell_volumetric_capacity` vector; both simultaneously are invalid.
 
+## Visualizing a thermal time series in ParaView
+
+The `nova_transient_heat_3d` executable can export its standard heated-box
+example using `--vtk-series cooling`. It produces `cooling.pvd` and
+`cooling_000000.vtk` through `cooling_000005.vtk`, where frame 0 is the
+initial state and the remaining frames correspond to the five completed
+thermal steps. Open the `.pvd` file in ParaView to animate temperatures.
+The export writes nodal `temperature` only; cellwise heat flux is not yet
+written for transient states. The library's `write_pvd_collection` utility
+checks timestep ordering and frame names before writing the XML collection.
+
+The end-to-end Python verification reads the collection and the VTK scalar
+values independently, checking frame count, physical time, initial
+conditions, and the final temperature range against the solver's output.
+
 ## Reproduce and tests
 
 ```sh
