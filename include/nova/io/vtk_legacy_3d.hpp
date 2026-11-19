@@ -24,10 +24,13 @@ void write_legacy_vtk_scalar_3d(
 
 // A continuous nodal temperature field, the original Gmsh volume tags and
 // discontinuous physical heat flux vectors in mesh.elements order.
+// Optional effective cell heat generation (W/m^3) is written as a scalar
+// heat_generation field without changing legacy output when absent.
 void write_legacy_vtk_conduction_3d(
     std::ostream& output, const fem::TetrahedralMesh3D& mesh,
     const std::vector<double>& temperature, std::span<const int> material_ids,
-    std::span<const fem::P1TetrahedralFlux3D> cell_fields
+    std::span<const fem::P1TetrahedralFlux3D> cell_fields,
+    std::span<const double> cell_heat_generation = {}
 );
 
 } // namespace nova::io

@@ -183,8 +183,16 @@ ScalarDiffusion3DProblem bind_problem(nova::io::GmshTetrahedralMesh3D& imported,
 // Publish only a completely written frame. An exclusively created sibling
 // directory also separates simultaneous writers and keeps rename on one volume.
 void export_result(const fs::path& target, const ScalarDiffusion3DProblem& problem,
-                   const std::vector<double>& temperature, const std::vector<int>& tags) {
+                   const std::vector<double>& temperature, const std::vector<int>& tags,
+                   double uniform_source) {
     const auto fields = evaluate_p1_tetrahedral_flux_3d(problem, temperature);
+    std::vector<double> effective_generation = problem.cell_source;
+    for (double& value : effective_generation) {
+        value += uniform_source;
+        if (!std::isfinite(value)) {
+            throw std::overflow_error("Effective cell heat generation is non-finite.");
+        }
+    }
     fs::path temporary;
     for (std::size_t attempt = 0; ; ++attempt) {
         temporary = target;
@@ -203,7 +211,8 @@ void export_result(const fs::path& target, const ScalarDiffusion3DProblem& probl
     } cleanup{frame, temporary};
     std::ofstream output(frame);
     if (!output) throw std::runtime_error("Cannot open VTK output: " + frame.string());
-    nova::io::write_legacy_vtk_conduction_3d(output, problem.mesh, temperature, tags, fields);
+    nova::io::write_legacy_vtk_conduction_3d(
+        output, problem.mesh, temperature, tags, fields, effective_generation);
     output.close();
     if (!output) throw std::runtime_error("Could not finish writing VTK output.");
     fs::rename(frame, target);
@@ -228,7 +237,9 @@ int main(int argc, char** argv) {
         if (!settings.unit_example) options.absolute_tolerance = 0.0;
         const auto result = solve_scalar_diffusion_3d(problem, options);
         if (!result.linear_solver.converged) throw std::runtime_error(result.linear_solver.message);
-        if (settings.vtk) export_result(*settings.vtk, problem, result.values, imported.volume_physical_tags);
+        if (settings.vtk) export_result(
+            *settings.vtk, problem, result.values, imported.volume_physical_tags,
+            settings.source.value_or(0.0));
         const auto [lo, hi] = std::minmax_element(result.values.begin(), result.values.end());
         std::cout << std::setprecision(17)
                   << "NOVA imported Gmsh P1 tetrahedral diffusion\n"
