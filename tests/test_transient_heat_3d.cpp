@@ -196,3 +196,110 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         (void)solve_transient_heat_3d(p, options);
     }));
 }
+
+NOVA_TEST(transient_heat_3d_integrated_cell_tensors_preserve_source_energy) {
+    auto p = unit_heat();
+    const auto box = make_box_mesh_3d(0, 1, 0, 1, 0, 1, 1, 1, 1);
+    p.diffusion.mesh = box.mesh;
+    p.diffusion.cell_diffusivity.clear();
+    p.diffusion.cell_diffusivity_tensors.assign(box.mesh.elements.size(),
+        SymmetricTensor3D{3.0, 2.0, 1.0, 0.2, 0.1, 0.0});
+    for (std::size_t i = 1; i < p.diffusion.cell_diffusivity_tensors.size(); i += 2) {
+        p.diffusion.cell_diffusivity_tensors[i] =
+            SymmetricTensor3D{4.0, 2.0, 1.5, -0.2, 0.0, 0.1};
+    }
+    p.diffusion.source = [](double, double, double) { return 8.0; };
+    p.cell_volumetric_capacity.assign(box.mesh.elements.size(), 4.0);
+    p.initial_temperature.assign(box.mesh.nodes.size(), 300.0);
+    TransientHeat3DOptions options;
+    options.time_step = 0.25;
+    options.steps = 6;
+    options.scheme = TransientHeat3DScheme::CrankNicolson;
+    options.solver_options.relative_tolerance = 1e-12;
+    options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    const auto result = solve_transient_heat_3d(p, options);
+    NOVA_REQUIRE(result.diagnostics.size() == 6U);
+    for (double temperature : result.temperature) {
+        NOVA_REQUIRE_NEAR(temperature, 303.0, 2e-8);
+    }
+    for (const auto& d : result.diagnostics) {
+        NOVA_REQUIRE_NEAR(d.source_energy, 2.0, 1e-10);
+        NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 1e-8);
+    }
+    NOVA_REQUIRE_NEAR(result.diagnostics.back().heat_content, 1212.0, 2e-7);
+}
+
+NOVA_TEST(transient_heat_3d_integrated_cell_tensors_validate_input) {
+    auto p = unit_heat();
+    p.diffusion.cell_diffusivity.clear();
+    p.diffusion.cell_diffusivity_tensors = {
+        SymmetricTensor3D{2.0, 3.0, 4.0, 0.0, 0.0, 0.0}
+    };
+    const auto valid = solve_transient_heat_3d(p);
+    NOVA_REQUIRE(valid.temperature.size() == 4U);
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = p;
+        bad.diffusion.cell_diffusivity_tensors[0].xx = -1.0;
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = p;
+        bad.diffusion.cell_diffusivity_tensors.push_back(
+            SymmetricTensor3D{2.0, 3.0, 4.0, 0.0, 0.0, 0.0});
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = p;
+        bad.diffusion.cell_diffusivity = {1.0};
+        (void)solve_transient_heat_3d(bad);
+    }));
+}
+
+NOVA_TEST(transient_heat_3d_temporal_convergence_matches_exact_decay) {
+    // A single unit tetrahedron with only vertex 3 free has
+    // M_33 = 1/60 and K_33 = 1/6, hence dT_3/dt = -10 T_3.
+    // The exact final temperature at t=0.2 with T_3(0)=10 is
+    // 10*exp(-2). Halving dt should reduce BE error by ~2 and
+    // CN error by ~4. This separately verifies temporal order,
+    // not just one-step algebra or global heat conservation.
+    const double exact = 10.0 * std::exp(-2.0);
+    const auto temporal_error = [&](TransientHeat3DScheme scheme,
+                                    double dt, std::size_t steps) {
+        auto p = unit_heat();
+        p.initial_temperature = {0.0, 0.0, 0.0, 10.0};
+        p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
+        TransientHeat3DOptions options;
+        options.scheme = scheme;
+        options.start_time = 3.0;
+        options.time_step = dt;
+        options.steps = steps;
+        options.solver_options.relative_tolerance = 1e-13;
+        options.solver_options.preconditioner =
+            nova::linalg::PreconditionerType::Jacobi;
+        const auto result = solve_transient_heat_3d(p, options);
+        NOVA_REQUIRE_NEAR(result.final_time, 3.2, 1e-14);
+        NOVA_REQUIRE(result.diagnostics.size() == steps);
+        NOVA_REQUIRE_NEAR(result.diagnostics.back().time, 3.2, 1e-14);
+        for (const auto& d : result.diagnostics) {
+            NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 1e-11);
+        }
+        return std::abs(result.temperature[3] - exact);
+    };
+
+    const double be_coarse = temporal_error(
+        TransientHeat3DScheme::BackwardEuler, 0.05, 4);
+    const double be_fine = temporal_error(
+        TransientHeat3DScheme::BackwardEuler, 0.025, 8);
+    NOVA_REQUIRE(be_fine > 0.0);
+    NOVA_REQUIRE(be_coarse / be_fine > 1.75);
+    NOVA_REQUIRE(be_coarse / be_fine < 2.2);
+
+    const double cn_coarse = temporal_error(
+        TransientHeat3DScheme::CrankNicolson, 0.05, 4);
+    const double cn_fine = temporal_error(
+        TransientHeat3DScheme::CrankNicolson, 0.025, 8);
+    NOVA_REQUIRE(cn_fine > 0.0);
+    NOVA_REQUIRE(cn_coarse / cn_fine > 3.5);
+    NOVA_REQUIRE(cn_coarse / cn_fine < 4.5);
+    NOVA_REQUIRE(cn_fine < be_fine);
+}
