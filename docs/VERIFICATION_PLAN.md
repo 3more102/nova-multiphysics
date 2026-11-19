@@ -101,6 +101,7 @@ Implemented transient thermal regression cases:
 - Constant field with homogeneous natural heat fluxes.
 - Rejection of invalid time step, negative volumetric capacity, non-finite heat source,
   interior Dirichlet edges, and conflicting corner temperature values.
+- 3D transient analytical time-step refinement on a single free tetrahedral DOF: expected first-order Backward Euler and second-order Crank–Nicolson error ratios, nonzero physical start time, and per-step energy closure.
 
 Required next verification:
 - Quantify discrete energy decay, adaptive error-controller sensitivity, and step efficiency for a cooling plate.
