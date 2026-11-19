@@ -1,5 +1,17 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · shared stationary/transient 3D VTK export (CI pending)
+
+The stationary P1 tetrahedral diffusion example now accepts `--vtk output.vtk`
+using the same streaming, mesh-based `nova::io::write_legacy_vtk_scalar_3d`
+implementation introduced for transient heat. The steady output uses the
+`solution` scalar; the transient output uses `temperature`. Both examples
+check stream creation and closing, and CTest now exercises both export paths.
+This branch is stacked on PR #33 and does **not** import the separate,
+overlapping H1-space-based VTK writer from PR #31. That duplicate PR must be
+reconciled during upstream integration. GitHub CI and direct ParaView visual
+inspection remain required; no licensing readiness is implied.
+
 ## 19 November 2026 · P1 tetrahedral ParaView export (pending CI)
 
 A standalone legacy VTK UNSTRUCTURED_GRID writer exports validated P1
