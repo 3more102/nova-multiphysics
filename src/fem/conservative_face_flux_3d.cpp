@@ -193,10 +193,10 @@ ConservativeFaceFlux3DResult reconstruct_conservative_face_flux_3d(
     std::vector<long double> component_defect(n, 0.0L);
     std::vector<std::size_t> representative(n, no_cell);
     std::vector<bool> has_open_boundary(n, false);
-    long double scale = 1.0L;
+    std::vector<long double> component_scale(n, 1.0L);
     for (std::size_t cell = 0; cell < n; ++cell) {
         rhs[cell] = cell_source_heat_rate[cell];
-        scale += std::abs(rhs[cell]);
+        component_scale[components.find(cell)] += std::abs(rhs[cell]);
     }
     for (const auto& [key, face] : faces) {
         static_cast<void>(key);
@@ -204,7 +204,8 @@ ConservativeFaceFlux3DResult reconstruct_conservative_face_flux_3d(
         if (face.neighbor != no_cell) rhs[face.neighbor] += face.rate;
         if (face.adjustable) has_open_boundary[components.find(face.cell)] = true;
         if (face.neighbor == no_cell && !face.adjustable) {
-            scale += std::abs(static_cast<long double>(face.rate));
+            component_scale[components.find(face.cell)] +=
+                std::abs(static_cast<long double>(face.rate));
         }
     }
     for (std::size_t cell = 0; cell < n; ++cell) {
@@ -215,7 +216,7 @@ ConservativeFaceFlux3DResult reconstruct_conservative_face_flux_3d(
     std::vector<bool> pinned(n, false);
     for (std::size_t root = 0; root < n; ++root) {
         if (representative[root] == no_cell || has_open_boundary[root]) continue;
-        if (std::abs(component_defect[root]) > 1e-11L * scale) {
+        if (std::abs(component_defect[root]) > 1e-11L * component_scale[root]) {
             throw std::invalid_argument(
                 "Unanchored component has an incompatible total source/flux budget.");
         }
@@ -272,12 +273,18 @@ ConservativeFaceFlux3DResult reconstruct_conservative_face_flux_3d(
     out.faces.reserve(faces.size());
     out.cell_balance_defect.resize(n);
     std::vector<long double> defect(n, 0.0L);
-    long double max_heat = 1.0L;
-    for (std::size_t cell = 0; cell < n; ++cell) defect[cell] = cell_source_heat_rate[cell];
+    std::vector<long double> local_scale(n, 1.0L);
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        defect[cell] = cell_source_heat_rate[cell];
+        local_scale[cell] += std::abs(static_cast<long double>(cell_source_heat_rate[cell]));
+    }
     for (const auto& [key, face] : faces) {
         defect[face.cell] -= face.rate;
         if (face.neighbor != no_cell) defect[face.neighbor] += face.rate;
-        max_heat = std::max(max_heat, std::abs(static_cast<long double>(face.rate)));
+        local_scale[face.cell] += std::abs(static_cast<long double>(face.rate));
+        if (face.neighbor != no_cell) {
+            local_scale[face.neighbor] += std::abs(static_cast<long double>(face.rate));
+        }
         out.faces.push_back({key, face.cell,
             face.neighbor == no_cell ? std::nullopt : std::optional<std::size_t>{face.neighbor},
             face.area, face.rate});
@@ -287,8 +294,11 @@ ConservativeFaceFlux3DResult reconstruct_conservative_face_flux_3d(
         out.maximum_absolute_cell_defect = std::max(
             out.maximum_absolute_cell_defect, std::abs(out.cell_balance_defect[cell]));
     }
-    if (out.maximum_absolute_cell_defect > 1e-9L*max_heat) {
-        throw std::runtime_error("Face equilibration did not converge to local conservation.");
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        if (std::abs(defect[cell]) > 1e-9L * local_scale[cell]) {
+            throw std::runtime_error(
+                "Face equilibration did not converge to per-cell conservation.");
+        }
     }
     out.correction_iterations = solver.iterations;
     return out;
