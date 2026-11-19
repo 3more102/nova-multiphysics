@@ -41,6 +41,7 @@ add_library(nova_core
     src/fem/tagged_boundary_flux_3d.cpp
     src/fem/transient_heat_3d.cpp
     src/fem/energy_balance_3d.cpp
+    src/physics/electrostatics_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
     src/io/vtk_series.cpp
@@ -91,6 +92,10 @@ if(NOVA_BUILD_EXAMPLES)
     target_link_libraries(nova_transient_heat_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_transient_heat_3d)
 
+    add_executable(nova_electrostatics_3d examples/electrostatics_3d/main.cpp)
+    target_link_libraries(nova_electrostatics_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_electrostatics_3d)
+
     add_executable(nova_transient_heat_2d examples/transient_heat_2d/main.cpp)
     target_link_libraries(nova_transient_heat_2d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_transient_heat_2d)
@@ -126,6 +131,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_p1_flux_3d.cpp
         tests/test_tagged_boundary_flux_3d.cpp
         tests/test_energy_balance_3d.cpp
+        tests/test_electrostatics_3d.cpp
         tests/test_transient_heat_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
@@ -156,6 +162,7 @@ if(NOVA_BUILD_TESTS)
     set_tests_properties(nova_source_guard_rejects_duplicate PROPERTIES WILL_FAIL TRUE)
     if(NOVA_BUILD_EXAMPLES)
         add_test(NAME nova_diffusion_3d_smoke COMMAND nova_diffusion_3d)
+        add_test(NAME nova_electrostatics_3d_smoke COMMAND nova_electrostatics_3d)
         add_test(NAME nova_gmsh_diffusion_3d_smoke COMMAND nova_gmsh_diffusion_3d
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh" 7)
         add_test(NAME nova_gmsh_named_groups_smoke COMMAND nova_gmsh_diffusion_3d
@@ -214,7 +221,7 @@ endif()
 if(NOVA_BUILD_EXAMPLES)
     foreach(example IN ITEMS
         nova_poisson_1d nova_diffusion_2d nova_diffusion_3d
-        nova_gmsh_diffusion_3d nova_transient_heat_3d
+        nova_gmsh_diffusion_3d nova_transient_heat_3d nova_electrostatics_3d
         nova_transient_heat_2d nova_transient_flux_2d
         nova_adaptive_heat_2d nova_nonlinear_diffusion_1d)
         nova_assert_unique_target_sources(${example})
