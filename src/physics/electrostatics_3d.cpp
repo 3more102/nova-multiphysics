@@ -8,7 +8,6 @@
 #include <limits>
 #include <stdexcept>
 #include <utility>
-#include <utility>
 
 namespace nova::physics {
 
