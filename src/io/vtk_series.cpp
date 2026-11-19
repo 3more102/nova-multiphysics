@@ -78,6 +78,7 @@ void write_pvd_collection(
 
     StreamFormatGuard guard(output);
     output.imbue(std::locale::classic());
+    output.unsetf(std::ios::floatfield); // Do not inherit fixed/scientific from the caller.
     output << std::setprecision(std::numeric_limits<double>::max_digits10);
     output << "<?xml version=\"1.0\"?>\n"
            << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
