@@ -305,6 +305,10 @@ TransientHeat3DResult solve_transient_heat_3d(
     result.linear_solvers.reserve(options.steps);
     result.diagnostics.reserve(options.steps);
 
+    // The constrained system is constant for this time-independent 3D model.
+    // Keep its IC(0) factor alive across every step and warm-started RHS.
+    nova::linalg::CachedConjugateGradient cached_cg;
+
     // Publish the constraint-projected initial field as frame zero.
     if (options.on_step) options.on_step(0U, options.start_time, state);
 
@@ -335,7 +339,7 @@ TransientHeat3DResult solve_transient_heat_3d(
                 throw std::overflow_error("Transient 3D correction load overflowed.");
             }
         }
-        auto solved = nova::linalg::solve_conjugate_gradient(
+        auto solved = cached_cg.solve(
             system, increment_rhs, options.solver_options
         );
         if (!solved.converged) {
