@@ -1,5 +1,6 @@
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/energy_balance_3d.hpp"
+#include "nova/fem/interior_flux_jumps_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 #include "nova/fem/tagged_boundary_flux_3d.hpp"
 #include "nova/io/gmsh22_tetrahedral.hpp"
@@ -33,7 +34,7 @@ constexpr const char* usage =
     "       [--material-tensor volume-tag-or-name xx yy zz xy xz yz]\n"
     "       [--convection face-tag-or-name h T_ambient] [--source Q]\n"
     "       [--heat-source volume-tag-or-name Q] ... [--vtk result.vtk]\n"
-    "       [--flux-report] [--balance-report]";
+    "       [--flux-report] [--balance-report] [--jump-report]";
 
 template<class T>
 T number(std::string_view token) {
@@ -81,6 +82,7 @@ struct Settings {
     bool unit_example{};
     bool flux_report{};
     bool balance_report{};
+    bool jump_report{};
 };
 
 Settings read_settings(int argc, char** argv,
@@ -135,6 +137,9 @@ Settings read_settings(int argc, char** argv,
         } else if (option == "--flux-report") {
             if (settings.flux_report) throw std::invalid_argument("Duplicate --flux-report.");
             settings.flux_report = true;
+        } else if (option == "--jump-report") {
+            if (settings.jump_report) throw std::invalid_argument("Duplicate --jump-report.");
+            settings.jump_report = true;
         } else if (option == "--balance-report") {
             if (settings.balance_report) throw std::invalid_argument("Duplicate --balance-report.");
             settings.balance_report = true;
@@ -312,6 +317,16 @@ int main(int argc, char** argv) {
             }
             std::cout << "Net outward conductive heat rate [W]: "
                       << static_cast<double>(net_rate) << '\n';
+        }
+        if (settings.jump_report) {
+            const auto fields = evaluate_p1_tetrahedral_flux_3d(problem, result.values);
+            const auto jumps = evaluate_interior_flux_jumps_3d(problem.mesh, fields);
+            std::cout << std::setprecision(17)
+                      << "Interior flux-jump indicator (raw P1; no source/boundary residual): "
+                      << jumps.global_indicator << '\n'
+                      << "Interior faces checked: " << jumps.faces.size() << '\n'
+                      << "Maximum interior normal heat-flux jump [W/m^2]: "
+                      << jumps.maximum_absolute_normal_jump << '\n';
         }
         if (settings.balance_report) {
             const auto balance = evaluate_diffusion_energy_balance_3d(problem, result.values);
