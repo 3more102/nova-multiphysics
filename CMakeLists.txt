@@ -6,6 +6,9 @@ project(NOVA_Multiphysics
     LANGUAGES CXX
 )
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 option(NOVA_BUILD_TESTS "Build NOVA automated tests" ON)
 option(NOVA_BUILD_EXAMPLES "Build NOVA examples" ON)
 
@@ -35,6 +38,7 @@ add_library(nova_core
     src/fem/diffusion_3d.cpp
     src/fem/p1_flux_3d.cpp
     src/fem/tagged_boundary_flux_3d.cpp
+    src/fem/steady_energy_balance_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
     src/fem/mesh_refinement_2d.cpp
@@ -52,10 +56,11 @@ add_library(NOVA::Core ALIAS nova_core)
 target_compile_features(nova_core PUBLIC cxx_std_20)
 target_include_directories(nova_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 set_target_properties(nova_core PROPERTIES
     CXX_EXTENSIONS OFF
+    EXPORT_NAME Core
     POSITION_INDEPENDENT_CODE ON
 )
 nova_enable_warnings(nova_core)
@@ -111,6 +116,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_cell_conduction_3d.cpp
         tests/test_p1_flux_3d.cpp
         tests/test_tagged_boundary_flux_3d.cpp
+        tests/test_steady_energy_balance_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
         tests/test_diffusion_h1_2d.cpp
@@ -144,6 +150,13 @@ if(NOVA_BUILD_TESTS)
             --convection 102 12 300 --flux-report)
         set_tests_properties(nova_tagged_flux_report_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "Net outward conductive heat rate")
+        add_test(NAME nova_tagged_energy_report_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
+            --material 11 2 --material 22 6 --temperature 101 400
+            --convection 102 12 300 --heat-source 11 120 --heat-source 22 360
+            --energy-report)
+        set_tests_properties(nova_tagged_energy_report_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "Energy imbalance")
         find_package(Python3 COMPONENTS Interpreter QUIET)
         if(Python3_Interpreter_FOUND)
             add_test(NAME nova_tagged_wall_verification COMMAND "${Python3_EXECUTABLE}"
@@ -156,3 +169,39 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)
     endif()
 endif()
+
+# Install a relocatable CMake package for downstream C++20 applications.
+# This packages the experimental SDK, not a commercial release or license grant.
+set(NOVA_INSTALL_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/NOVA")
+
+install(TARGETS nova_core EXPORT NOVATargets
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nova"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    FILES_MATCHING PATTERN "*.hpp"
+)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NOVAConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/NOVAConfig.cmake"
+    INSTALL_DESTINATION "${NOVA_INSTALL_CMAKE_DIR}"
+)
+# NOVA is pre-1.0: do not promise compatibility across minor versions.
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/NOVAConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMinorVersion
+)
+install(EXPORT NOVATargets
+    FILE NOVATargets.cmake
+    NAMESPACE NOVA::
+    DESTINATION "${NOVA_INSTALL_CMAKE_DIR}"
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/NOVAConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/NOVAConfigVersion.cmake"
+    DESTINATION "${NOVA_INSTALL_CMAKE_DIR}"
+)

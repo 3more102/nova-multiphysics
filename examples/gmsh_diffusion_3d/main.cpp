@@ -1,6 +1,7 @@
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 #include "nova/fem/tagged_boundary_flux_3d.hpp"
+#include "nova/fem/steady_energy_balance_3d.hpp"
 #include "nova/io/gmsh22_tetrahedral.hpp"
 #include "nova/io/vtk_legacy_3d.hpp"
 
@@ -31,7 +32,7 @@ constexpr const char* usage =
     "       [--temperature face-tag T] [--flux face-tag q_out]\n"
     "       [--convection face-tag h T_ambient] [--source Q]\n"
     "       [--heat-source volume-tag Q] ... [--vtk result.vtk]\n"
-    "       [--flux-report]";
+    "       [--flux-report] [--energy-report]";
 
 template<class T>
 T number(std::string_view token) {
@@ -69,6 +70,7 @@ struct Settings {
     std::optional<fs::path> vtk;
     bool unit_example{};
     bool flux_report{};
+    bool energy_report{};
 };
 
 Settings read_settings(int argc, char** argv) {
@@ -112,6 +114,9 @@ Settings read_settings(int argc, char** argv) {
         } else if (option == "--flux-report") {
             if (settings.flux_report) throw std::invalid_argument("Duplicate --flux-report.");
             settings.flux_report = true;
+        } else if (option == "--energy-report") {
+            if (settings.energy_report) throw std::invalid_argument("Duplicate --energy-report.");
+            settings.energy_report = true;
         } else if (option == "--temperature" || option == "--flux" || option == "--convection") {
             const int tag = physical_tag(next());
             Boundary condition{BoundaryKind::temperature, number<double>(next())};
@@ -247,6 +252,17 @@ int main(int argc, char** argv) {
         if (settings.vtk) export_result(
             *settings.vtk, problem, result.values, imported.volume_physical_tags,
             settings.source.value_or(0.0));
+        if (settings.energy_report) {
+            const auto energy = evaluate_steady_energy_balance_3d(problem, result.values);
+            std::cout << std::setprecision(17)
+                      << "Finite-element energy balance (outward positive):\n"
+                      << "  Volumetric heat generation [W]: " << energy.volumetric_generation << '\n'
+                      << "  Prescribed Neumann outward rate [W]: " << energy.neumann_outward << '\n'
+                      << "  Robin outward rate [W]: " << energy.robin_outward << '\n'
+                      << "  Dirichlet reaction outward rate [W]: " << energy.dirichlet_outward << '\n'
+                      << "  Total outward heat rate [W]: " << energy.total_outward << '\n'
+                      << "  Energy imbalance [W]: " << energy.imbalance << '\n';
+        }
         if (settings.flux_report) {
             const auto fields = evaluate_p1_tetrahedral_flux_3d(problem, result.values);
             const auto report = evaluate_tagged_boundary_flux_3d(

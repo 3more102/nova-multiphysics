@@ -32,7 +32,8 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--source Q` | Uniform volumetric heating in W/m³. Default zero. |
 | `--heat-source volume_id Q` | Signed volumetric source density in W/m³ for a selected volume ID. Can repeat for different IDs; unlisted IDs add zero. This density adds to `--source`. |
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
-| `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
+| `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward *raw P1 conductive* heat rate (W), including untagged ID 0. |
+| `--energy-report` | Print the global **discrete FEM** heat budget (volume source, Neumann flux, Robin convection, and Dirichlet reactions), all in W. |
 
 Use meters for mesh coordinates. Supply conforming four-node tetrahedra with shared
 interface vertices. Surface triangle records identify *exterior* faces. An interior
@@ -105,6 +106,52 @@ equilibrated. Reported surface rates therefore are estimates and their sum
 is **not** an enforced conservation identity. The volume-integrated source
 and FEM reaction require a separate consistent balance computation before
 the output can be used as a strict energy-conservation certificate.
+
+## Consistent global energy-balance diagnostic
+
+Add `--energy-report` to the tagged Gmsh command for a conservation
+check based on the **assembled finite-element weak form**, rather than
+the non-equilibrated raw P1 surface fluxes. The public function
+`evaluate_steady_energy_balance_3d(problem, nodal_temperatures)`
+is also available to C++ callers. It applies the same degree-two
+quadrature, cell material selection, and signed boundary-flux convention
+as the 3D solver. It recomputes all terms only when requested, so normal
+solve performance is unchanged.
+
+The report uses outward-positive watts. For the PDE
+`-div(K grad(T)) = Q`, the balance is
+
+```text
+Dirichlet outward (negative weak-form nodal reaction)
++ prescribed Neumann outward
++ Robin outward (integral of h * (T_h - T_ambient))
+- volumetric heat generation
+= energy imbalance [W]
+```
+
+Only **physical** prescribed temperature vertices contribute to the
+Dirichlet reaction. Temporary gauge pins used to solve balanced
+pure-Neumann components are excluded. Cell-specific and uniform sources
+are additive and both included in the volume integral. In a converged
+solution, the signed imbalance approaches zero to the accuracy of the
+unconstrained FEM equations and floating-point quadrature. The report
+can detect a non-converged or independently perturbed field; its
+imbalance is **not** a bound on discretization error or local conservation.
+
+This budget differs from `--flux-report`: the latter estimates the
+physical surface flux from raw per-element gradients, and may not close
+even when the FEM weak-form energy budget does. The global Dirichlet
+reaction cannot safely be assigned to individual physical surface IDs
+when prescribed-temperature surfaces share vertices. Local
+element-by-element conservative fluxes still require separate
+equilibration.
+
+The automated tests cover generated heat with constant prescribed
+temperature (zero raw flux but nonzero Dirichlet reaction), mixed
+sources and Neumann conditions, the series-resistance Robin wall,
+balanced pure Neumann data, perturbed free-node fields, and invalid
+inputs. CTest additionally exercises `--energy-report` with regional
+generation on the supplied two-layer Gmsh wall.
 
 ## Analytical verification
 
