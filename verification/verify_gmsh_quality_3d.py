@@ -42,6 +42,16 @@ def check():
     rejected = execute(cli, mesh, "--check-mesh", "--min-mean-ratio", "0.9")
     if rejected.returncode == 0 or "quality gate failed" not in rejected.stderr:
         raise AssertionError("Low-quality mesh was not rejected by strict threshold")
+    thermal_args = ("--material", "solid", "1",
+                    "--temperature", "fixed-temperature", "0")
+    passed_solve = execute(cli, mesh, *thermal_args,
+                           "--quality-report", "--min-mean-ratio", "0.8")
+    if passed_solve.returncode != 0 or "NOVA imported Gmsh" not in passed_solve.stdout:
+        raise AssertionError(f"Valid quality-gated solve failed: {passed_solve.stderr}")
+    blocked_solve = execute(cli, mesh, *thermal_args,
+                            "--min-mean-ratio", "0.9")
+    if blocked_solve.returncode == 0 or "CG iterations" in blocked_solve.stdout:
+        raise AssertionError("Failed mesh quality gate did not prevent the solver")
     for invalid in ("0", "-0.1", "1.01", "nan"):
         bad = execute(cli, mesh, "--check-mesh", "--min-mean-ratio", invalid)
         if bad.returncode == 0:
