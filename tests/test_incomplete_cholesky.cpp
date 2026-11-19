@@ -3,6 +3,7 @@
 #include "nova/fem/adaptive_heat_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/linalg/bicgstab.hpp"
+#include "nova/linalg/conjugate_gradient.hpp"
 #include "nova/linalg/gmres.hpp"
 #include "nova/linalg/incomplete_cholesky.hpp"
 
@@ -156,5 +157,74 @@ NOVA_TEST(ic0_and_jacobi_agree_on_a_transient_tensor_heat_history) {
     for (const auto& d : ic.diagnostics) NOVA_REQUIRE_NEAR(d.balance_residual, 0, 2e-11);
     for (const auto& solve : ic.substep_solvers) {
         NOVA_REQUIRE(solve.converged && solve.message.find("IC(0)") != std::string::npos);
+    }
+}
+
+NOVA_TEST(ic0_cache_reuses_an_exact_matrix_and_rebuilds_after_changes) {
+    const auto matrix = CsrMatrix::from_triplets(3, 3, {
+        {0,0,4}, {1,1,5}, {2,2,6},
+        {0,1,-1}, {1,0,-1}, {1,2,-1}, {2,1,-1}});
+    const auto changed = CsrMatrix::from_triplets(3, 3, {
+        {0,0,4}, {1,1,5.5}, {2,2,6},
+        {0,1,-1}, {1,0,-1}, {1,2,-1}, {2,1,-1}});
+    const auto diagonal = CsrMatrix::from_triplets(3, 3, {
+        {0,0,4}, {1,1,5}, {2,2,6}});
+    const std::array solution_one{1.0, -2.0, 3.0};
+    const std::array solution_two{-4.0, 3.0, 1.0};
+    const auto opts = ic_options();
+    CachedConjugateGradient cache;
+
+    const auto first = cache.solve(matrix, matrix.multiply(solution_one), opts);
+    NOVA_REQUIRE(first.converged && cache.factor_builds() == 1);
+    const auto second = cache.solve(matrix, matrix.multiply(solution_two), opts);
+    NOVA_REQUIRE(second.converged && cache.factor_builds() == 1);
+    for (std::size_t i = 0; i < 3; ++i) {
+        NOVA_REQUIRE_NEAR(first.solution[i], solution_one[i], 1e-11);
+        NOVA_REQUIRE_NEAR(second.solution[i], solution_two[i], 1e-11);
+    }
+
+    const auto third = cache.solve(changed, changed.multiply(solution_one), opts);
+    NOVA_REQUIRE(third.converged && cache.factor_builds() == 2);
+    const auto fourth = cache.solve(diagonal, diagonal.multiply(solution_two), opts);
+    NOVA_REQUIRE(fourth.converged && cache.factor_builds() == 3);
+    for (std::size_t i = 0; i < 3; ++i) {
+        NOVA_REQUIRE_NEAR(third.solution[i], solution_one[i], 1e-11);
+        NOVA_REQUIRE_NEAR(fourth.solution[i], solution_two[i], 1e-11);
+    }
+    // A different solver choice cannot accidentally use the stored IC(0) factor.
+    auto jacobi = opts;
+    jacobi.preconditioner = PreconditionerType::Jacobi;
+    NOVA_REQUIRE(cache.solve(matrix, matrix.multiply(solution_one), jacobi).converged);
+    NOVA_REQUIRE(cache.factor_builds() == 3);
+    NOVA_REQUIRE(cache.solve(matrix, matrix.multiply(solution_one), opts).converged);
+    NOVA_REQUIRE(cache.factor_builds() == 4);
+}
+
+NOVA_TEST(ic0_fixed_step_heat_agrees_with_jacobi_for_changing_robin_matrix) {
+    using namespace nova::fem;
+    auto p = TransientHeat3DProblem{};
+    p.mesh = make_box_mesh_3d(0,1,0,1,0,1, 2,2,2).mesh;
+    p.volumetric_capacity = [](double,double,double) { return 1.0; };
+    p.conductivity = [](double,double,double) { return 2.0; };
+    p.initial_temperature = [](double x,double y,double) { return x+y; };
+    p.source = [](double,double,double,double) { return 0.0; };
+    const auto box = make_box_mesh_3d(0,1,0,1,0,1, 2,2,2);
+    for (const auto& face : box.boundary_faces) {
+        p.robin_faces.push_back({face,
+            [](double,double,double,double time) { return 1.0 + time; },
+            [](double,double,double,double time) { return 3.0 - time; }});
+    }
+    TransientHeat3DOptions o;
+    o.steps = 4;
+    o.time_step = 0.125;
+    o.solver_options = ic_options();
+    const auto ic = solve_transient_heat_3d(p, o);
+    o.solver_options.preconditioner = PreconditionerType::Jacobi;
+    const auto jacobi = solve_transient_heat_3d(p, o);
+    for (std::size_t i = 0; i < ic.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(ic.temperature[i], jacobi.temperature[i], 1e-10);
+    }
+    for (const auto& solver : ic.linear_solvers) {
+        NOVA_REQUIRE(solver.converged);
     }
 }
