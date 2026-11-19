@@ -102,7 +102,7 @@ Implemented:
 - Streaming state observers, optional bounded-memory result history, and validated ParaView PVD/VTK output.
 - Optional spatial source plus additive cellwise source; absent source fields represent unforced conduction.
 - Regression tests for heterogeneous cellwise SPD tensors, cell-only heating, zero-source equilibrium and energy-budget closure.
-- Instance-owned IC(0) factor reuse across identical fixed-step 3D transient matrices; exact matrix changes trigger factor rebuilds.
+- Instance-owned IC(0) factor reuse across identical fixed-step 2D and 3D transient matrices; exact coefficient or sparsity changes trigger factor rebuilds.
 - Analytical single-mode time-step refinement verifies first-order Backward Euler and second-order Crank–Nicolson with nonzero start time and per-step energy closure.
 - Gmsh MSH 2.2 and 4.1 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
 
