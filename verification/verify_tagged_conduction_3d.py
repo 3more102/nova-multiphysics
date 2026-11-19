@@ -106,6 +106,8 @@ def read_fields(path, require_heat_generation=False):
 
 
 MATERIALS = ["--material", "22", "6", "--material", "11", "2"]
+TENSOR_MATERIALS = ["--material-tensor", "11", "2", "9", "4", "0", "0", "0",
+                    "--material", "22", "6"]
 HOT = ["--temperature", "101", "400"]
 ROBIN = ["--convection", "102", "12", "300"]
 
@@ -148,8 +150,8 @@ def read_balance(stdout):
     return fields
 
 
-def check_wall(exe, mesh, vtk):
-    execution = run(exe, mesh, vtk, MATERIALS + HOT + ROBIN
+def check_wall(exe, mesh, vtk, materials=MATERIALS):
+    execution = run(exe, mesh, vtk, materials + HOT + ROBIN
                     + ["--flux-report", "--balance-report"])
     energy = read_balance(execution.stdout)
     measure("FEM wall generation [W]", energy["source"], 0, 2e-8)
@@ -347,6 +349,15 @@ def check_invalid_cases(exe, mesh, vtk):
         (MATERIALS + ["--material", "22", "3"], "Duplicate material"),
         (MATERIALS + ["--source", "nan"], "finite number"),
         (MATERIALS + HOT + ["--balance-report", "--balance-report"], "Duplicate --balance-report"),
+        (TENSOR_MATERIALS + ["--material", "11", "5"], "Duplicate material"),
+        (TENSOR_MATERIALS + ["--material-tensor", "11", "1", "1", "1", "0", "0", "0"],
+         "Duplicate material"),
+        (["--material-tensor", "11", "1", "1", "1", "2", "0", "0",
+          "--material", "22", "6"] + HOT + ROBIN, "invalid cross terms"),
+        (["--material-tensor", "11", "1", "1", "1", "nan", "0", "0",
+          "--material", "22", "6"] + HOT + ROBIN, "finite number"),
+        (["--material-tensor", "11", "2", "3", "4", "0", "0", "0"] + HOT,
+         "Missing conductivity"),
         (MATERIALS + HOT + ["--heat-source", "777", "1"], "No volume"),
         (MATERIALS + HOT + ["--heat-source", "11", "1", "--heat-source", "11", "2"],
          "Duplicate heat source"),
@@ -390,6 +401,8 @@ if __name__ == "__main__":
         root = Path(work)
         output = root / "wall.vtk"
         check_wall(args.exe.resolve(), args.fixture, output)
+        print("Checking analytical mixed tensor / scalar tagged wall")
+        check_wall(args.exe.resolve(), args.fixture, output, TENSOR_MATERIALS)
         private_fixture = root / "input.msh"
         shutil.copyfile(args.fixture, private_fixture)
         check_invalid_cases(args.exe.resolve(), private_fixture, output)

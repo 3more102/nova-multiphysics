@@ -165,6 +165,25 @@ NOVA_TEST(energy_balance_3d_explicit_internal_pin_is_counted_as_a_reaction) {
     NOVA_REQUIRE(b.max_free_equation_residual < 1e-8);
 }
 
+
+NOVA_TEST(energy_balance_3d_anisotropic_spd_materials_preserve_heating_budget) {
+    auto problem = wall(true);
+    for (double longitudinal : problem.cell_diffusivity) {
+        problem.cell_diffusivity_tensors.push_back({
+            longitudinal, 4.0, 5.0, 0.0, 0.0, 0.0
+        });
+    }
+    problem.cell_diffusivity.clear();
+    const auto solution = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(solution.linear_solver.converged);
+    const auto b = evaluate_diffusion_energy_balance_3d(problem, solution.values);
+    NOVA_REQUIRE_NEAR(b.generated_heat, 240.0, 2e-9);
+    NOVA_REQUIRE_NEAR(b.robin_outward_heat, 384.0, 2e-7);
+    NOVA_REQUIRE_NEAR(b.constraint_outward_heat, -144.0, 2e-7);
+    NOVA_REQUIRE_NEAR(b.signed_balance_defect, 0.0, 2e-8);
+    NOVA_REQUIRE(b.max_free_equation_residual < 2e-8);
+}
+
 NOVA_TEST(energy_balance_3d_validates_sources_mesh_boundary_and_constraints) {
     auto problem = wall(false);
     auto solution = solve_scalar_diffusion_3d(problem);
