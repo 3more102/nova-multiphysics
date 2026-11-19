@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 using namespace nova::fem;
@@ -195,4 +196,66 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         options.steps = 0;
         (void)solve_transient_heat_3d(p, options);
     }));
+}
+
+NOVA_TEST(transient_heat_3d_observer_receives_projected_initial_and_every_step) {
+    auto p = unit_heat();
+    p.initial_temperature = {999.0, 1.0, 2.0, 3.0};
+    p.diffusion.dirichlet_constraints = {{0, 8.0}};
+    TransientHeat3DOptions options;
+    options.time_step = 0.125;
+    options.start_time = 2.0;
+    options.steps = 3;
+    options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    std::vector<std::size_t> indices;
+    std::vector<double> times;
+    std::vector<std::vector<double>> snapshots;
+    options.state_observer = [&](std::size_t step, double time,
+                                 const std::vector<double>& temperature) {
+        indices.push_back(step);
+        times.push_back(time);
+        snapshots.push_back(temperature);
+    };
+    const auto result = solve_transient_heat_3d(p, options);
+    NOVA_REQUIRE(indices.size() == options.steps + 1U);
+    NOVA_REQUIRE(times.size() == indices.size());
+    NOVA_REQUIRE(snapshots.size() == indices.size());
+    for (std::size_t i = 0; i < indices.size(); ++i) {
+        NOVA_REQUIRE(indices[i] == i);
+        NOVA_REQUIRE_NEAR(times[i], options.start_time +
+            static_cast<double>(i) * options.time_step, 1e-14);
+        NOVA_REQUIRE(snapshots[i].size() == p.initial_temperature.size());
+        NOVA_REQUIRE_NEAR(snapshots[i][0], 8.0, 1e-13);
+    }
+    NOVA_REQUIRE_NEAR(snapshots[0][1], 1.0, 1e-15);
+    NOVA_REQUIRE_NEAR(snapshots[0][2], 2.0, 1e-15);
+    NOVA_REQUIRE_NEAR(snapshots[0][3], 3.0, 1e-15);
+    for (std::size_t i = 0; i < result.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(snapshots.back()[i], result.temperature[i], 1e-14);
+    }
+    NOVA_REQUIRE_NEAR(times.back(), result.final_time, 1e-14);
+}
+
+NOVA_TEST(transient_heat_3d_observer_exception_propagates_without_extra_steps) {
+    auto p = unit_heat();
+    TransientHeat3DOptions options;
+    options.time_step = 0.125;
+    options.steps = 4;
+    options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    std::vector<std::size_t> observed;
+    options.state_observer = [&](std::size_t step, double,
+                                 const std::vector<double>&) {
+        observed.push_back(step);
+        if (step == 1U) throw std::runtime_error("snapshot export failed");
+    };
+    bool propagated = false;
+    try {
+        (void)solve_transient_heat_3d(p, options);
+    } catch (const std::runtime_error& e) {
+        propagated = std::string(e.what()) == "snapshot export failed";
+    }
+    NOVA_REQUIRE(propagated);
+    NOVA_REQUIRE(observed.size() == 2U);
+    NOVA_REQUIRE(observed[0] == 0U);
+    NOVA_REQUIRE(observed[1] == 1U);
 }
