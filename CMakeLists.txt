@@ -26,6 +26,7 @@ endfunction()
 add_library(nova_core
     src/linalg/csr_matrix.cpp
     src/linalg/conjugate_gradient.cpp
+    src/linalg/incomplete_cholesky.cpp
     src/linalg/bicgstab.cpp
     src/linalg/gmres.cpp
     src/nonlinear/newton_solver.cpp
@@ -125,6 +126,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_main.cpp
         tests/test_csr_matrix.cpp
         tests/test_conjugate_gradient.cpp
+        tests/test_incomplete_cholesky.cpp
         tests/test_bicgstab.cpp
         tests/test_gmres.cpp
         tests/test_newton_solver.cpp
