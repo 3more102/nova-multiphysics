@@ -4,7 +4,10 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <span>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace {
 using namespace nova::fem;
@@ -195,4 +198,96 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         options.steps = 0;
         (void)solve_transient_heat_3d(p, options);
     }));
+}
+
+NOVA_TEST(transient_heat_3d_streaming_reports_exact_states_and_retains_metadata) {
+    auto p = unit_heat();
+    p.cell_volumetric_capacity = {4.0};
+    p.diffusion.source = [](double, double, double) { return 8.0; };
+    p.initial_temperature = {300, 300, 300, 300};
+    TransientHeat3DOptions opts;
+    opts.start_time = 2.0;
+    opts.time_step = 0.25;
+    opts.steps = 4;
+    opts.scheme = TransientHeat3DScheme::CrankNicolson;
+    opts.retain_step_solutions = false;
+    opts.solver_options.relative_tolerance = 1e-13;
+    opts.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    std::vector<double> times;
+    std::vector<std::vector<double>> frames;
+    opts.step_observer = [&](double t, std::span<const double> values) {
+        times.push_back(t);
+        frames.emplace_back(values.begin(), values.end());
+    };
+    const auto result = solve_transient_heat_3d(p, opts);
+    NOVA_REQUIRE(times.size() == 5);
+    NOVA_REQUIRE(frames.size() == 5);
+    NOVA_REQUIRE(result.linear_solvers.size() == 4);
+    NOVA_REQUIRE(result.diagnostics.size() == 4);
+    for (std::size_t step = 0; step < 5; ++step) {
+        NOVA_REQUIRE_NEAR(times[step], 2.0 + 0.25 * static_cast<double>(step), 1e-14);
+        NOVA_REQUIRE(frames[step].size() == 4);
+        for (const double t : frames[step]) {
+            NOVA_REQUIRE_NEAR(t, 300.0 + 0.5 * static_cast<double>(step), 3e-9);
+        }
+        if (step != 0) {
+            NOVA_REQUIRE(result.linear_solvers[step - 1].converged);
+            NOVA_REQUIRE(result.linear_solvers[step - 1].solution.empty());
+            NOVA_REQUIRE_NEAR(result.diagnostics[step - 1].time, times[step], 1e-14);
+        }
+    }
+    for (std::size_t node = 0; node < 4; ++node) {
+        NOVA_REQUIRE_NEAR(result.temperature[node], frames.back()[node], 1e-14);
+    }
+    opts.step_observer = {};
+    opts.retain_step_solutions = true;
+    const auto legacy = solve_transient_heat_3d(p, opts);
+    for (std::size_t step = 0; step < 4; ++step) {
+        NOVA_REQUIRE(legacy.linear_solvers[step].solution.size() == 4);
+        for (std::size_t node = 0; node < 4; ++node) {
+            NOVA_REQUIRE_NEAR(legacy.linear_solvers[step].solution[node],
+                              frames[step + 1][node], 1e-12);
+        }
+        NOVA_REQUIRE_NEAR(legacy.diagnostics[step].balance_residual,
+                          result.diagnostics[step].balance_residual, 1e-12);
+    }
+}
+
+NOVA_TEST(transient_heat_3d_initial_observer_receives_projected_dirichlet_state) {
+    auto p = unit_heat();
+    p.diffusion.dirichlet_constraints = {{0, 250.0}};
+    p.initial_temperature = {10.0, 20.0, 30.0, 40.0};
+    TransientHeat3DOptions opts;
+    opts.start_time = 1.5;
+    opts.time_step = 0.05;
+    std::vector<double> initial;
+    std::size_t observations = 0;
+    opts.step_observer = [&](double t, std::span<const double> values) {
+        if (observations++ == 0) {
+            NOVA_REQUIRE_NEAR(t, 1.5, 1e-15);
+            initial.assign(values.begin(), values.end());
+        }
+    };
+    (void)solve_transient_heat_3d(p, opts);
+    NOVA_REQUIRE(observations == 2);
+    NOVA_REQUIRE(initial.size() == 4);
+    NOVA_REQUIRE_NEAR(initial[0], 250.0, 1e-15);
+    NOVA_REQUIRE_NEAR(initial[1], 20.0, 1e-15);
+    NOVA_REQUIRE_NEAR(initial[2], 30.0, 1e-15);
+    NOVA_REQUIRE_NEAR(initial[3], 40.0, 1e-15);
+}
+
+NOVA_TEST(transient_heat_3d_observer_exceptions_propagate) {
+    auto p = unit_heat();
+    TransientHeat3DOptions opts;
+    opts.step_observer = [](double, std::span<const double>) {
+        throw std::runtime_error("observer failure");
+    };
+    bool caught = false;
+    try {
+        (void)solve_transient_heat_3d(p, opts);
+    } catch (const std::runtime_error& e) {
+        caught = std::string(e.what()) == "observer failure";
+    }
+    NOVA_REQUIRE(caught);
 }
