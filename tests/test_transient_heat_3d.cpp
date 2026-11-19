@@ -196,3 +196,54 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         (void)solve_transient_heat_3d(p, options);
     }));
 }
+
+
+NOVA_TEST(transient_heat_3d_analytical_temporal_convergence) {
+    // Three fixed vertices leave one dynamic DOF on the unit tetrahedron.
+    // M_33=1/60, K_33=1/6, hence T'(t)=-10*T(t) and T(t)=10*exp(-10*t).
+    // Check global order over the same physical duration while halving dt.
+    auto p = unit_heat();
+    p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
+    p.initial_temperature = {0,0,0,10};
+    constexpr double elapsed = 0.4;
+    constexpr double reference = 10.0 * std::exp(-10.0 * elapsed);
+    const std::array<double, 3> time_steps{0.1, 0.05, 0.025};
+
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        std::array<double, 3> errors{};
+        for (std::size_t i = 0; i < time_steps.size(); ++i) {
+            TransientHeat3DOptions options;
+            options.scheme = scheme;
+            options.start_time = 3.0;
+            options.time_step = time_steps[i];
+            options.steps = static_cast<std::size_t>(
+                std::lround(elapsed / time_steps[i]));
+            options.solver_options.relative_tolerance = 1e-13;
+            options.solver_options.preconditioner =
+                nova::linalg::PreconditionerType::Jacobi;
+
+            const auto result = solve_transient_heat_3d(p, options);
+            NOVA_REQUIRE_NEAR(result.final_time, 3.4, 2e-14);
+            NOVA_REQUIRE(result.diagnostics.size() == options.steps);
+            for (std::size_t n = 0; n < 3; ++n) {
+                NOVA_REQUIRE_NEAR(result.temperature[n], 0.0, 1e-14);
+            }
+            NOVA_REQUIRE_NEAR(result.diagnostics.back().balance_residual,
+                              0.0, 1e-10);
+            errors[i] = std::abs(result.temperature[3] - reference);
+            NOVA_REQUIRE(std::isfinite(errors[i]) && errors[i] > 1e-7);
+        }
+
+        for (std::size_t i = 0; i + 1 < errors.size(); ++i) {
+            NOVA_REQUIRE(errors[i + 1] < errors[i]);
+            const double order = std::log(errors[i] / errors[i + 1]) /
+                                 std::log(2.0);
+            if (scheme == TransientHeat3DScheme::BackwardEuler) {
+                NOVA_REQUIRE(order > 0.9 && order < 1.2);
+            } else {
+                NOVA_REQUIRE(order > 1.8 && order < 2.1);
+            }
+        }
+    }
+}
