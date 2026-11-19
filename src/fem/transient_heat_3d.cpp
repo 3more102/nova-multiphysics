@@ -296,6 +296,9 @@ TransientHeat3DResult solve_transient_heat_3d(
     result.final_time = final_time;
     result.linear_solvers.reserve(options.steps);
     result.diagnostics.reserve(options.steps);
+    if (options.state_observer) {
+        options.state_observer(0U, options.start_time, state);
+    }
 
     for (std::size_t step = 1; step <= options.steps; ++step) {
         std::vector<double> rhs = rhs_operator.multiply(state);
@@ -370,6 +373,9 @@ TransientHeat3DResult solve_transient_heat_3d(
         state = next;
         result.diagnostics.push_back(diag);
         result.linear_solvers.push_back(std::move(solved));
+        if (options.state_observer) {
+            options.state_observer(step, diag.time, state);
+        }
     }
     result.temperature = std::move(state);
     return result;
