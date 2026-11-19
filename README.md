@@ -69,7 +69,9 @@ The constant time-step CSR system is reused between steps; the solver
 computes temperature corrections to avoid loss of precision for small
 updates relative to absolute temperature. Each step reports heat content,
 volumetric energy, imposed flux, convection, Dirichlet reactions and the
-discrete energy-balance residual.
+discrete energy-balance residual. Optional `on_state` callbacks stream the
+initial and every completed temperature field; disable `retain_step_solutions`
+for long runs without retaining full per-step temperature history.
 
 ```sh
 ./build/nova_transient_heat_3d
