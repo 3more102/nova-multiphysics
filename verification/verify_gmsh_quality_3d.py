@@ -48,6 +48,12 @@ def check():
                            "--quality-report", "--min-mean-ratio", "0.8")
     if passed_solve.returncode != 0 or "NOVA imported Gmsh" not in passed_solve.stdout:
         raise AssertionError(f"Valid quality-gated solve failed: {passed_solve.stderr}")
+    # A threshold implies reporting, and explicit reporting must be accepted
+    # regardless of the order in which the two equivalent options are supplied.
+    passed_solve_reordered = execute(cli, mesh, *thermal_args,
+                                     "--min-mean-ratio", "0.8", "--quality-report")
+    if passed_solve_reordered.returncode != 0:
+        raise AssertionError(f"Reordered quality options failed: {passed_solve_reordered.stderr}")
     blocked_solve = execute(cli, mesh, *thermal_args,
                             "--min-mean-ratio", "0.9")
     if blocked_solve.returncode == 0 or "CG iterations" in blocked_solve.stdout:
