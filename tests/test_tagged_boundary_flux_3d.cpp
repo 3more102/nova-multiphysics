@@ -116,11 +116,11 @@ NOVA_TEST(tagged_boundary_flux_rejects_duplicate_missing_interior_and_invalid_da
     }));
     NOVA_REQUIRE(rejects([&] {
         (void)evaluate_tagged_boundary_flux_3d(
-            problem.mesh, std::array{faces[0]}, std::array{-1}, fields);
+            problem.mesh, std::array<BoundaryFace3D, 1>{faces[0]}, std::array{-1}, fields);
     }));
     NOVA_REQUIRE(rejects([&] {
         (void)evaluate_tagged_boundary_flux_3d(
-            problem.mesh, std::array{BoundaryFace3D{0,1,99}}, std::array{1}, fields);
+            problem.mesh, std::array<BoundaryFace3D, 1>{BoundaryFace3D{0,1,99}}, std::array{1}, fields);
     }));
     NOVA_REQUIRE(rejects([&] {
         (void)evaluate_tagged_boundary_flux_3d(
@@ -144,6 +144,6 @@ NOVA_TEST(tagged_boundary_flux_rejects_duplicate_missing_interior_and_invalid_da
     };
     NOVA_REQUIRE(rejects([&] {
         (void)evaluate_tagged_boundary_flux_3d(
-            problem.mesh, std::array{BoundaryFace3D{0,1,2}}, std::array{9}, two_fields);
+            problem.mesh, std::array<BoundaryFace3D, 1>{BoundaryFace3D{0,1,2}}, std::array{9}, two_fields);
     }));
 }
