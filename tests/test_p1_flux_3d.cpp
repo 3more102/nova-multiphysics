@@ -49,13 +49,21 @@ NOVA_TEST(p1_3d_flux_uses_degree_two_quadrature_for_variable_scalar_material) {
     using namespace nova::fem;
     ScalarDiffusion3DProblem problem;
     problem.mesh = unit_tetrahedron();
-    problem.diffusivity = [](double x, double, double) { return 1.0 + x; };
     const std::array nodal{1.0, 2.0, 3.0, -2.0};
-    const auto fields = evaluate_p1_tetrahedral_flux_3d(problem, nodal);
+    problem.diffusivity = [](double x, double, double) { return 1.0 + x; };
+    const auto linear = evaluate_p1_tetrahedral_flux_3d(problem, nodal);
     // The mean x-coordinate of this tetrahedron is 1/4.
-    NOVA_REQUIRE_NEAR(fields[0].flux.x, -1.25, 1e-14);
-    NOVA_REQUIRE_NEAR(fields[0].flux.y, -2.50, 1e-14);
-    NOVA_REQUIRE_NEAR(fields[0].flux.z, 3.75, 1e-14);
+    NOVA_REQUIRE_NEAR(linear[0].flux.x, -1.25, 1e-14);
+    NOVA_REQUIRE_NEAR(linear[0].flux.y, -2.50, 1e-14);
+    NOVA_REQUIRE_NEAR(linear[0].flux.z, 3.75, 1e-14);
+
+    // The exact mean of x^2 over the reference tetrahedron is 1/10.
+    // A single centroid sample would return 1 + 1/16 instead of 1.1.
+    problem.diffusivity = [](double x, double, double) { return 1.0 + x*x; };
+    const auto quadratic = evaluate_p1_tetrahedral_flux_3d(problem, nodal);
+    NOVA_REQUIRE_NEAR(quadratic[0].flux.x, -1.10, 1e-14);
+    NOVA_REQUIRE_NEAR(quadratic[0].flux.y, -2.20, 1e-14);
+    NOVA_REQUIRE_NEAR(quadratic[0].flux.z, 3.30, 1e-14);
 }
 
 NOVA_TEST(p1_3d_flux_handles_all_six_anisotropic_tensor_components) {
