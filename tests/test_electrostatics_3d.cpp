@@ -120,3 +120,19 @@ NOVA_TEST(electrostatics_3d_rejects_nonphysical_inputs) {
     catch (const std::invalid_argument&) { charge_rejected = true; }
     NOVA_REQUIRE(charge_rejected);
 }
+
+NOVA_TEST(electrostatics_3d_unit_tetra_space_charge_exact_fem) {
+    Electrostatics3DProblem p;
+    p.mesh = {{{0,0,0}, {1,0,0}, {0,1,0}, {0,0,1}}, {{0,1,2,3}}};
+    p.cell_permittivity = {1.0};
+    p.free_charge_density = [](double, double, double) { return 4.0; };
+    p.potential_constraints = {{0, 0.0}, {2, 0.0}, {3, 0.0}};
+
+    // A single free P1 DOF: K_11 = epsilon*volume = 1/6;
+    // F_1 = rho*volume/4 = 1/6, so V_1 = F_1/K_11 = 1 V.
+    const auto result = solve_electrostatics_3d(p);
+    NOVA_REQUIRE(result.linear_solver.converged);
+    NOVA_REQUIRE_NEAR(result.potential[1], 1.0, 1e-11);
+    NOVA_REQUIRE_NEAR(result.electric_field[0].x, -1.0, 1e-11);
+    NOVA_REQUIRE_NEAR(result.stored_energy_joules, 1.0 / 12.0, 1e-11);
+}
