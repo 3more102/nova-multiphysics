@@ -170,7 +170,6 @@ ctest --test-dir build --output-on-failure
 Run the examples:
 ~~~bash
 ./build/nova_poisson_1d
-./build/nova_transient_heat_3d
 ./build/nova_diffusion_2d
 ./build/nova_transient_heat_2d
 ./build/nova_transient_flux_2d
