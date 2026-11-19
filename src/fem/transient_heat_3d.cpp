@@ -294,8 +294,10 @@ TransientHeat3DResult solve_transient_heat_3d(
     const auto capacity_weights = mass.multiply(std::vector<double>(n, 1.0));
     TransientHeat3DResult result;
     result.final_time = final_time;
-    result.linear_solvers.reserve(options.steps);
-    result.diagnostics.reserve(options.steps);
+    if (options.store_step_history) {
+        result.linear_solvers.reserve(options.steps);
+        result.diagnostics.reserve(options.steps);
+    }
 
     for (std::size_t step = 1; step <= options.steps; ++step) {
         std::vector<double> rhs = rhs_operator.multiply(state);
@@ -339,8 +341,9 @@ TransientHeat3DResult solve_transient_heat_3d(
                 throw std::overflow_error("Transient 3D corrected temperature overflowed.");
             }
         }
-        // Publish the physical state rather than the internal correction.
-        solved.solution = next;
+        // Only retain full per-step nodal vectors when explicitly requested.
+        // Otherwise the caller can stream the completed step via on_step.
+        if (options.store_step_history) solved.solution = next;
         const auto unconstrained_lhs = lhs.multiply(next);
         const auto previous_robin = robin.multiply(state);
         const auto next_robin = robin.multiply(next);
@@ -367,9 +370,15 @@ TransientHeat3DResult solve_transient_heat_3d(
             throw std::overflow_error("Transient 3D energy diagnostic overflowed.");
         }
 
-        state = next;
-        result.diagnostics.push_back(diag);
-        result.linear_solvers.push_back(std::move(solved));
+        state = std::move(next);
+        if (options.on_step) {
+            options.on_step(step, diag.time,
+                            std::span<const double>(state.data(), state.size()), diag);
+        }
+        if (options.store_step_history) {
+            result.diagnostics.push_back(diag);
+            result.linear_solvers.push_back(std::move(solved));
+        }
     }
     result.temperature = std::move(state);
     return result;
