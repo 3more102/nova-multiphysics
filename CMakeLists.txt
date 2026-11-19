@@ -134,6 +134,10 @@ if(NOVA_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
             --material 11 2 --material 22 6 --temperature 101 400
             --convection 102 12 300 --vtk "${CMAKE_CURRENT_BINARY_DIR}/two_layer_wall.vtk")
+        add_test(NAME nova_tagged_heating_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
+            --material 11 2 --material 22 6 --temperature 101 400
+            --convection 102 12 300 --heat-source 11 120 --heat-source 22 360)
         add_test(NAME nova_tagged_flux_report_smoke COMMAND nova_gmsh_diffusion_3d
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
             --material 11 2 --material 22 6 --temperature 101 400

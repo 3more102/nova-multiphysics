@@ -215,6 +215,56 @@ def check_refinement(exe, directory):
         raise ValueError("Fine-grid temperature or flux error exceeds its absolute limit")
 
 
+def check_tagged_sources(exe, directory):
+    """Two-layer wall with distinct internal heating; independent 1D reference."""
+    previous = None
+    for n in (2, 4, 8):
+        mesh, vtk = directory / f"tagged-heat-{n}.msh", directory / f"tagged-heat-{n}.vtk"
+        write_wall(mesh, n, n, n)
+        run(exe, mesh, vtk, MATERIALS + HOT + ROBIN
+            + ["--heat-source", "11", "120", "--heat-source", "22", "360"])
+        points, cells, temperatures, fluxes = read_fields(vtk)
+        te = qe = 0.0
+        for cell, (qx, qy, qz) in zip(cells, fluxes):
+            xs = [points[i][0] for i in cell]
+            ts = [temperatures[i] for i in cell]
+            layer_one = max(xs) <= 0.5
+            for shape, weight in quadrature():
+                x = sum(b * value for b, value in zip(shape, xs))
+                t = sum(b * value for b, value in zip(shape, ts))
+                if layer_one:
+                    exact_t = 400 - 72*x - 30*x*x
+                    exact_q = 144 + 120*x
+                else:
+                    distance = x - 0.5
+                    exact_t = 356.5 - 34*distance - 30*distance*distance
+                    exact_q = 204 + 360*distance
+                te += weight * (t - exact_t)**2
+                qe += weight * ((qx - exact_q)**2 + qy*qy + qz*qz)
+        errors = (math.sqrt(te/n**3), math.sqrt(qe/n**3))
+        print(f"tagged sources n={n} T_L2={errors[0]:.10g} flux_L2={errors[1]:.10g}")
+        if previous is not None:
+            orders = [math.log2(old / new) for old, new in zip(previous, errors)]
+            print(f"tagged temperature_order={orders[0]:.8f} flux_order={orders[1]:.8f}")
+            if not (orders[0] >= 1.65 and orders[1] >= 0.80):
+                raise ValueError("Insufficient convergence for tagged internal heat generation")
+        previous = errors
+        if n == 8:
+            cold = [t for (x, _, _), t in zip(points, temperatures) if x == 1]
+            interface = [t for (x, _, _), t in zip(points, temperatures) if x == 0.5]
+            measure("tagged heat interface [K]", max(interface, key=lambda t: abs(t-356.5)),
+                    356.5, 0.5)
+            measure("tagged heat convection surface [K]", max(cold, key=lambda t: abs(t-332)),
+                    332, 0.5)
+            # Integrated sources: 120*0.5 + 360*0.5 = 240 W on unit area.
+            # The 332 K cold surface gives 12*(332-300)=384 W convection;
+            # hence the hot boundary supplies the remaining 144 W.
+            measure("tagged heat convection rate [W]", 12*(sum(cold)/len(cold)-300),
+                    384, 6.0)
+    if previous[0] > 0.4 or previous[1] > 18.0:
+        raise ValueError("Tagged internal-heating fine-grid errors exceed limits")
+
+
 def check_invalid_cases(exe, mesh, vtk):
     # Reverse the material assignments without changing connectivity. The total
     # resistance stays fixed while the interface temperature moves by 40 K.
@@ -231,6 +281,11 @@ def check_invalid_cases(exe, mesh, vtk):
         (["--material", "11", "0"], "positive"),
         (MATERIALS + ["--material", "22", "3"], "Duplicate material"),
         (MATERIALS + ["--source", "nan"], "finite number"),
+        (MATERIALS + HOT + ["--heat-source", "777", "1"], "No volume"),
+        (MATERIALS + HOT + ["--heat-source", "11", "1", "--heat-source", "11", "2"],
+         "Duplicate heat source"),
+        (MATERIALS + HOT + ["--heat-source", "22", "inf"], "finite number"),
+        (MATERIALS + ["--heat-source", "11", "10"], "Incompatible pure-Neumann"),
         (MATERIALS + ["--source", "1"], "Incompatible pure-Neumann"),
         (MATERIALS + ["--convection", "102", "-1", "300"], "nonnegative"),
     ]
@@ -273,5 +328,6 @@ if __name__ == "__main__":
         shutil.copyfile(args.fixture, private_fixture)
         check_invalid_cases(args.exe.resolve(), private_fixture, output)
         check_refinement(args.exe.resolve(), root)
+        check_tagged_sources(args.exe.resolve(), root)
         if args.benchmark:
             benchmark(args.exe.resolve(), root)
