@@ -1,4 +1,5 @@
 #include "nova/fem/diffusion_3d.hpp"
+#include "nova/fem/energy_balance_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 #include "nova/fem/tagged_boundary_flux_3d.hpp"
 #include "nova/io/gmsh22_tetrahedral.hpp"
@@ -31,7 +32,7 @@ constexpr const char* usage =
     "       [--temperature face-tag T] [--flux face-tag q_out]\n"
     "       [--convection face-tag h T_ambient] [--source Q]\n"
     "       [--heat-source volume-tag Q] ... [--vtk result.vtk]\n"
-    "       [--flux-report]";
+    "       [--flux-report] [--balance-report]";
 
 template<class T>
 T number(std::string_view token) {
@@ -69,6 +70,7 @@ struct Settings {
     std::optional<fs::path> vtk;
     bool unit_example{};
     bool flux_report{};
+    bool balance_report{};
 };
 
 Settings read_settings(int argc, char** argv) {
@@ -112,6 +114,9 @@ Settings read_settings(int argc, char** argv) {
         } else if (option == "--flux-report") {
             if (settings.flux_report) throw std::invalid_argument("Duplicate --flux-report.");
             settings.flux_report = true;
+        } else if (option == "--balance-report") {
+            if (settings.balance_report) throw std::invalid_argument("Duplicate --balance-report.");
+            settings.balance_report = true;
         } else if (option == "--temperature" || option == "--flux" || option == "--convection") {
             const int tag = physical_tag(next());
             Boundary condition{BoundaryKind::temperature, number<double>(next())};
@@ -267,6 +272,21 @@ int main(int argc, char** argv) {
             }
             std::cout << "Net outward conductive heat rate [W]: "
                       << static_cast<double>(net_rate) << '\n';
+        }
+        if (settings.balance_report) {
+            const auto balance = evaluate_diffusion_energy_balance_3d(problem, result.values);
+            std::cout << std::setprecision(17)
+                      << "FEM generated heat [W]: " << balance.generated_heat << '\n'
+                      << "FEM Neumann outward heat [W]: " << balance.neumann_outward_heat << '\n'
+                      << "FEM Robin outward heat [W]: " << balance.robin_outward_heat << '\n'
+                      << "FEM constrained-node outward reaction [W]: "
+                      << balance.constraint_outward_heat << '\n'
+                      << "FEM signed energy balance defect [W]: "
+                      << balance.signed_balance_defect << '\n'
+                      << "FEM maximum free-equation residual [W]: "
+                      << balance.max_free_equation_residual << '\n'
+                      << "FEM constrained nodes: " << balance.constrained_nodes << '\n'
+                      << "FEM free nodes: " << balance.free_nodes << '\n';
         }
         const auto [lo, hi] = std::minmax_element(result.values.begin(), result.values.end());
         std::cout << std::setprecision(17)
