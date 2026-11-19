@@ -33,11 +33,12 @@ namespace {
 
 } // namespace
 
-SolverResult solve_conjugate_gradient(
+SolverResult solve_conjugate_gradient_impl(
     const CsrMatrix& matrix,
     const std::span<const double> right_hand_side,
     const SolverOptions& options,
-    const std::span<const double> initial_guess
+    const std::span<const double> initial_guess,
+    const IncompleteCholesky0* reused_factor
 ) {
     if (matrix.rows() == 0 || matrix.rows() != matrix.columns()) {
         throw std::invalid_argument("Conjugate gradient requires a non-empty square matrix.");
@@ -89,7 +90,8 @@ SolverResult solve_conjugate_gradient(
                 );
             }
         }
-    } else if (options.preconditioner == PreconditionerType::IncompleteCholesky0) {
+    } else if (options.preconditioner == PreconditionerType::IncompleteCholesky0 &&
+               reused_factor == nullptr) {
         incomplete_factor.emplace(matrix);
     }
 
@@ -97,6 +99,7 @@ SolverResult solve_conjugate_gradient(
         if (options.preconditioner == PreconditionerType::None) {
             return residual;
         }
+        if (reused_factor != nullptr) return reused_factor->apply(residual);
         if (incomplete_factor) return incomplete_factor->apply(residual);
 
         std::vector<double> result(residual.size(), 0.0);
@@ -225,7 +228,7 @@ SolverResult solve_conjugate_gradient(
             if (result.residual_norm <= convergence_threshold) {
                 result.solution = std::move(solution);
                 result.converged = true;
-                if (incomplete_factor) {
+                if (options.preconditioner == PreconditionerType::IncompleteCholesky0) {
                     result.message = "Converged with IC(0) preconditioning.";
                 } else if (options.preconditioner == PreconditionerType::Jacobi) {
                     result.message = "Converged with Jacobi preconditioning.";
@@ -276,6 +279,48 @@ SolverResult solve_conjugate_gradient(
     result.solution = std::move(solution);
     result.message = "Maximum iteration count reached before convergence.";
     return result;
+}
+
+
+SolverResult solve_conjugate_gradient(
+    const CsrMatrix& matrix,
+    const std::span<const double> right_hand_side,
+    const SolverOptions& options,
+    const std::span<const double> initial_guess
+) {
+    return solve_conjugate_gradient_impl(
+        matrix, right_hand_side, options, initial_guess, nullptr);
+}
+
+SolverResult CachedConjugateGradient::solve(
+    const CsrMatrix& matrix,
+    const std::span<const double> right_hand_side,
+    const SolverOptions& options,
+    const std::span<const double> initial_guess
+) {
+    if (options.preconditioner != PreconditionerType::IncompleteCholesky0) {
+        return solve_conjugate_gradient(matrix, right_hand_side, options, initial_guess);
+    }
+
+    bool identical = cached_matrix_.has_value() &&
+        cached_matrix_->rows() == matrix.rows() &&
+        cached_matrix_->columns() == matrix.columns() &&
+        cached_matrix_->non_zeros() == matrix.non_zeros();
+    if (identical) {
+        matrix.for_each_nonzero([&](std::size_t i, std::size_t j, double value) {
+            if (cached_matrix_->at(i, j) != value) identical = false;
+        });
+    }
+
+    if (!identical) {
+        // Construct first: a failed IC(0) attempt never installs an invalid factor.
+        IncompleteCholesky0 new_factor(matrix);
+        cached_matrix_ = matrix;
+        cached_factor_ = std::move(new_factor);
+        ++factor_builds_;
+    }
+    return solve_conjugate_gradient_impl(
+        matrix, right_hand_side, options, initial_guess, &*cached_factor_);
 }
 
 } // namespace nova::linalg
