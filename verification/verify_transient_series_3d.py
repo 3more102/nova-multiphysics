@@ -59,7 +59,7 @@ def main(executable: str) -> None:
         if max(all_values[-1]) <= 300.0:
             raise AssertionError("Heated solid did not warm")
         match = re.search(
-            r"Temperature range \\[K\\]: ([-+0-9.eE]+) \\.\\.\\. ([-+0-9.eE]+)",
+            r"Temperature range \[K\]: ([-+0-9.eE]+) \.\.\. ([-+0-9.eE]+)",
             process.stdout,
         )
         if match is None:
