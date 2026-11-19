@@ -1,3 +1,16 @@
+# NOVA development checkpoint
+
+## 19 November 2026 · linear-time exact CSR factor-cache matching (pending CI)
+
+The IC(0) cache now compares canonical CSR row offsets, column indices and
+coefficient arrays directly, replacing repeated binary searches for individual
+matrix elements. Equality remains exact; coefficient changes, dimension changes
+and sparsity-pattern changes still force refactorization. The comparison costs
+O(rows + nnz), with no fingerprint collisions or tolerance-based stale reuse.
+A regression compares equivalent reordered triplets against changed numeric,
+pattern and dimension cases. Verification on the exact branch commit is required
+before this optimization is marked validated.
+
 ## 19 November 2026 · cross-trial adaptive 3D IC(0) reuse (pending CI)
 
 This increment follows draft [PR #23](https://github.com/3more102/nova-multiphysics/pull/23).
@@ -15,8 +28,6 @@ invalidation with time-varying Robin exchange. The repository branch must pass
 the complete Windows/Linux, sanitizer and independent-FEM CI jobs before this
 checkpoint can be labeled verified. This does not merge or supersede PR #23
 or the upstream stack.
-
-# NOVA development checkpoint
 
 ## 19 November 2026 · cached IC(0) for repeated thermal matrices
 

@@ -25,6 +25,10 @@ public:
     [[nodiscard]] std::size_t columns() const noexcept;
     [[nodiscard]] std::size_t non_zeros() const noexcept;
 
+    // Exact identity of canonical CSR shape, sparsity pattern and coefficients.
+    // Unlike value-at-coordinate checks, this is linear in stored entries.
+    [[nodiscard]] bool exactly_equal(const CsrMatrix& other) const noexcept;
+
     [[nodiscard]] std::vector<double> multiply(
         std::span<const double> vector
     ) const;
