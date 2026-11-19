@@ -106,16 +106,16 @@ Initial 3D support uses **time-independent** conductivity, capacity, forcing and
 
 ## Streaming long 3D simulations without a full step history
 
-By default, \`TransientHeat3DResult::linear_solvers\` retains a complete nodal
+By default, `TransientHeat3DResult::linear_solvers` retains a complete nodal
 temperature vector and solver diagnostics for every time step, and
-\`TransientHeat3DResult::diagnostics\` retains every heat budget. For many
+`TransientHeat3DResult::diagnostics` retains every heat budget. For many
 time steps this history uses memory proportional to the number of steps
 times the number of mesh vertices.
 
 Use the opt-in callback to process each completed step, and disable result
 history to avoid retaining those per-step vectors:
 
-\`\`\`cpp
+```cpp
 options.store_step_history = false;
 options.on_step = [](std::size_t step, double time,
                      std::span<const double> temperature,
@@ -126,10 +126,10 @@ options.on_step = [](std::size_t step, double time,
 const auto result = solve_transient_heat_3d(problem, options);
 // result.temperature and result.final_time remain available.
 // result.linear_solvers and result.diagnostics are intentionally empty.
-\`\`\`
+```
 
 The callback fires exactly once after each successful time step, in ascending
-step-number order. Its \`step\` argument is 1-based, while \`time\` is the
+step-number order. Its `step` argument is 1-based, while `time` is the
 physical time of the resulting field. Callback exceptions propagate to the
 caller and terminate the solve. The callback does not change the numerical
 method, and default behavior remains backward-compatible. With history
