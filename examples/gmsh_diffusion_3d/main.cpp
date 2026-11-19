@@ -336,17 +336,17 @@ int main(int argc, char** argv) {
         if (settings.local_balance_report) {
             const auto flow = reconstruct_conservative_heat_flow_3d(problem, result.values);
             std::cout << std::setprecision(17)
-                      << "Conservative face-flow projection (spanning-tree, not RT0):\\n"
+                      << "Conservative face-flow projection (spanning-tree, not RT0):\n"
                       << "Maximum raw cell heat defect [W]: "
-                      << flow.maximum_defect_before << '\\n'
+                      << flow.maximum_defect_before << '\n'
                       << "Maximum reconstructed cell heat defect [W]: "
-                      << flow.maximum_defect_after << '\\n'
+                      << flow.maximum_defect_after << '\n'
                       << "Maximum face heat-flow correction [W]: "
-                      << flow.maximum_absolute_face_correction << '\\n'
+                      << flow.maximum_absolute_face_correction << '\n'
                       << "Reconstructed total generated heat [W]: "
-                      << flow.total_generated_heat << '\\n'
+                      << flow.total_generated_heat << '\n'
                       << "Reconstructed exterior outward heat [W]: "
-                      << flow.total_exterior_outward_heat << '\\n';
+                      << flow.total_exterior_outward_heat << '\n';
         }
         const auto [lo, hi] = std::minmax_element(result.values.begin(), result.values.end());
         std::cout << std::setprecision(17)
