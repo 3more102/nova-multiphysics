@@ -34,6 +34,7 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--heat-source volume_id Q` | Signed volumetric source density in W/m³ for a selected volume ID. Can repeat for different IDs; unlisted IDs add zero. This density adds to `--source`. |
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 | `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
+| `--balance-report` | Independently reassemble FEM weak-form residuals and report global source, Neumann, Robin, nodal reactions and free-equation residuals in W. |
 
 ### Gmsh named physical groups
 
@@ -140,6 +141,44 @@ equilibrated. Reported surface rates therefore are estimates and their sum
 is **not** an enforced conservation identity. The volume-integrated source
 and FEM reaction require a separate consistent balance computation before
 the output can be used as a strict energy-conservation certificate.
+
+## Discrete global energy balance
+
+Append `--balance-report` to the Gmsh CLI to evaluate the *assembled weak
+form*, using the same volume and boundary quadrature as the steady FEM solver.
+This is separate from the `--flux-report` option, which integrates raw,
+non-equilibrated P1 cell fluxes across exterior faces.
+
+With positive heat **leaving** the mesh, the accounting is:
+
+`total_generated = Neumann_out + Robin_out + constraint_out + signed_defect`
+
+- `total_generated` integrates the spatial `--source` plus all
+  per-volume `--heat-source` contributions (negative for cooling).
+- `Neumann_out` integrates prescribed outward boundary flux.
+- `Robin_out` integrates `h (T_h - T_ambient)` at the same face samples.
+- `constraint_out` is minus the sum of **unconstrained-system weak residuals
+  evaluated at constrained nodes**. It includes reactions at face-prescribed
+  and explicitly pinned vertices. It is not a per-Dirichlet-face traction map.
+- `signed_defect` is what remains after the above flows are accounted for.
+  The maximum absolute weak residual on free nodes is also printed; this
+  provides an additional numerical check even when the signed sum cancels.
+
+For the zero-source two-layer reference, FEM Robin outflow is 240 W and the
+Dirichlet reaction is −240 W, with a near-zero defect. For the regional source
+case, the FEM integral produces 240 W of generation; its Neumann + Robin +
+constraint rates add to the same value within the numerical acceptance
+tolerance. The pure-Neumann zero-mean gauge is not counted as a physical
+boundary reaction.
+
+**Scope and limitations:** these quantities certify *discrete global
+equilibrium* of the particular Galerkin system and supplied field to the
+reported tolerances. They do not certify pointwise heat-flux continuity,
+local element conservation, continuum discretization accuracy or
+experimental agreement. An intentionally unconverged field may still have
+a small global signed defect, which is why the free-equation residual is
+reported. Reassembling the residual requires an extra pass over the mesh
+only when the option is requested.
 
 ## Analytical verification
 

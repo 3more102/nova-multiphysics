@@ -128,8 +128,36 @@ def run(exe, mesh, vtk, args, check=True):
                           capture_output=True, text=True, check=check)
 
 
+def read_balance(stdout):
+    """Parse independently printed global FEM energy and reaction diagnostics."""
+    keys = {
+        "FEM generated heat [W]": "source",
+        "FEM Neumann outward heat [W]": "neumann",
+        "FEM Robin outward heat [W]": "robin",
+        "FEM constrained-node outward reaction [W]": "constraint",
+        "FEM signed energy balance defect [W]": "defect",
+        "FEM maximum free-equation residual [W]": "free",
+    }
+    fields = {}
+    for line in stdout.splitlines():
+        for prefix, name in keys.items():
+            if line.startswith(prefix + ": "):
+                if name in fields:
+                    raise ValueError("Repeated FEM energy-balance field: " + prefix)
+                fields[name] = float(line.split(": ", 1)[1])
+    if set(fields) != set(keys.values()) or not all(map(math.isfinite, fields.values())):
+        raise ValueError("FEM energy-balance report is missing fields or non-finite")
+    return fields
+
+
 def check_wall(exe, mesh, vtk, materials=MATERIALS):
-    execution = run(exe, mesh, vtk, materials + HOT + ROBIN + ["--flux-report"])
+    execution = run(exe, mesh, vtk, materials + HOT + ROBIN + ["--flux-report", "--balance-report"])
+    energy = read_balance(execution.stdout)
+    measure("FEM wall generation [W]", energy["source"], 0, 2e-8)
+    measure("FEM wall Robin heat [W]", energy["robin"], 240, 2e-7)
+    measure("FEM wall Dirichlet reaction [W]", energy["constraint"], -240, 2e-7)
+    measure("FEM wall energy-balance defect [W]", energy["defect"], 0, 2e-7)
+    measure("FEM wall maximum free residual [W]", energy["free"], 0, 2e-7)
     reported = {}
     for line in execution.stdout.splitlines():
         if line.startswith("  physical tag "):
@@ -235,8 +263,16 @@ def check_tagged_sources(exe, directory):
     for n in (2, 4, 8):
         mesh, vtk = directory / f"tagged-heat-{n}.msh", directory / f"tagged-heat-{n}.vtk"
         write_wall(mesh, n, n, n)
-        run(exe, mesh, vtk, MATERIALS + HOT + ROBIN
-            + ["--heat-source", "11", "120", "--heat-source", "22", "360"])
+        execution = run(exe, mesh, vtk, MATERIALS + HOT + ROBIN
+            + ["--heat-source", "11", "120", "--heat-source", "22", "360",
+               "--balance-report"])
+        energy = read_balance(execution.stdout)
+        measure(f"FEM regional generation n={n} [W]", energy["source"], 240, 2e-7)
+        measure(f"FEM regional balance defect n={n} [W]", energy["defect"], 0, 2e-7)
+        measure(f"FEM regional max free residual n={n} [W]", energy["free"], 0, 2e-7)
+        measure(f"FEM regional summed outward n={n} [W]",
+                energy["neumann"] + energy["robin"] + energy["constraint"],
+                240, 2e-7)
         points, cells, temperatures, fluxes, sources = read_fields(
             vtk, require_heat_generation=True)
         for cell, source in zip(cells, sources):
@@ -311,6 +347,7 @@ def check_invalid_cases(exe, mesh, vtk):
         (["--material", "11", "0"], "positive"),
         (MATERIALS + ["--material", "22", "3"], "Duplicate material"),
         (MATERIALS + ["--source", "nan"], "finite number"),
+        (MATERIALS + HOT + ["--balance-report", "--balance-report"], "Duplicate --balance-report"),
         (TENSOR_MATERIALS + ["--material", "11", "5"], "Duplicate material"),
         (TENSOR_MATERIALS + ["--material-tensor", "11", "1", "1", "1", "0", "0", "0"],
          "Duplicate material"),
