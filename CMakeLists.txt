@@ -126,6 +126,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_vtk_legacy_3d.cpp
         tests/test_diffusion_h1_2d.cpp
         tests/test_transient_heat_3d.cpp
+        tests/test_transient_heat_3d_restart.cpp
         tests/test_transient_heat_2d.cpp
         tests/test_adaptive_heat_2d.cpp
         tests/test_error_norms_2d.cpp
