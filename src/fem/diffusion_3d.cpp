@@ -345,9 +345,11 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     auto values = nullspace.physical_values(solver.solution);
     std::optional<EnergyBalance3D> balance;
     if (problem.compute_energy_balance) {
-        long double dirichlet_heat_rate = -dirichlet_rhs_sum;
+        // A*u - rhs at a Dirichlet node is minus its physical
+        // outward heat flux: integration by parts gives the sign.
+        long double dirichlet_heat_rate = dirichlet_rhs_sum;
         for (const auto& entry : dirichlet_rows) {
-            dirichlet_heat_rate += static_cast<long double>(entry.value) *
+            dirichlet_heat_rate -= static_cast<long double>(entry.value) *
                 values[entry.column];
         }
         long double robin_heat_rate = 0.0L;
