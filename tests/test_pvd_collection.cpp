@@ -52,6 +52,7 @@ NOVA_TEST(pvd_collection_rejects_nonmonotone_nan_and_unsafe_frames_before_writin
     rejects({});
     rejects({{0., "a.vtk"}, {0., "b.vtk"}});
     rejects({{1., "a.vtk"}, {0., "b.vtk"}});
+    rejects({{0., "a.vtk"}, {1., "a.vtk"}});
     rejects({{std::numeric_limits<double>::quiet_NaN(), "a.vtk"}});
     rejects({{std::numeric_limits<double>::infinity(), "a.vtk"}});
     rejects({{0., "../escape.vtk"}});
