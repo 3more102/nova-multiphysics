@@ -39,7 +39,33 @@ The assembly rule uses six positive symmetric points and integrates polynomials 
 
 ## Boundary-edge integration
 
-Neumann conditions supply outward physical flux \(q_n\) and contribute \(-\int_{\Gamma_N}q_n N_i\,d\Gamma\) to the right-hand side. Robin conditions contribute \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side. Two-point Gauss quadrature is used on linear edges. Neumann and Robin conditions cannot be assigned to the same edge.
+Neumann conditions supply outward physical flux \(q_n\) and contribute \(-\int_{\Gamma_N}q_n N_i\,d\Gamma\) to the right-hand side. Robin conditions contribute \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side. Three-point Gauss-Legendre quadrature is used on P1 and P2 boundary edges (exact for polynomials through degree five). Neumann and Robin conditions cannot be assigned to the same edge.
+
+## Transient heat diffusion
+
+The scalar transient thermal prototype solves
+
+\[
+\rho c\frac{\partial T}{\partial t}-\nabla\cdot(k\nabla T)=Q
+\]
+
+with positive volumetric heat capacity \(\rho c(x,y)\) and conductivity \(k(x,y)\), both time independent in the current implementation. With continuous P1/P2 H1 basis \(N_i\),
+
+\[
+M_{ij}=\int_\Omega\rho c N_i N_j\,d\Omega,\qquad
+K_{ij}=\int_\Omega k\nabla N_i\cdot\nabla N_j\,d\Omega,\qquad
+F_i(t)=\int_\Omega Q(x,y,t)N_i\,d\Omega.
+\]
+
+Both matrices use six-point positive degree-four triangle quadrature. The consistent (non-lumped) mass matrix and the stiffness matrix are assembled once. Backward Euler forms
+
+\[
+(M+\Delta t K)T^{n+1}=MT^n+\Delta t F(t_{n+1}).
+\]
+
+The right-hand side uses the previous solution including its prescribed boundary values. Time-dependent Dirichlet data on exterior edges are imposed at each new time level via symmetric row/column elimination and RHS correction, including midpoint DOFs for P2. Initial boundary DOFs are projected to the prescribed trace at \(t=0\). Omitted edges use zero outward heat flux. No other transient natural boundary condition is currently implemented.
+
+Backward Euler has first-order temporal accuracy and is unconditionally stable for this linear positive-capacity, nonnegative-stiffness spatial discretization; stability does not guarantee small time-discretization error. Every time step runs a Conjugate Gradient solve and reports failure if the solver does not converge.
 
 ## Error-norm quadrature
 

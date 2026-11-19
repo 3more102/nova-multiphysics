@@ -51,7 +51,7 @@ Implemented regression cases:
 Current limitations:
 - No pure Neumann nullspace handling.
 - No anisotropic diffusion tensor.
-- No P2 elements.
+- No arbitrary higher-order elements beyond P2.
 - No automatic adaptive refinement.
 
 Required next verification:
@@ -72,6 +72,22 @@ Required next verification:
 - Verify nonzero endpoint Dirichlet values.
 
 ## Gate 5: thermal and structural modules
+
+Implemented transient thermal regression cases:
+- P1 consistent mass matrix on the reference triangle, checked against exact entries.
+- P2 mass symmetry, constant-field integration, and stiffness nullspace.
+- Exact linear space-time temperature field with P1 and P2 Backward Euler.
+- First-order temporal convergence of a quadratic-in-time manufactured P2 field.
+- Constant field with homogeneous natural heat fluxes.
+- Rejection of invalid time step, negative volumetric capacity, non-finite heat source,
+  interior Dirichlet edges, and conflicting corner temperature values.
+
+Required next verification:
+- Quantify discrete energy decay and time step sensitivity for a cooling plate.
+- Cross-check transient thermal benchmarks against an independent reference solver.
+- Add transient nonzero Neumann/Robin flux and energy balance tests.
+
+## Legacy gate 5 cases
 
 Thermal:
 - One-dimensional conduction.

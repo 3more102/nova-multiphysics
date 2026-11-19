@@ -48,3 +48,26 @@ NOVA_TEST(csr_matrix_rejects_out_of_range_triplet) {
     }
     NOVA_REQUIRE(threw);
 }
+
+
+NOVA_TEST(csr_linear_combination_merges_sparse_entries) {
+    using nova::linalg::CsrMatrix;
+    using nova::linalg::Triplet;
+    const auto a = CsrMatrix::from_triplets(3, 3, {
+        {0, 0, 1.0}, {0, 2, 2.0}, {2, 2, 3.0}
+    });
+    const auto b = CsrMatrix::from_triplets(3, 3, {
+        {0, 1, 4.0}, {0, 2, -1.0}, {1, 1, 5.0}
+    });
+    const auto c = CsrMatrix::linear_combination(a, 2.0, b, 3.0);
+    NOVA_REQUIRE_NEAR(c.at(0, 0), 2.0, 1.0e-14);
+    NOVA_REQUIRE_NEAR(c.at(0, 1), 12.0, 1.0e-14);
+    NOVA_REQUIRE_NEAR(c.at(0, 2), 1.0, 1.0e-14);
+    NOVA_REQUIRE_NEAR(c.at(1, 1), 15.0, 1.0e-14);
+    NOVA_REQUIRE_NEAR(c.at(2, 2), 6.0, 1.0e-14);
+    std::size_t visited = 0;
+    c.for_each_nonzero([&](std::size_t, std::size_t, double) {
+        ++visited;
+    });
+    NOVA_REQUIRE(visited == c.non_zeros());
+}

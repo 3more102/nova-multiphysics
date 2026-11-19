@@ -107,4 +107,50 @@ std::vector<double> CsrMatrix::diagonal() const {
     return result;
 }
 
+CsrMatrix CsrMatrix::linear_combination(
+    const CsrMatrix& a, const double scale_a,
+    const CsrMatrix& b, const double scale_b
+) {
+    if (a.rows_ != b.rows_ || a.columns_ != b.columns_) {
+        throw std::invalid_argument("CSR linear combination dimension mismatch.");
+    }
+    if (!std::isfinite(scale_a) || !std::isfinite(scale_b)) {
+        throw std::invalid_argument("CSR linear combination scales must be finite.");
+    }
+    CsrMatrix result;
+    result.rows_ = a.rows_;
+    result.columns_ = a.columns_;
+    result.row_offsets_.reserve(result.rows_ + 1U);
+    result.row_offsets_.push_back(0U);
+    for (std::size_t row = 0; row < result.rows_; ++row) {
+        std::size_t ia = a.row_offsets_[row];
+        std::size_t ib = b.row_offsets_[row];
+        const std::size_t ea = a.row_offsets_[row + 1U];
+        const std::size_t eb = b.row_offsets_[row + 1U];
+        while (ia < ea || ib < eb) {
+            std::size_t column = 0;
+            double value = 0.0;
+            if (ib == eb || (ia < ea && a.column_indices_[ia] < b.column_indices_[ib])) {
+                column = a.column_indices_[ia];
+                value = scale_a * a.values_[ia++];
+            } else if (ia == ea || b.column_indices_[ib] < a.column_indices_[ia]) {
+                column = b.column_indices_[ib];
+                value = scale_b * b.values_[ib++];
+            } else {
+                column = a.column_indices_[ia];
+                value = scale_a * a.values_[ia++] + scale_b * b.values_[ib++];
+            }
+            if (!std::isfinite(value)) {
+                throw std::overflow_error("CSR linear combination produced a non-finite value.");
+            }
+            if (value != 0.0) {
+                result.column_indices_.push_back(column);
+                result.values_.push_back(value);
+            }
+        }
+        result.row_offsets_.push_back(result.values_.size());
+    }
+    return result;
+}
+
 } // namespace nova::linalg

@@ -23,18 +23,37 @@ The prototype solves
 -\nabla\cdot(k\nabla u)=f \quad \text{in }\Omega
 \]
 
-on triangular P1 meshes using:
+on continuous triangular P1 and P2 meshes using:
 - Structured rectangular mesh generation, split into two triangles per cell.
 - Positive six-point degree-four reference-triangle quadrature.
 - Jacobian-based physical basis gradients.
 - Positive scalar isotropic diffusivity, including spatially varying coefficients.
 - Volumetric source integration.
-- Strong nodal Dirichlet elimination.
+- Strong symmetric Dirichlet elimination on vertex and (for P2) edge-midpoint degrees of freedom.
 - Neumann outward-flux integration on validated exterior edges.
 - Robin boundary integration with non-negative transfer coefficients and ambient values.
 - Mixed Dirichlet-Neumann and Dirichlet-Robin benchmarks.
 - L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
+
+### Transient 2D heat diffusion
+The P1/P2 H1 kernel now also solves
+
+\[
+\rho c\,\frac{\partial T}{\partial t} - \nabla\cdot(k\nabla T)=Q(x,y,t)
+\]
+
+using:
+- Consistent (non-lumped) capacity/mass and conductivity/stiffness CSR matrices.
+- Positive spatially varying, time-independent volumetric heat capacity and conductivity.
+- Fully implicit Backward Euler time integration: \((M+\Delta t K)T^{n+1}=MT^n+\Delta t F^{n+1}\).
+- Time-dependent Dirichlet temperature functions on exterior edges, including P2 edge midpoint DOFs.
+- Homogeneous natural (zero-flux) conditions on other edges.
+- Conjugate Gradient, solver diagnostics for each step, and explicit failure reporting.
+- Manufactured exact solution and first-order temporal convergence regressions.
+- Cooling-plate example at \`examples/transient_heat_2d/main.cpp\`.
+
+This first transient implementation does not yet cover time-dependent material coefficients, prescribed nonzero Neumann/Robin fluxes, adaptivity, or higher-order time integration.
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
@@ -62,7 +81,7 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support incomplete Cholesky, pure Neumann nullspace handling, anisotropic diffusion tensors, P2 elements, adaptive meshing, or a general DOF manager. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The current prototype does not yet support incomplete Cholesky, stationary pure-Neumann nullspace handling, anisotropic diffusion tensors, adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
@@ -88,6 +107,7 @@ Run the examples:
 ~~~bash
 ./build/nova_poisson_1d
 ./build/nova_diffusion_2d
+./build/nova_transient_heat_2d
 ./build/nova_nonlinear_diffusion_1d
 ~~~
 
