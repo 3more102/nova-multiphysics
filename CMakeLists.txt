@@ -136,6 +136,12 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_diffusion_3d_smoke COMMAND nova_diffusion_3d)
         add_test(NAME nova_gmsh_diffusion_3d_smoke COMMAND nova_gmsh_diffusion_3d
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh" 7)
+        add_test(NAME nova_gmsh_named_groups_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh"
+            --material solid 1 --temperature fixed-temperature 0 --heat-source solid 20)
+        add_test(NAME nova_gmsh_named_tensor_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh"
+            --material-tensor solid 1 1 1 0 0 0 --temperature fixed-temperature 0)
         add_test(NAME nova_tagged_wall_smoke COMMAND nova_gmsh_diffusion_3d
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
             --material 11 2 --material 22 6 --temperature 101 400

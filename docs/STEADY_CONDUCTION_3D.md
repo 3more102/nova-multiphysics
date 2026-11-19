@@ -34,7 +34,21 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--heat-source volume_id Q` | Signed volumetric source density in W/m³ for a selected volume ID. Can repeat for different IDs; unlisted IDs add zero. This density adds to `--source`. |
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 | `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
-| `--balance-report` | Evaluate the discrete global FEM source, Neumann, Robin, constraint reactions, and free-equation balance defect in W. |
+| `--balance-report` | Independently reassemble FEM weak-form residuals and report global source, Neumann, Robin, nodal reactions and free-equation residuals in W. |
+
+### Gmsh named physical groups
+
+The Gmsh MSH 2.2 `$PhysicalNames` section can define quoted group names,
+including spaces and escaped quotes. Every tagged argument (`--material`,
+`--material-tensor`, `--heat-source`, `--temperature`, `--flux`,
+`--convection`) accepts a numeric physical tag or its exact name.
+The importer validates records, and names are scoped by geometric dimension
+(3 for volumes, 2 for boundary surfaces). Untagged IDs use numeric 0.
+
+```sh
+nova_gmsh_diffusion_3d tests/data/unit_tetrahedron.msh \
+  --material solid 1 --temperature fixed-temperature 0 --heat-source solid 20
+```
 
 Use meters for mesh coordinates. Supply conforming four-node tetrahedra with shared
 interface vertices. Surface triangle records identify *exterior* faces. An interior
