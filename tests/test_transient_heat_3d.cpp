@@ -141,6 +141,47 @@ NOVA_TEST(transient_heat_3d_multicell_anisotropic_source_conserves_heat) {
     NOVA_REQUIRE_NEAR(result.diagnostics.back().heat_content, 1.8, 1e-9);
 }
 
+
+// Independent temporal-convergence check against the *semidiscrete* exact
+// decay solution, not against the solver's own update formulas. Three fixed
+// vertices leave one free DOF: M=1/60, K=1/6, hence T'(t)=-10*T(t).
+// On a fixed spatial mesh BE must converge at order one and CN at order two.
+NOVA_TEST(transient_heat_3d_temporal_convergence_matches_exact_decay) {
+    auto p = unit_heat();
+    p.initial_temperature = {0.0, 0.0, 0.0, 10.0};
+    p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
+    constexpr double finish_time = 0.2;
+    const double exact = 10.0 * std::exp(-10.0 * finish_time);
+    const std::array<std::size_t, 3> step_counts{10U, 20U, 40U};
+
+    TransientHeat3DOptions options;
+    options.solver_options.relative_tolerance = 1e-13;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                               TransientHeat3DScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        std::array<double, 3> errors{};
+        for (std::size_t i = 0; i < step_counts.size(); ++i) {
+            options.steps = step_counts[i];
+            options.time_step = finish_time / static_cast<double>(options.steps);
+            const auto result = solve_transient_heat_3d(p, options);
+            NOVA_REQUIRE_NEAR(result.final_time, finish_time, 1e-14);
+            errors[i] = std::abs(result.temperature[3] - exact);
+            NOVA_REQUIRE(std::isfinite(errors[i]) && errors[i] > 0.0);
+        }
+        NOVA_REQUIRE(errors[0] > errors[1] && errors[1] > errors[2]);
+        for (std::size_t i = 0; i + 1 < errors.size(); ++i) {
+            const double reduction = errors[i] / errors[i + 1];
+            if (scheme == TransientHeat3DScheme::BackwardEuler) {
+                NOVA_REQUIRE(reduction > 1.8 && reduction < 2.2);
+            } else {
+                NOVA_REQUIRE(reduction > 3.8 && reduction < 4.2);
+            }
+        }
+    }
+}
+
 NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
     auto p = unit_heat();
     NOVA_REQUIRE(rejects([&] {
