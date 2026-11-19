@@ -1,3 +1,4 @@
+#include "nova/fem/conservative_face_flow_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/energy_balance_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
@@ -33,7 +34,7 @@ constexpr const char* usage =
     "       [--material-tensor volume-tag-or-name xx yy zz xy xz yz]\n"
     "       [--convection face-tag-or-name h T_ambient] [--source Q]\n"
     "       [--heat-source volume-tag-or-name Q] ... [--vtk result.vtk]\n"
-    "       [--flux-report] [--balance-report]";
+    "       [--flux-report] [--balance-report] [--local-balance-report]";
 
 template<class T>
 T number(std::string_view token) {
@@ -81,6 +82,7 @@ struct Settings {
     bool unit_example{};
     bool flux_report{};
     bool balance_report{};
+    bool local_balance_report{};
 };
 
 Settings read_settings(int argc, char** argv,
@@ -138,6 +140,9 @@ Settings read_settings(int argc, char** argv,
         } else if (option == "--balance-report") {
             if (settings.balance_report) throw std::invalid_argument("Duplicate --balance-report.");
             settings.balance_report = true;
+        } else if (option == "--local-balance-report") {
+            if (settings.local_balance_report) throw std::invalid_argument("Duplicate --local-balance-report.");
+            settings.local_balance_report = true;
         } else if (option == "--temperature" || option == "--flux" || option == "--convection") {
             const int tag = physical_tag(next(), 2, mesh);
             Boundary condition{BoundaryKind::temperature, number<double>(next())};
@@ -327,6 +332,21 @@ int main(int argc, char** argv) {
                       << balance.max_free_equation_residual << '\n'
                       << "FEM constrained nodes: " << balance.constrained_nodes << '\n'
                       << "FEM free nodes: " << balance.free_nodes << '\n';
+        }
+        if (settings.local_balance_report) {
+            const auto flow = reconstruct_conservative_heat_flow_3d(problem, result.values);
+            std::cout << std::setprecision(17)
+                      << "Conservative face-flow projection (spanning-tree, not RT0):\\n"
+                      << "Maximum raw cell heat defect [W]: "
+                      << flow.maximum_defect_before << '\\n'
+                      << "Maximum reconstructed cell heat defect [W]: "
+                      << flow.maximum_defect_after << '\\n'
+                      << "Maximum face heat-flow correction [W]: "
+                      << flow.maximum_absolute_face_correction << '\\n'
+                      << "Reconstructed total generated heat [W]: "
+                      << flow.total_generated_heat << '\\n'
+                      << "Reconstructed exterior outward heat [W]: "
+                      << flow.total_exterior_outward_heat << '\\n';
         }
         const auto [lo, hi] = std::minmax_element(result.values.begin(), result.values.end());
         std::cout << std::setprecision(17)
