@@ -1,3 +1,21 @@
+## 19 November 2026 · cross-trial adaptive 3D IC(0) reuse (pending CI)
+
+This increment follows draft [PR #23](https://github.com/3more102/nova-multiphysics/pull/23).
+The adaptive P1 tetrahedral step-doubling controller now owns separate IC(0)
+factor caches for its full-step and half-step trial systems. The factor is
+reused across distinct adaptive trials only when the *complete constrained CSR
+matrix* is identical; changing dt or Robin transfer coefficients forces a new
+factor. Each cache is confined to one simulation and uses the existing
+true-residual convergence check. The result exposes separate factor-build
+counts for both slots; Jacobi and unpreconditioned solves report zero.
+
+Regression additions check steady full/half-step reuse for Backward Euler and
+Crank–Nicolson, invalidation when the last macro-step has a different dt, and
+invalidation with time-varying Robin exchange. The repository branch must pass
+the complete Windows/Linux, sanitizer and independent-FEM CI jobs before this
+checkpoint can be labeled verified. This does not merge or supersede PR #23
+or the upstream stack.
+
 # NOVA development checkpoint
 
 ## 19 November 2026 · cached IC(0) for repeated thermal matrices

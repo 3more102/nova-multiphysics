@@ -38,6 +38,10 @@ struct AdaptiveHeat3DResult {
     double final_time{};
     std::size_t accepted_steps{};
     std::size_t rejected_steps{};
+    // IC(0) cache setup counts, including changes from adaptive dt or Robin
+    // coefficients. Both are zero when IC(0) is not selected.
+    std::size_t full_step_ic0_factor_builds{};
+    std::size_t half_step_ic0_factor_builds{};
     std::vector<AdaptiveHeatAttempt3D> attempts;
     // One entry per accepted macro-step; each combines the two half-step budgets.
     std::vector<TransientHeatStepDiagnostics3D> diagnostics;
@@ -47,7 +51,9 @@ struct AdaptiveHeat3DResult {
 
 // Adaptive Backward Euler or Crank-Nicolson using step doubling.
 // The mass and stiffness operators are assembled once and reused for every
-// accepted and rejected trial. Time-dependent loads and boundary data are
+// accepted and rejected trial. The separate full-/half-step IC(0) caches
+// persist across trials, with matrix-exact factor invalidation. Time-dependent
+// loads and boundary data are
 // evaluated at the time levels required by the selected scheme.
 // The exact accepted P1 DOF vector is carried into every subsequent trial.
 [[nodiscard]] AdaptiveHeat3DResult solve_adaptive_heat_3d(

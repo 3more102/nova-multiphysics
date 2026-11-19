@@ -4,6 +4,8 @@
 
 #include <vector>
 
+namespace nova::linalg { class CachedConjugateGradient; }
+
 namespace nova::fem::detail {
 
 struct PreparedTransientHeat3D {
@@ -27,7 +29,8 @@ struct PreparedTransientHeat3D {
     const TransientHeat3DProblem& problem,
     const TransientHeat3DOptions& options,
     const PreparedTransientHeat3D& prepared,
-    std::vector<double> initial_state
+    std::vector<double> initial_state,
+    linalg::CachedConjugateGradient* solver_cache = nullptr
 );
 
 } // namespace nova::fem::detail

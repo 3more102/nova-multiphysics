@@ -228,3 +228,97 @@ NOVA_TEST(ic0_fixed_step_heat_agrees_with_jacobi_for_changing_robin_matrix) {
         NOVA_REQUIRE(solver.converged);
     }
 }
+
+
+namespace {
+nova::fem::TransientHeat3DProblem uniform_insulated_heat_tet() {
+    nova::fem::TransientHeat3DProblem problem;
+    problem.mesh = {{{0,0,0}, {1,0,0}, {0,1,0}, {0,0,1}}, {{0,1,2,3}}};
+    problem.volumetric_capacity = [](double, double, double) { return 1.0; };
+    problem.conductivity = [](double, double, double) { return 1.0; };
+    problem.source = [](double, double, double, double) { return 2.0; };
+    problem.initial_temperature = [](double, double, double) { return 0.0; };
+    return problem;
+}
+} // namespace
+
+NOVA_TEST(adaptive_3d_ic0_reuses_full_and_half_factors_across_macro_steps) {
+    using namespace nova::fem;
+    auto problem = uniform_insulated_heat_tet();
+    AdaptiveHeat3DOptions options;
+    options.end_time = 0.5;
+    options.initial_step = options.min_step = options.max_step = 0.125;
+    options.absolute_tolerance = 1e-6;
+    options.relative_tolerance = 0.0;
+    options.solver_options = ic_options();
+    for (auto scheme : {TransientTimeScheme::BackwardEuler, TransientTimeScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        const auto result = solve_adaptive_heat_3d(problem, options);
+        NOVA_REQUIRE(result.accepted_steps == 4 && result.rejected_steps == 0);
+        NOVA_REQUIRE(result.substep_solvers.size() == 8);
+        NOVA_REQUIRE(result.full_step_ic0_factor_builds == 1);
+        NOVA_REQUIRE(result.half_step_ic0_factor_builds == 1);
+        for (const auto value : result.temperature) {
+            NOVA_REQUIRE_NEAR(value, 1.0, 2e-11);
+        }
+        for (const auto& solver : result.substep_solvers) {
+            NOVA_REQUIRE(solver.converged);
+        }
+        auto jacobi = options;
+        jacobi.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+        const auto baseline = solve_adaptive_heat_3d(problem, jacobi);
+        NOVA_REQUIRE(baseline.full_step_ic0_factor_builds == 0);
+        NOVA_REQUIRE(baseline.half_step_ic0_factor_builds == 0);
+        for (std::size_t i = 0; i < result.temperature.size(); ++i) {
+            NOVA_REQUIRE_NEAR(result.temperature[i], baseline.temperature[i], 2e-11);
+        }
+    }
+}
+
+NOVA_TEST(adaptive_3d_ic0_rebuilds_for_different_full_and_half_time_steps) {
+    using namespace nova::fem;
+    const auto problem = uniform_insulated_heat_tet();
+    AdaptiveHeat3DOptions options;
+    options.end_time = 0.375;
+    options.initial_step = options.max_step = 0.25;
+    options.min_step = 0.0625;
+    options.absolute_tolerance = 1e-6;
+    options.relative_tolerance = 0.0;
+    options.scheme = TransientTimeScheme::BackwardEuler;
+    options.solver_options = ic_options();
+    const auto result = solve_adaptive_heat_3d(problem, options);
+    NOVA_REQUIRE(result.accepted_steps == 2 && result.rejected_steps == 0);
+    NOVA_REQUIRE(result.full_step_ic0_factor_builds == 2);
+    NOVA_REQUIRE(result.half_step_ic0_factor_builds == 2);
+    for (const auto value : result.temperature) {
+        NOVA_REQUIRE_NEAR(value, 0.75, 2e-11);
+    }
+}
+
+NOVA_TEST(adaptive_3d_ic0_rebuilds_when_robin_transfer_changes_with_time) {
+    using namespace nova::fem;
+    auto problem = uniform_insulated_heat_tet();
+    problem.robin_faces.push_back({{1,2,3},
+        [](double, double, double, double time) { return 1.0 + time; },
+        [](double, double, double, double) { return 0.0; }});
+    AdaptiveHeat3DOptions options;
+    options.end_time = 0.25;
+    options.initial_step = options.min_step = options.max_step = 0.125;
+    options.absolute_tolerance = 1.0;
+    options.relative_tolerance = 0.0;
+    options.scheme = TransientTimeScheme::BackwardEuler;
+    options.solver_options = ic_options();
+    const auto ic = solve_adaptive_heat_3d(problem, options);
+    NOVA_REQUIRE(ic.accepted_steps == 2 && ic.rejected_steps == 0);
+    NOVA_REQUIRE(ic.full_step_ic0_factor_builds == 2);
+    NOVA_REQUIRE(ic.half_step_ic0_factor_builds == 4);
+    auto jacobi = options;
+    jacobi.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    const auto baseline = solve_adaptive_heat_3d(problem, jacobi);
+    for (std::size_t i = 0; i < ic.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(ic.temperature[i], baseline.temperature[i], 2e-10);
+    }
+    for (const auto& diagnostic : ic.diagnostics) {
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2e-11);
+    }
+}
