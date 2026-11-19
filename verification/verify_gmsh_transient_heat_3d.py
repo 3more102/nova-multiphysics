@@ -169,12 +169,22 @@ def main():
         invoke(exe, mesh, "--material", 11, 1,
                "--capacity", 11, 2, "--capacity", 22, 2,
                "--initial", 300, "--dt", 0.1, "--steps", 1, good=False)
-        invoke(exe, mesh, *args, "--capacity", 11, -1, good=False)
+        bad_capacity = (
+            "--material", 11, 1, "--material", 22, 3,
+            "--capacity", 11, -1, "--capacity", 22, 2,
+            "--initial", 300, "--dt", 0.1, "--steps", 1,
+        )
+        invoke(exe, mesh, *bad_capacity, good=False)
         invoke(exe, mesh, *args, "--temperature", 999, 300, good=False)
         invoke(exe, mesh, *args, "--temperature", 101, 300,
                "--flux", 101, 1, good=False)
-        invoke(exe, mesh, *args, "--material-tensor", 22, 1, 1, 1, 2, 0, 0,
-               good=False)
+        bad_tensor = (
+            "--material", 11, 1,
+            "--material-tensor", 22, 1, 1, 1, 2, 0, 0,
+            "--capacity", 11, 2, "--capacity", 22, 2,
+            "--initial", 300, "--dt", 0.1, "--steps", 1,
+        )
+        invoke(exe, mesh, *bad_tensor, good=False)
         invoke(exe, mesh, *args, "--vtk", mesh, good=False)
         invoke(exe, mesh, *args, "--vtk-series",
                directory / "invalid.txt", good=False)
