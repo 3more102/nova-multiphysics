@@ -60,6 +60,12 @@ on validated four-node tetrahedral meshes using:
 
 Example: `examples/diffusion_3d/main.cpp`.
 
+For ParaView, run `nova_diffusion_3d jacobi 8 --vtk diffusion3d.vtk`.
+The optional VTK output preserves 4-node tetrahedral connectivity and writes
+one P1 nodal scalar field named `solution` in legacy ASCII VTK format.
+The reusable API is `nova/io/vtk_legacy_3d.hpp`; invalid data and field names
+are rejected before writing.
+
 Pure-Neumann compatibility is checked separately on each connected component without Dirichlet or positive Robin anchoring. The returned field on each such component is normalized to zero volume-weighted mean.
 
 For direction-dependent materials, set `diffusivity_tensor` on a stationary problem or `conductivity_tensor` on a transient problem. Supply the six components in global Cartesian coordinates and leave the scalar callback empty. Fixed and adaptive time stepping use the same material assembly. [Tensor conventions and supported range](docs/NUMERICAL_CONVENTIONS.md#tetrahedral-conductivity-tensors)

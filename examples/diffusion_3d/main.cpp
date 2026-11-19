@@ -1,8 +1,10 @@
 #include "nova/fem/diffusion_3d.hpp"
+#include "nova/io/vtk_legacy_3d.hpp"
 
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <string_view>
 
@@ -11,11 +13,15 @@ int main(int argc, char** argv) {
 
     const std::string_view method = argc > 1 ? argv[1] : "jacobi";
     std::size_t n = 8;
-    if (argc > 3 || (method != "jacobi" && method != "ic0")) {
-        std::cerr << "Usage: nova_diffusion_3d [jacobi|ic0 [subdivisions]]\n";
+    const bool vtk_requested = argc == 5 &&
+        std::string_view(argv[3]) == "--vtk" &&
+        !std::string_view(argv[4]).empty();
+    if ((argc > 3 && !vtk_requested) ||
+        (method != "jacobi" && method != "ic0")) {
+        std::cerr << "Usage: nova_diffusion_3d [jacobi|ic0 [subdivisions [--vtk output.vtk]]]\n";
         return 1;
     }
-    if (argc == 3) {
+    if (argc >= 3) {
         const std::string_view arg = argv[2];
         const auto end = arg.data() + arg.size();
         const auto parsed = std::from_chars(arg.data(), end, n);
@@ -77,11 +83,31 @@ int main(int argc, char** argv) {
         );
     }
 
+    if (vtk_requested) {
+        std::ofstream output(argv[4], std::ios::out | std::ios::trunc);
+        if (!output) {
+            std::cerr << "Could not open VTK output file.\n";
+            return 1;
+        }
+        try {
+            const H1FunctionSpace3D space(problem.mesh);
+            nova::io::write_legacy_vtk_scalar_3d(
+                output, space, result.values, "solution"
+            );
+        } catch (const std::exception& error) {
+            std::cerr << "3D VTK export failed: " << error.what() << '\n';
+            return 1;
+        }
+    }
+
     std::cout << "NOVA 3D tetrahedral P1 diffusion\n"
               << "Nodes: " << problem.mesh.nodes.size() << '\n'
               << "Tetrahedra: " << problem.mesh.elements.size() << '\n'
               << "CG iterations: " << result.linear_solver.iterations << '\n'
               << "True residual: " << result.linear_solver.residual_norm << '\n'
               << "Maximum nodal error: " << maximum_nodal_error << '\n';
+    if (vtk_requested) {
+        std::cout << "VTK output: " << argv[4] << '\n';
+    }
     return 0;
 }

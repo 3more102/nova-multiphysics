@@ -25,6 +25,7 @@ add_library(nova_core
     src/linalg/incomplete_cholesky.cpp
     src/linalg/bicgstab.cpp
     src/linalg/gmres.cpp
+    src/io/vtk_legacy_3d.cpp
     src/nonlinear/newton_solver.cpp
     src/fem/mesh2d.cpp
     src/fem/mesh3d.cpp
@@ -130,6 +131,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_error_norms_2d.cpp
         tests/test_mesh_topology_2d.cpp
         tests/test_mesh_topology_3d.cpp
+        tests/test_vtk_legacy_3d.cpp
         tests/test_h1_space_3d.cpp
         tests/test_diffusion_3d.cpp
         tests/test_anisotropic_3d.cpp
