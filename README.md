@@ -79,6 +79,15 @@ See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_
 This is a C++ API and a structured-box demonstration, not yet an imported
 Gmsh transient study with ParaView time-series output.
 
+### Imported Gmsh transient 3D heat study
+
+`nova_gmsh_transient_heat_3d` runs implicit heat transfer on tagged Gmsh
+tetrahedral solids, using per-region isotropic or tensor conductivity and
+volumetric heat capacity, physical-group thermal boundaries, exact fixed time
+steps, energy-balance diagnostics and final VTK visualization.
+
+See [Gmsh transient CLI and verification](docs/GMSH_TRANSIENT_HEAT_3D.md).
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior

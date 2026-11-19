@@ -87,6 +87,10 @@ if(NOVA_BUILD_EXAMPLES)
     target_link_libraries(nova_transient_heat_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_transient_heat_3d)
 
+    add_executable(nova_gmsh_transient_heat_3d examples/gmsh_transient_heat_3d/main.cpp)
+    target_link_libraries(nova_gmsh_transient_heat_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_gmsh_transient_heat_3d)
+
     add_executable(nova_transient_heat_2d examples/transient_heat_2d/main.cpp)
     target_link_libraries(nova_transient_heat_2d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_transient_heat_2d)
@@ -174,7 +178,17 @@ if(NOVA_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_tagged_conduction_3d.py"
                 "$<TARGET_FILE:nova_gmsh_diffusion_3d>"
                 "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh")
+            add_test(NAME nova_gmsh_transient_heat_3d_verify
+                COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_gmsh_transient_heat_3d.py"
+                "$<TARGET_FILE:nova_gmsh_transient_heat_3d>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh")
         endif()
+        add_test(NAME nova_gmsh_transient_heat_3d_smoke
+            COMMAND nova_gmsh_transient_heat_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
+            --material 11 1 --material 22 3 --capacity 11 2 --capacity 22 2
+            --initial 300 --source 4 --dt 0.1 --steps 5 --scheme cn)
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
         add_test(NAME nova_transient_heat_smoke COMMAND nova_transient_heat_2d)
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
