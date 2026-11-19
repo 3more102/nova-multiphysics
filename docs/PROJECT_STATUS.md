@@ -1,5 +1,33 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · scaled CG plus exact CSR cache integration (pending CI)
+
+This integration incorporates the independently CI-verified scaled residual
+and Krylov ratio arithmetic from PR #27 into the linear-time exact-CSR matrix
+matching branch from PR #29. Adaptive cross-trial IC(0) reuse from PR #24 is
+preserved. The cross-feature regression checks two right-hand sides near 1e-200
+using relative-only convergence, while insisting on one IC(0) factor build.
+The integrated branch requires full Linux, Windows, sanitizer and independent
+FEM CI verification before it can be marked validated.
+
+## 19 November 2026 · CG residual dynamic-range regression
+
+On `fix/cg-scaled-residual-convergence`, the CG norm computes a scaled
+sum of squares when the ordinary dot-product norm underflows or overflows.
+The Krylov scalars `rho` and `p^T A p` are retained as exponent/significand
+pairs when direct products exceed the double dynamic range, and `alpha`
+and `beta` are formed from their ratios. Ordinary-scale products keep the
+existing direct arithmetic. This addresses false zero-step convergence on
+nonzero right-hand sides near `1e-200` with relative-only solver tolerance,
+without changing the meaning of explicitly requested absolute tolerances.
+
+Regression cases cover relative-only CG with no/Jacobi/IC(0) preconditioner,
+small-magnitude matrices with Jacobi/IC(0), and large finite residual norms.
+The sparse matrix-vector product and the Jacobi diagonal inversion still
+retain their usual IEEE double dynamic-range limits. This is not arbitrary-
+precision arithmetic. **CI verification is required before this checkpoint
+is considered validated.**
+
 ## 19 November 2026 · linear-time exact CSR factor-cache matching (pending CI)
 
 The IC(0) cache now compares canonical CSR row offsets, column indices and
