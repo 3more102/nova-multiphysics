@@ -91,7 +91,7 @@ ScalarDiffusion2DResult solve_scalar_diffusion_h1_2d(
     if (!problem.diffusivity || !problem.source) {
         throw std::invalid_argument("Diffusivity and source functions are required.");
     }
-     // Explicit nodal constraints retain the original P1 API. For P2, use
+    // Explicit nodal constraints retain the original P1 API. For P2, use
     // Dirichlet edges to also constrain their shared midpoint DOFs.
     std::vector<std::optional<double>> prescribed(n);
     std::set<std::size_t> explicit_nodes;
