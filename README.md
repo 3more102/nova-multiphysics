@@ -87,6 +87,36 @@ See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_
 This remains a structured-box demonstration; a Gmsh-tagged transient
 study workflow and experimental comparison are not implemented.
 
+### Experimental 3D electrostatics on tetrahedral solids
+
+The experimental P1 tetrahedral electrostatics API solves
+
+\[
+-\nabla\cdot(\epsilon\nabla V)=\rho_{free},
+\qquad E=-\nabla V,
+\qquad D=\epsilon E.
+\]
+
+It reuses the validated 3D scalar/tensor diffusion assembly and supports scalar or
+symmetric positive-definite tensor permittivity, spatial and additive per-cell
+free-charge density, fixed nodal or exterior-face potentials, and prescribed
+outward displacement D dot n. Pure-Neumann displacement data use the existing
+component compatibility check and zero-volume-mean gauge. Unassigned exterior
+faces have zero normal displacement. The result includes nodal potential, per-cell E and D, and
+stored energy U = 1/2 integral(E dot D) dV.
+
+~~~sh
+./build/nova_electrostatics_3d
+~~~
+
+The analytical suite covers a parallel-plate capacitor (C = 2 F, U = 100 J),
+an anisotropic affine field (U = 36.5 J), and an exact one-free-DOF tetrahedral
+charge benchmark. The installed SDK consumer also solves the capacitor case.
+This is an experimental electrostatic Poisson interface, not a general Maxwell
+solver; floating conductors, surface-charge unknowns, AC/transient Maxwell,
+and equilibrated displacement recovery are not implemented. See
+[3D electrostatics formulation and limits](docs/ELECTROSTATICS_3D.md).
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
@@ -192,6 +222,7 @@ Run the examples:
 ./build/nova_transient_flux_2d
 ./build/nova_adaptive_heat_2d
 ./build/nova_nonlinear_diffusion_1d
+./build/nova_electrostatics_3d
 ~~~
 
 On Windows, use the corresponding executable paths under the build directory (or the Release subdirectory for multi-configuration generators).
