@@ -76,8 +76,18 @@ discrete energy-balance residual.
 ```
 
 See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
-This is a C++ API and a structured-box demonstration, not yet an imported
-Gmsh transient study with ParaView time-series output.
+The structured-box demo also streams the imposed initial state and every
+completed solve state to ParaView-readable `.vtk` files with a `.pvd`
+time-series collection, **without repeating FEM assembly per frame**:
+
+```sh
+./build/nova_transient_heat_3d --vtk-series cooling_cube
+# Load cooling_cube.pvd into ParaView to animate the temperature field.
+```
+
+The experimental C++ API exposes `TransientHeat3DOptions::state_observer`
+for streaming snapshots without retaining a full time history in memory.
+The standalone demo is not yet a Gmsh-imported transient study.
 
 ### Triangle mesh quality and uniform refinement
 
