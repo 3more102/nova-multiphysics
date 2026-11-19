@@ -502,6 +502,10 @@ TransientHeat2DResult solve_transient_heat_2d(
     result.linear_solvers.reserve(options.steps);
     result.diagnostics.reserve(options.steps);
 
+    // Reuse IC(0) when the time-dependent boundary data leave the CSR matrix
+    // unchanged; exact coefficient or sparsity changes force a rebuild.
+    linalg::CachedConjugateGradient cached_cg;
+
     for (std::size_t step = 1; step <= options.steps; ++step) {
         const double time =
             options.start_time + static_cast<double>(step) * dt;
@@ -574,7 +578,7 @@ TransientHeat2DResult solve_transient_heat_2d(
             }
         }
 
-        linalg::SolverResult step_result = linalg::solve_conjugate_gradient(
+        linalg::SolverResult step_result = cached_cg.solve(
             system, std::span<const double>(rhs), options.solver_options
         );
         if (!step_result.converged) {
