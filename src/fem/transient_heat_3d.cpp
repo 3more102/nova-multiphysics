@@ -215,13 +215,15 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
     const TransientHeat3DProblem& problem,
     const TransientHeat3DOptions& options,
     const PreparedTransientHeat3D& prepared,
-    std::vector<double> initial_state
+    std::vector<double> initial_state,
+    linalg::CachedConjugateGradient* solver_cache
 ) {
     validate_heat_time_grid(options);
     return integrate_heat(
         prepared.operators, options, std::move(initial_state), prepared.constrained,
         [&](double time) { return boundary_values(problem, time); },
-        [&](double time) { return assemble_loads(problem, prepared.jacobians, time); }
+        [&](double time) { return assemble_loads(problem, prepared.jacobians, time); },
+        solver_cache
     );
 }
 
