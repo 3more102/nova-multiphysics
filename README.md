@@ -36,6 +36,21 @@ on continuous triangular P1 and P2 meshes using:
 - L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
+### Steady 3D conduction on a tagged solid
+
+Import a conforming first-order tetrahedral Gmsh MSH 2.2 ASCII mesh, assign
+conductivities by volume ID and fixed temperature, outward flux or convection
+by exterior surface ID. The result file contains nodal temperature, volume IDs
+and a heat-flux vector per tetrahedron.
+
+```sh
+./build/nova_gmsh_diffusion_3d examples/gmsh_diffusion_3d/two_layer_wall.msh --material 11 2 --material 22 6 --temperature 101 400 --convection 102 12 300 --vtk wall.vtk
+```
+
+The included wall has a 340 K interface and transmits 240 W across its 1 m²
+section. The verification suite also measures temperature and flux convergence
+under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
@@ -102,7 +117,7 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support incomplete Cholesky, stationary pure-Neumann nullspace handling, anisotropic diffusion tensors, error-driven adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The 2D stationary solver requires an anchored problem and a scalar diffusivity. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. Incomplete Cholesky, error-driven mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.

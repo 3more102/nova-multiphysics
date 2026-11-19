@@ -128,3 +128,12 @@ Structural:
 ## Acceptance policy
 
 A benchmark is accepted only when the reference problem and assumptions are documented, automated regression tests pass, error metrics and expected convergence are stated, results are reproducible, and known limitations are recorded. Agreement with another software package is useful evidence but is not a substitute for analytical verification.
+
+
+## Steady 3D conduction on tagged tetrahedra
+
+The compiled tests cover local stiffness symmetry and row sums, reversed winding,
+invalid topology, componentwise Neumann compatibility, a rotated material interface,
+and agreement between assembly and flux recovery on material selection. The
+end-to-end CTest reads exported results, checks both boundary heat rates and measures
+temperature and flux error under refinement. [Reproduction and thresholds](STEADY_CONDUCTION_3D.md)
