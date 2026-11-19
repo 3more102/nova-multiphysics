@@ -65,6 +65,32 @@ const auto output = solve_transient_heat_3d(problem, options);
 
 The `diffusion` member also accepts the existing steady 3D `dirichlet_constraints`, `dirichlet_faces`, `neumann_faces`, `robin_faces`, `cell_source`, scalar and tensor conductivity representations. Heat capacity must be provided **either** as `volumetric_capacity` **or** a `cell_volumetric_capacity` vector; both simultaneously are invalid.
 
+## Step-wise streaming for bounded field storage
+
+Set `TransientHeat3DOptions::step_observer` to receive the Dirichlet-projected
+initial nodal state at `start_time`, then one state after each successfully
+completed fixed step. Each callback receives the physical time and a read-only
+`std::span<const double>` ordered by mesh node index. The span is borrowed:
+copy or write it during the callback if the state must outlive that call.
+Exceptions raised by the observer propagate to the caller, so output failures
+cannot be mistaken for a completed result.
+
+By default, `retain_step_solutions=true` keeps the legacy temperature history
+in `result.linear_solvers[i].solution`. With
+`retain_step_solutions=false`, those solution vectors are empty while convergence
+metadata, energy diagnostics, and the final temperature vector remain available.
+This avoids retaining O(nodes × steps) field data and supports incremental
+VTK/PVD export without re-solving each time step. The observer API itself does
+not create VTK/PVD files, perform asynchronous I/O, or enforce file atomicity.
+
+```cpp
+options.retain_step_solutions = false;
+options.step_observer = [](double time, std::span<const double> temperature) {
+    // Consume this exact computed state before returning.
+    // time=start_time for the first invocation.
+};
+```
+
 ## Reproduce and tests
 
 ```sh
