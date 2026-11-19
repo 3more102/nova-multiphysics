@@ -90,6 +90,22 @@ Remaining:
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.
 
+
+### 3D time-dependent conduction (experimental C++ API)
+
+Implemented:
+- P1 tetrahedral Backward Euler and Crank–Nicolson with a consistent thermal mass matrix.
+- Scalar and SPD tensor conductivity, per-cell material tensors, and spatial or cellwise heat capacity.
+- Dirichlet, Neumann and Robin boundaries with per-step integrated energy diagnostics.
+- Streaming state observers, optional bounded-memory result history, and validated ParaView PVD/VTK output.
+- Optional spatial source plus additive cellwise source; absent source fields represent unforced conduction.
+- Regression tests for heterogeneous cellwise SPD tensors, cell-only heating, zero-source equilibrium and energy-budget closure.
+
+Remaining:
+- Adaptive 3D time steps and time-varying loads/materials.
+- Gmsh-tagged transient studies and independent temporal-convergence benchmarks.
+- Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
+
 ## M4 — Structural mechanics
 - Vector-valued H1 spaces.
 - Linear elasticity.
