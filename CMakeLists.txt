@@ -28,6 +28,7 @@ add_library(nova_core
     src/nonlinear/newton_solver.cpp
     src/fem/mesh2d.cpp
     src/fem/mesh3d.cpp
+    src/io/gmsh22_tetrahedral.cpp
     src/fem/tetrahedron_h1.cpp
     src/fem/h1_space_3d.cpp
     src/fem/constrained_diffusion.cpp
@@ -130,6 +131,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_error_norms_2d.cpp
         tests/test_mesh_topology_2d.cpp
         tests/test_mesh_topology_3d.cpp
+        tests/test_gmsh22_tetrahedral.cpp
         tests/test_h1_space_3d.cpp
         tests/test_diffusion_3d.cpp
         tests/test_anisotropic_3d.cpp
