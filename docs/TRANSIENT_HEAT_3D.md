@@ -65,6 +65,11 @@ const auto output = solve_transient_heat_3d(problem, options);
 
 The `diffusion` member also accepts the existing steady 3D `dirichlet_constraints`, `dirichlet_faces`, `neumann_faces`, `robin_faces`, `cell_source`, scalar and tensor conductivity representations. Heat capacity must be provided **either** as `volumetric_capacity` **or** a `cell_volumetric_capacity` vector; both simultaneously are invalid.
 
+In the transient 3D API, `diffusion.source` is optional. Omitting it means zero
+spatial generation; any supplied `diffusion.cell_source` is still integrated.
+Both an unforced insulated thermal-relaxation model and per-cell-only heating
+are supported.
+
 ## Reproduce and tests
 
 ```sh

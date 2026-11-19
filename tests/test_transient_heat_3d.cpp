@@ -232,3 +232,57 @@ NOVA_TEST(transient_heat_3d_cellwise_tensor_capacity_source_patch) {
         NOVA_REQUIRE_NEAR(solved.diagnostics[0].balance_residual, 0.0, 1e-8);
     }
 }
+
+NOVA_TEST(transient_heat_3d_unforced_insulated_nonuniform_field_conserves_energy) {
+    auto p = unit_heat();
+    p.diffusion.source = {};  // Zero source is valid without a callback.
+    p.cell_volumetric_capacity = {3.0};
+    p.initial_temperature = {300.0, 310.0, 290.0, 305.0};
+
+    TransientHeat3DOptions options;
+    options.time_step = 0.05;
+    options.steps = 4;
+    options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    options.solver_options.relative_tolerance = 1e-12;
+    // C*volume*mean(T0) = 3*(1/6)*(1205/4) = 150.625 J.
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                               TransientHeat3DScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        const auto result = solve_transient_heat_3d(p, options);
+        for (const auto& diag : result.diagnostics) {
+            NOVA_REQUIRE_NEAR(diag.heat_content, 150.625, 1e-9);
+            NOVA_REQUIRE_NEAR(diag.source_energy, 0.0, 1e-13);
+            NOVA_REQUIRE_NEAR(diag.neumann_energy, 0.0, 1e-13);
+            NOVA_REQUIRE_NEAR(diag.robin_energy, 0.0, 1e-13);
+            NOVA_REQUIRE_NEAR(diag.dirichlet_energy, 0.0, 1e-13);
+            NOVA_REQUIRE_NEAR(diag.balance_residual, 0.0, 1e-9);
+        }
+    }
+}
+
+NOVA_TEST(transient_heat_3d_per_cell_only_source_needs_no_spatial_callback) {
+    auto p = unit_heat();
+    p.diffusion.source = {};
+    p.diffusion.cell_source = {6.0};
+    p.cell_volumetric_capacity = {3.0};
+    p.initial_temperature = {300.0, 300.0, 300.0, 300.0};
+
+    TransientHeat3DOptions options;
+    options.time_step = 0.1;
+    options.steps = 5;
+    options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    options.solver_options.relative_tolerance = 1e-12;
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                               TransientHeat3DScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        const auto result = solve_transient_heat_3d(p, options);
+        for (const double value : result.temperature) {
+            NOVA_REQUIRE_NEAR(value, 301.0, 1e-9);
+        }
+        for (const auto& diag : result.diagnostics) {
+            NOVA_REQUIRE_NEAR(diag.source_energy, 0.1, 1e-12);
+            NOVA_REQUIRE_NEAR(diag.balance_residual, 0.0, 1e-9);
+        }
+        NOVA_REQUIRE_NEAR(result.diagnostics.back().heat_content, 150.5, 1e-9);
+    }
+}
