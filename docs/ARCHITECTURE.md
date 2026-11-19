@@ -98,7 +98,7 @@ The prototype currently contains:
 - A validated 2D triangle mesh and structured rectangular mesh generator.
 - Reusable H1 P1/P2 reference-triangle basis functions and positive degree-four quadrature.
 - A shared H1 P1/P2 isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric sources, strong nodal and boundary-edge Dirichlet constraints, and P1/P2 Neumann/Robin edge terms.
-- Reusable consistent capacity/mass and stiffness operators for P1/P2 triangles and P1 tetrahedra. The 3D stationary and transient assemblies share barycentric quadrature, physical point mapping, gradient products and exterior-face assignment checks.
+- Reusable consistent capacity/mass and stiffness operators for P1/P2 triangles and P1 tetrahedra. The 3D stationary and transient assemblies share barycentric quadrature, physical point mapping, scalar/tensor stiffness integration and exterior-face assignment checks.
 - A geometry-independent theta method in `src/fem/heat_time_integration.cpp`. The 2D P1/P2 and 3D P1 adapters supply material operators, time-level volume and face/edge loads, and prescribed traces. Both receive the same solver and energy reports.
 - Fixed-mesh adaptive time-step controllers with full-step/two-half-step error estimation, accepted/rejected trial recording, and exact DOF restarts. The 2D reference path still reassembles fixed operators per trial. The 3D P1 path prepares the material mass/stiffness operators and element Jacobians once, then reuses them across full, half and rejected trials.
 - A 1D nonlinear P1 diffusion benchmark with a consistent tangent/Jacobian for (k(u)=1+u^2).
@@ -106,7 +106,7 @@ The prototype currently contains:
 - L2 and H1 error-norm calculations for nodal P1 fields.
 - Automated numerical and input-validation tests.
 
-The 2D and 3D stationary diffusion adapters share a component nullspace implementation. The DOF map defines connectivity. Each adapter supplies its exact basis integrals and quadrature load magnitudes. The shared symmetric elimination compacts free triplets in place, and CG starts all identity rows at their prescribed values. Anisotropic tensors and a generalized physics residual/tangent interface remain open. The nonlinear solver is not yet connected to a general material or multiphysics model.
+The 2D and 3D stationary diffusion adapters share a component nullspace implementation. The DOF map defines connectivity. Each adapter supplies its exact basis integrals and quadrature load magnitudes. The shared symmetric elimination compacts free triplets in place, and CG starts all identity rows at their prescribed values. The tetrahedral adapters accept scalar or symmetric positive-definite tensor conductivity. A generalized physics residual/tangent interface remains open. The nonlinear solver is not yet connected to a general material or multiphysics model.
 
 ## 4. Dependency policy
 

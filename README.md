@@ -50,7 +50,7 @@ on validated four-node tetrahedral meshes using:
 - Positive four-point degree-two tetrahedron quadrature.
 - Three-point degree-two triangular-face quadrature.
 - Signed-Jacobian physical P1 gradients and orientation-independent volume integration.
-- Positive spatially varying isotropic diffusivity and volumetric sources.
+- Spatially varying scalar or symmetric positive-definite tensor diffusivity and volumetric sources.
 - Strong Dirichlet conditions on vertices or complete exterior faces.
 - Neumann outward-flux integration and Robin exchange on validated exterior faces.
 - Homogeneous natural (zero-flux) conditions on unassigned faces.
@@ -62,7 +62,7 @@ Example: `examples/diffusion_3d/main.cpp`.
 
 Pure-Neumann compatibility is checked separately on each connected component without Dirichlet or positive Robin anchoring. The returned field on each such component is normalized to zero volume-weighted mean.
 
-The stationary tetrahedral solver supports P1 isotropic diffusion. P2 tetrahedra, anisotropic tensors and 3D adaptive refinement are open.
+For direction-dependent materials, set `diffusivity_tensor` on a stationary problem or `conductivity_tensor` on a transient problem. Supply the six components in global Cartesian coordinates and leave the scalar callback empty. Fixed and adaptive time stepping use the same material assembly. [Tensor conventions and supported range](docs/NUMERICAL_CONVENTIONS.md#tetrahedral-conductivity-tensors)
 
 ### Triangle mesh quality and uniform refinement
 
@@ -138,7 +138,7 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support incomplete Cholesky, anisotropic diffusion tensors, 3D adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+Open milestones include incomplete Cholesky, P2 tetrahedra, adaptive 3D meshing and a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nova/fem/conductivity_3d.hpp"
 #include "nova/fem/h1_space_3d.hpp"
 #include "nova/linalg/conjugate_gradient.hpp"
 
@@ -9,7 +10,7 @@
 
 namespace nova::fem {
 
-using ScalarField3D = std::function<double(double, double, double)>;
+using ScalarField3D = SpatialScalarField3D;
 
 struct DirichletConstraint3D {
     std::size_t node{};
@@ -23,7 +24,7 @@ struct DirichletBoundaryFace3D {
 
 struct NeumannBoundaryFace3D {
     BoundaryFace3D face{};
-    // Outward physical flux q_n = -k * grad(u) dot n.
+    // Outward physical flux q_n = -(K grad(u)) dot n.
     ScalarField3D outward_flux;
 };
 
@@ -42,6 +43,8 @@ struct ScalarDiffusion3DProblem {
     std::vector<DirichletBoundaryFace3D> dirichlet_faces;
     std::vector<NeumannBoundaryFace3D> neumann_faces;
     std::vector<RobinBoundaryFace3D> robin_faces;
+    // Supply exactly one of diffusivity (k I) and diffusivity_tensor (K).
+    SymmetricTensorField3D diffusivity_tensor{};
 };
 
 struct ScalarDiffusion3DResult {
@@ -51,13 +54,13 @@ struct ScalarDiffusion3DResult {
     linalg::SolverResult linear_solver;
 };
 
-// Solves -div(k grad(u)) = f with continuous P1 tetrahedral elements.
+// Solves -div(K grad(u)) = f with continuous P1 tetrahedral elements.
 // Dirichlet data may be supplied as vertex constraints or exterior faces.
 // Neumann and Robin data are integrated on validated exterior triangular faces.
 // Unassigned faces are insulated. Each connected component needs a Dirichlet
 // value or positive Robin transfer to be anchored. Otherwise, source and
 // outward-flux loads must balance; the returned solution then has zero
-// volume-weighted mean on that component. Anisotropic tensors are unsupported.
+// volume-weighted mean on that component.
 [[nodiscard]] ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     const ScalarDiffusion3DProblem& problem,
     const linalg::SolverOptions& solver_options = {}

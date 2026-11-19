@@ -22,11 +22,10 @@ struct ThermalVolume {
 // The caller validates the mesh once before entering element loops.
 [[nodiscard]] ThermalVolume assemble_volume(
     const TetrahedralMesh3D& mesh, const SpatialScalarField3D& capacity,
-    const SpatialScalarField3D& conductivity
+    const detail::ConductivityField3D& material
 ) {
-    if (!capacity || !conductivity) {
-        throw std::invalid_argument("Volumetric heat capacity and conductivity are required.");
-    }
+    material.validate();
+    if (!capacity) throw std::invalid_argument("Volumetric heat capacity is required.");
     std::vector<linalg::Triplet> mass, stiffness;
     if (mesh.elements.size() > mass.max_size() / 16) {
         throw std::length_error("Tetrahedral thermal matrix exceeds the supported size.");
@@ -40,27 +39,24 @@ struct ThermalVolume {
         const auto basis = evaluate_tetrahedron_p1_physical_gradients_3d(mesh, e);
         const double jacobian = std::abs(basis.signed_jacobian_determinant);
         jacobians.push_back(jacobian);
-        double integrated_k = 0.0;
-        std::array<std::array<double, 4>, 4> local_mass{};
-        for (const auto& q : tetrahedron_degree_two_quadrature) {
-            const auto x = detail::simplex_point(mesh, cell, q.shape);
-            const double c = capacity(x.x, x.y, x.z);
-            const double k = conductivity(x.x, x.y, x.z);
-            if (!std::isfinite(c) || c <= 0.0 || !std::isfinite(k) || k <= 0.0) {
-                throw std::invalid_argument("Thermal capacity and conductivity must be finite and positive.");
-            }
-            const double weight = jacobian * q.weight;
-            integrated_k += k * weight;
-            for (std::size_t i = 0; i < 4; ++i) {
-                for (std::size_t j = 0; j < 4; ++j) {
-                    local_mass[i][j] += c * weight * (q.shape[i] * q.shape[j]);
+        detail::P1Matrix3D local_mass{};
+        const auto local_stiffness = detail::integrate_p1_volume_3d(
+            mesh, cell, basis, material,
+            [&](const Point3D& x, const auto& shape, double weight) {
+                const double c = capacity(x.x, x.y, x.z);
+                if (!std::isfinite(c) || c <= 0.0) {
+                    throw std::invalid_argument("Thermal capacity must be finite and positive.");
                 }
-            }
-        }
+                for (std::size_t i = 0; i < 4; ++i) {
+                    for (std::size_t j = 0; j < 4; ++j) {
+                        local_mass[i][j] += c * weight * (shape[i] * shape[j]);
+                    }
+                }
+            });
         for (std::size_t i = 0; i < 4; ++i) {
             for (std::size_t j = 0; j < 4; ++j) {
                 mass.push_back({cell[i], cell[j], local_mass[i][j]});
-                stiffness.push_back({cell[i], cell[j], integrated_k * detail::gradient_product(basis, i, j)});
+                stiffness.push_back({cell[i], cell[j], local_stiffness[i][j]});
             }
         }
     }
@@ -193,7 +189,8 @@ PreparedTransientHeat3D prepare_transient_heat_3d(
         }
     }
 
-    auto volume = assemble_volume(problem.mesh, problem.volumetric_capacity, problem.conductivity);
+    auto volume = assemble_volume(problem.mesh, problem.volumetric_capacity,
+                                  {problem.conductivity, problem.conductivity_tensor});
     return {
         std::move(volume.operators),
         std::move(volume.jacobians),
@@ -235,7 +232,15 @@ ScalarH1Operators3D assemble_scalar_h1_operators_3d(
     const SpatialScalarField3D& conductivity
 ) {
     mesh.validate();
-    return assemble_volume(mesh, capacity, conductivity).operators;
+    return assemble_volume(mesh, capacity, {conductivity, {}}).operators;
+}
+
+ScalarH1Operators3D assemble_anisotropic_h1_operators_3d(
+    const TetrahedralMesh3D& mesh, const SpatialScalarField3D& capacity,
+    const SymmetricTensorField3D& conductivity_tensor
+) {
+    mesh.validate();
+    return assemble_volume(mesh, capacity, {{}, conductivity_tensor}).operators;
 }
 
 TransientHeat3DResult solve_transient_heat_3d(

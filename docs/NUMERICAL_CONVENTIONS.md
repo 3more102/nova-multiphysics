@@ -155,9 +155,9 @@ oriented outward using the opposite tetrahedron vertex.
 
 The first 3D H1 space is continuous P1 with one global degree of freedom
 per mesh vertex. The scalar diffusion kernel assembles
-\(-\nabla\cdot(k\nabla u)=f\) on affine tetrahedra, using a positive
+\(-\nabla\cdot(K\nabla u)=f\) on affine tetrahedra, using a positive
 four-point degree-two tetrahedron rule. It supports spatially varying
-positive isotropic diffusivity, volumetric source terms, strong Dirichlet
+positive scalar or symmetric positive-definite tensor diffusivity, volumetric source terms, strong Dirichlet
 vertex/face values, outward Neumann fluxes, and Robin transfer on validated
 exterior triangular faces. Three-point degree-two face quadrature integrates
 linear Neumann loads and quadratic Robin matrices. Unassigned faces are
@@ -168,7 +168,12 @@ load. The solver fixes the constant nullspace by imposing a temporary vertex
 gauge. The physical field in `values` is shifted to zero volume-weighted mean on
 that component. The original iterate in `linear_solver.solution` and its true
 residual describe the same pinned system.
-Anisotropic tensors remain unsupported.
+
+### Tetrahedral conductivity tensors
+
+`SymmetricTensor3D` stores `xx, yy, zz, xy, xz, yz` in global Cartesian coordinates. The stationary and thermal APIs require exactly one scalar or tensor field. An aligned material interface can be modeled by a piecewise callback. An interface cutting a tetrahedron is sampled by the existing four-point rule.
+
+At each quadrature point the tensor must be finite with positive diagonal entries. For $D_{ii}=\sqrt{K_{ii}}$, the implementation forms the unit-diagonal matrix $R=D^{-1}KD^{-1}$. Each off-diagonal magnitude must be below one and both remaining Cholesky pivots must exceed 32 times double-precision machine epsilon. This rejects nearly singular correlations independently of the units of conductivity. The assembled element stiffness is the Gram matrix of the transformed, quadrature-weighted gradients. This ordering also avoids spurious overflow and underflow in scalar stiffness assembly on rescaled elements.
 
 The 3D diffusion kernel is P1 only. Higher-order tetrahedral spaces and 3D adaptive refinement remain open.
 
@@ -306,15 +311,15 @@ Every benchmark must record the NOVA revision, compiler, build configuration, me
 
 ## Transient P1 tetrahedral heat
 
-For volume capacity $c=\rho c_p>0$ and isotropic conductivity $k>0$,
-$M_{ij}=\int cN_iN_j$ and $K_{ij}=\int k\nabla N_i\cdot\nabla N_j$.
+For volume capacity $c=\rho c_p>0$ and conductivity tensor $D$ (including $kI$),
+$M_{ij}=\int cN_iN_j$ and $K_{ij}=\int \nabla N_i\cdot D\nabla N_j$.
 On an affine tetrahedron with constant $c$, $M^e_{ij}=cV(1+\delta_{ij})/20$.
 The positive four-point degree-two rule integrates this mass exactly.
 Variable coefficients are sampled at the same quadrature points. Their products with basis functions can exceed the quadrature degree.
 
 On a Robin face let $R_{ij}=\int hN_iN_j$, with $h\ge0$.
 Let $F_i=\int QN_i-\int_{\Gamma_N}q_nN_i+\int_{\Gamma_R}hT_{amb}N_i$.
-The outward flux is $q_n=-k\nabla T\cdot n$. Each boundary face accepts one condition, independent of the vertex permutation. Unassigned faces are insulated.
+The outward flux is $q_n=-(D\nabla T)\cdot n$. Each boundary face accepts one condition, independent of the vertex permutation. Unassigned faces are insulated.
 
 For $L(t)=K+R(t)$ the shared time integrator uses
 

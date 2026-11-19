@@ -52,11 +52,9 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     detail::DiffusionNullspace nullspace(node_count, problem.mesh.elements.size(),
         [&](std::size_t e) -> std::span<const std::size_t> { return problem.mesh.elements[e]; });
 
-    if (!problem.diffusivity || !problem.source) {
-        throw std::invalid_argument(
-            "3D diffusivity and source functions are required."
-        );
-    }
+    const detail::ConductivityField3D material{problem.diffusivity, problem.diffusivity_tensor};
+    material.validate();
+    if (!problem.source) throw std::invalid_argument("3D diffusion requires a source field.");
 
     std::vector<std::optional<double>> prescribed(node_count);
     std::set<std::size_t> explicit_nodes;
@@ -149,34 +147,20 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
             nullspace.add_basis_integral(node, nodal_volume_weight);
         }
 
-        std::array<std::array<double, 4>, 4> local_matrix{};
         std::array<double, 4> local_rhs{};
-
-        for (const auto& quadrature : tetrahedron_degree_two_quadrature) {
-            const auto point = detail::simplex_point(problem.mesh, cell, quadrature.shape);
-            const double diffusivity = problem.diffusivity(point.x, point.y, point.z);
-            const double source = problem.source(point.x, point.y, point.z);
-            if (!std::isfinite(diffusivity) || diffusivity <= 0.0) {
-                throw std::invalid_argument(
-                    "3D diffusivity must be finite and strictly positive."
-                );
-            }
-            if (!std::isfinite(source)) {
-                throw std::invalid_argument("3D source must be finite.");
-            }
-
-            const double weight = absolute_determinant * quadrature.weight;
-            for (std::size_t i = 0; i < local_dof_count; ++i) {
-                const double source_load =
-                    source * quadrature.shape[i] * weight;
-                local_rhs[i] += source_load;
-                nullspace.record_load(cell[i], source_load);
-                for (std::size_t j = 0; j < local_dof_count; ++j) {
-                    local_matrix[i][j] +=
-                        diffusivity * detail::gradient_product(physical, i, j) * weight;
+        const auto local_matrix = detail::integrate_p1_volume_3d(
+            problem.mesh, cell, physical, material,
+            [&](const Point3D& point, const auto& shape, double weight) {
+                const double source = problem.source(point.x, point.y, point.z);
+                if (!std::isfinite(source)) {
+                    throw std::invalid_argument("3D source must be finite.");
                 }
-            }
-        }
+                for (std::size_t i = 0; i < local_dof_count; ++i) {
+                    const double load = source * shape[i] * weight;
+                    local_rhs[i] += load;
+                    nullspace.record_load(cell[i], load);
+                }
+            });
 
         for (std::size_t i = 0; i < local_dof_count; ++i) {
             const std::size_t global_i = cell[i];
@@ -187,11 +171,6 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
                 );
             }
             for (std::size_t j = 0; j < local_dof_count; ++j) {
-                if (!std::isfinite(local_matrix[i][j])) {
-                    throw std::overflow_error(
-                        "3D element stiffness entry is non-finite."
-                    );
-                }
                 entries.push_back({
                     global_i, cell[j], local_matrix[i][j]
                 });

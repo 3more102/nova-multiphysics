@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nova/fem/conductivity_3d.hpp"
 #include "nova/fem/simplex_quadrature.hpp"
 #include "nova/fem/tetrahedron_h1.hpp"
 
@@ -65,11 +66,44 @@ template<std::size_t N>
     return jacobian;
 }
 
-[[nodiscard]] inline double gradient_product(const TetrahedronP1PhysicalGradients3D& basis,
-                                              std::size_t i, std::size_t j) {
-    const auto& a = basis.gradients[i];
-    const auto& b = basis.gradients[j];
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+using P1Matrix3D = std::array<std::array<double, 4>, 4>;
+
+struct ConductivityField3D {
+    const SpatialScalarField3D& scalar;
+    const SymmetricTensorField3D& tensor;
+
+    void validate() const;
+};
+
+using P1Gradients3D = std::array<std::array<double, 3>, 4>;
+
+void add_conductivity_sample(P1Matrix3D& stiffness, const ConductivityField3D& material,
+                             const Point3D& point, const P1Gradients3D& gradients,
+                             double sqrt_weight);
+
+// Both physics adapters visit the same physical quadrature points for the
+// stiffness and their additional terms (source or consistent mass).
+template<class VolumeTerm>
+[[nodiscard]] P1Matrix3D integrate_p1_volume_3d(
+    const TetrahedralMesh3D& mesh, const Tetrahedron3D& cell,
+    const TetrahedronP1PhysicalGradients3D& basis, const ConductivityField3D& material,
+    VolumeTerm&& volume_term
+) {
+    P1Matrix3D stiffness{};
+    const double jacobian = std::abs(basis.signed_jacobian_determinant);
+    const double sqrt_jacobian = std::sqrt(jacobian);
+    for (const auto& q : tetrahedron_degree_two_quadrature) {
+        const auto point = simplex_point(mesh, cell, q.shape);
+        add_conductivity_sample(stiffness, material, point, basis.gradients,
+                                sqrt_jacobian * std::sqrt(q.weight));
+        volume_term(point, q.shape, jacobian * q.weight);
+    }
+    for (std::size_t i = 0; i < 4; ++i) {
+        for (std::size_t j = 0; j < i; ++j) {
+            stiffness[j][i] = stiffness[i][j];
+        }
+    }
+    return stiffness;
 }
 
 } // namespace nova::fem::detail
