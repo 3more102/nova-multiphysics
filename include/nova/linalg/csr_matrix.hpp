@@ -25,6 +25,10 @@ public:
     [[nodiscard]] std::size_t columns() const noexcept;
     [[nodiscard]] std::size_t non_zeros() const noexcept;
 
+    // Exact canonical CSR equality, including matrix shape, pattern and values.
+    // A cached factor must be invalidated on any change, without tolerances.
+    [[nodiscard]] bool exactly_equal(const CsrMatrix& other) const;
+
     [[nodiscard]] std::vector<double> multiply(
         std::span<const double> vector
     ) const;

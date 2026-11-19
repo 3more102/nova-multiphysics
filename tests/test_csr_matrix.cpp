@@ -71,3 +71,29 @@ NOVA_TEST(csr_linear_combination_merges_sparse_entries) {
     });
     NOVA_REQUIRE(visited == c.non_zeros());
 }
+
+NOVA_TEST(csr_exact_equality_checks_pattern_values_and_dimensions) {
+    using nova::linalg::CsrMatrix;
+    const auto a = CsrMatrix::from_triplets(3, 3, {
+        {0, 0, 4.0}, {0, 1, -1.0}, {1, 0, -1.0}, {1, 1, 5.0}, {2, 2, 6.0}
+    });
+    const auto equal = CsrMatrix::from_triplets(3, 3, {
+        {2, 2, 6.0}, {1, 1, 5.0}, {1, 0, -1.0}, {0, 1, -1.0}, {0, 0, 4.0}
+    });
+    const auto coefficient = CsrMatrix::from_triplets(3, 3, {
+        {0, 0, 4.0}, {0, 1, -1.0}, {1, 0, -1.0}, {1, 1, 5.5}, {2, 2, 6.0}
+    });
+    // Same number of stored entries, but a different sparsity pattern.
+    const auto pattern = CsrMatrix::from_triplets(3, 3, {
+        {0, 0, 4.0}, {0, 2, -1.0}, {2, 0, -1.0}, {1, 1, 5.0}, {2, 2, 6.0}
+    });
+    const auto shape = CsrMatrix::from_triplets(4, 4, {
+        {0, 0, 4.0}, {0, 1, -1.0}, {1, 0, -1.0}, {1, 1, 5.0}, {2, 2, 6.0}
+    });
+    NOVA_REQUIRE(a.exactly_equal(a));
+    NOVA_REQUIRE(a.exactly_equal(equal));
+    NOVA_REQUIRE(equal.exactly_equal(a));
+    NOVA_REQUIRE(!a.exactly_equal(coefficient));
+    NOVA_REQUIRE(!a.exactly_equal(pattern));
+    NOVA_REQUIRE(!a.exactly_equal(shape));
+}

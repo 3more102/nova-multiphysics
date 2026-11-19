@@ -1,5 +1,14 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · exact structural IC(0) cache checks
+
+Cache invalidation now compares canonical CSR dimensions, row offsets,
+column indices and numerical coefficients directly, in linear time in
+matrix storage size rather than using repeated sparse binary searches.
+A regression covers equivalent reordered assembly, changed coefficients,
+same-NNZ changed sparsity and changed dimensions. Hosted build and tests
+are still required for this increment before release qualification.
+
 ## 19 November 2026 · cached IC(0) for repeated thermal matrices
 
 The CG API now includes `CachedConjugateGradient`, an instance-owned IC(0)
