@@ -26,6 +26,7 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | Argument | Physical meaning in SI units |
 | --- | --- |
 | `--material volume_id k` | Isotropic conductivity in W/(m·K). Supply each volume ID once, including 0 for untagged tetrahedra when present. |
+| `--material-tensor volume_id xx yy zz xy xz yz` | Symmetric positive-definite 3D conductivity tensor in global Cartesian axes, W/(m·K). Six independent components. Cannot overlap a scalar assignment on the same volume ID. |
 | `--temperature face_id T` | Prescribed nodal temperature in K on that surface. |
 | `--flux face_id q_out` | Outward heat flux in W/m². Positive removes heat. |
 | `--convection face_id h T_inf` | Outward flux equals `h (T − T_inf)`, with `h ≥ 0` in W/(m²·K). |
@@ -47,6 +48,29 @@ the adjoining solids by their volume IDs. Unassigned exterior faces are insulate
 The executable rejects absent, duplicate and conflicting assignments. The shorthand
 `nova_gmsh_diffusion_3d mesh.msh tag` runs the unit-conductivity, unit-source example
 with zero temperature on the selected tag.
+
+## Tensor materials
+
+Anisotropic conduction accepts one `SymmetricTensor3D` per tetrahedron in
+`ScalarDiffusion3DProblem::cell_diffusivity_tensors`, or the pre-existing
+spatial tensor callback. Scalar, tensor and spatial material representations
+are mutually exclusive. The tagged CLI promotes scalar conductivities to
+diagonal tensors when tensor and scalar regions coexist. Coefficients are
+expressed in the mesh's global Cartesian axes (no local material-frame support).
+
+```sh
+./build/nova_gmsh_diffusion_3d examples/gmsh_diffusion_3d/two_layer_wall.msh \
+  --material-tensor 11 2 9 4 0 0 0 --material 22 6 \
+  --temperature 101 400 --convection 102 12 300 --vtk anisotropic-wall.vtk
+```
+
+The same 3D wall can mix regional heat sources, named physical groups, and
+tensor materials. Positive definiteness is checked before the solve and before
+flux postprocessing. Cross terms may create transverse flux, so boundary data
+must match the intended physics. C++ tests verify exact tensor stiffness,
+reversed winding, bonded-interface flux and invalid tensors. The external
+Python VTK reader verifies the mixed tensor/scalar wall against the analytical
+temperature, flux and heat-rate benchmark.
 
 ## Discretization
 
