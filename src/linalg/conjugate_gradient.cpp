@@ -73,6 +73,8 @@ struct ScaledDot { double mantissa{}; int exponent{}; };
 
 } // namespace
 
+namespace {
+
 SolverResult solve_conjugate_gradient_impl(
     const CsrMatrix& matrix,
     const std::span<const double> right_hand_side,
@@ -328,6 +330,8 @@ SolverResult solve_conjugate_gradient_impl(
     result.message = "Maximum iteration count reached before convergence.";
     return result;
 }
+
+} // namespace
 
 SolverResult solve_conjugate_gradient(
     const CsrMatrix& matrix,
