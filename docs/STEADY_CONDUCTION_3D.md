@@ -21,6 +21,31 @@ including the uniform `--source` contribution if specified. The verifier uses th
 Python standard library. CTest registers it when a Python interpreter is available.
 The C++ library, CLI, unit tests and wall smoke test run independently of Python.
 
+## Interior normal-flux continuity diagnostic
+
+The optional `--jump-report` and the C++ API
+`nova/fem/interior_flux_jumps_3d.hpp` inspect **all shared tetrahedral faces**
+of a conforming mesh. For each face `F` with outward unit normals from
+neighboring cells, the normal-flux jump is
+`J_F = q_left · n_left + q_right · n_right`. Each `q` is the
+cell-averaged raw P1 conductive flux computed by NOVA, and `h_F` is
+the longest edge of `F`.
+
+The global indicator is `sqrt(sum_F h_F |F| J_F^2)`. Half of each
+nonnegative squared face contribution is assigned to each incident cell,
+yielding one local indicator per tetrahedron. The API returns the
+normal jump, face geometry, cell ownership and local indicators for downstream
+mesh-quality analysis. It validates topology, flux count and finiteness,
+and does not modify the solver or mesh.
+
+**Scope:** This is an interface flux-continuity diagnostic only. It is **not**
+a guaranteed PDE error bound, a locally conservative flux reconstruction, or
+a full residual estimator: it excludes cell source residuals, boundary
+mismatch and unresolved sub-element material variation. A zero result does
+not imply a correct solution. Verification includes constant-flux patches,
+material-interface flux continuity, deliberately mismatched flux,
+orientation permutations and invalid input.
+
 ## Model input
 
 | Argument | Physical meaning in SI units |
@@ -35,6 +60,7 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 | `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
 | `--balance-report` | Independently reassemble FEM weak-form residuals and report global source, Neumann, Robin, nodal reactions and free-equation residuals in W. |
+| `--jump-report` | Print interior-face count, a weighted global normal-flux jump indicator and maximum face jump. Zero for a flux-continuous P1 patch, but not a complete error estimate. |
 
 ### Gmsh named physical groups
 
