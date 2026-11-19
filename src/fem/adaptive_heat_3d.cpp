@@ -2,6 +2,8 @@
 
 #include "transient_heat_3d_internal.hpp"
 
+#include "nova/linalg/conjugate_gradient.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -97,6 +99,10 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
     std::vector<double> state = detail::initial_transient_heat_state_3d(problem);
 
     AdaptiveHeat3DResult result;
+    // Full-step and half-step matrices differ. Keep separate caches to
+    // reuse their factors across repeated adaptive trials and rejected steps.
+    linalg::CachedConjugateGradient full_step_cg;
+    linalg::CachedConjugateGradient half_step_cg;
     double time = options.start_time;
     double step = std::clamp(options.initial_step, options.min_step, options.max_step);
     const double method_order =
@@ -121,13 +127,13 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         fixed.steps = 1U;
         fixed.solver_options = options.solver_options;
         const auto full = detail::solve_prepared_transient_heat_3d(
-            problem, fixed, prepared, state
+            problem, fixed, prepared, state, &full_step_cg
         );
 
         fixed.time_step = 0.5 * dt;
         fixed.steps = 2U;
         auto half = detail::solve_prepared_transient_heat_3d(
-            problem, fixed, prepared, state
+            problem, fixed, prepared, state, &half_step_cg
         );
 
         const double error = normalized_step_error(
@@ -159,6 +165,7 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         step = std::clamp(dt * factor, options.min_step, options.max_step);
     }
 
+    result.ic0_factor_builds = full_step_cg.factor_builds() + half_step_cg.factor_builds();
     result.temperature = std::move(state);
     result.final_time = time;
     return result;
