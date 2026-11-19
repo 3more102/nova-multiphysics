@@ -49,6 +49,12 @@ including any uniform `--source` contribution.
 ./build/nova_gmsh_diffusion_3d examples/gmsh_diffusion_3d/two_layer_wall.msh --material 11 2 --material 22 6 --temperature 101 400 --convection 102 12 300 --vtk wall.vtk
 ```
 
+Use `--jump-report` to inspect raw P1 normal heat-flux jumps across every
+interior tetrahedral face. NOVA reports a weighted global flux-continuity
+indicator and the maximum interface jump. This diagnostic is distinct from
+the FEM global `--balance-report`: it does **not** include source and boundary
+residuals or certify local conservation.
+
 The included wall has a 340 K interface and transmits 240 W across its 1 m²
 section. Assign distinct internal heat-generation densities by physical volume
 with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
