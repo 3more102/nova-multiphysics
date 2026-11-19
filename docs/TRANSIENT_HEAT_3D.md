@@ -65,6 +65,13 @@ const auto output = solve_transient_heat_3d(problem, options);
 
 The `diffusion` member also accepts the existing steady 3D `dirichlet_constraints`, `dirichlet_faces`, `neumann_faces`, `robin_faces`, `cell_source`, scalar and tensor conductivity representations. Heat capacity must be provided **either** as `volumetric_capacity` **or** a `cell_volumetric_capacity` vector; both simultaneously are invalid.
 
+### Zero and cell-only source terms
+
+The optional `diffusion.source` function defaults to zero spatial generation
+when absent. A `diffusion.cell_source` vector alone can provide region-specific
+heating, without a dummy zero-valued lambda; both fields absent describe
+unforced conduction. Finite-value checks still apply at each quadrature point.
+
 ## Reproduce and tests
 
 ```sh
@@ -78,6 +85,7 @@ ctest --test-dir build -C Release --output-on-failure
 - Uniform insulated heating: `C=4`, `Q=8`, `T(0)=300` gives `T(t)=300+2t`, exactly represented by P1, for both schemes.
 - Three fixed vertices of a unit tetrahedron: the remaining DOF has `M_33=1/60`, `K_33=1/6`. Starting at 10 with `dt=0.1`, the one-step exact algebraic results are 5 (Backward Euler) and 10/3 (Crank–Nicolson).
 - Neumann-flux heat loss, Robin convection, mixed tensor conductivity with a spatial heat capacity, and numerical energy-budget closure.
+- Heterogeneous cellwise SPD tensor conductivity with cellwise capacity and cell-only source, plus zero-source insulated equilibrium.
 - Rejection of nonpositive capacities, bad source/initial fields, duplicate boundary conditions and invalid time-step options.
 
 These checks verify the mathematical discretization but **do not** constitute experimental or industrial validation.
