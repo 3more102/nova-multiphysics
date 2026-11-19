@@ -30,6 +30,7 @@ add_library(nova_core
     src/nonlinear/newton_solver.cpp
     src/fem/mesh2d.cpp
     src/fem/mesh3d.cpp
+    src/fem/mesh_refinement_3d.cpp
     src/fem/tetrahedron_h1.cpp
     src/fem/h1_space_3d.cpp
     src/fem/conductivity_3d.cpp
@@ -111,6 +112,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_poisson_1d.cpp
         tests/test_diffusion_2d.cpp
         tests/test_mesh_topology_3d.cpp
+        tests/test_mesh_refinement_3d.cpp
         tests/test_h1_space_3d.cpp
         tests/test_diffusion_3d.cpp
         tests/test_cell_conduction_3d.cpp
