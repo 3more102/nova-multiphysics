@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
             }
             // Observe the initial projected state plus each completed step.
             // The exporter runs the solver once and creates no extra field-history buffer.
-            options.step_observer = [&](double time, const std::vector<double>& values) {
+            options.step_observer = [&, stem](double time, const std::vector<double>& values) {
                 std::ostringstream suffix;
                 suffix << std::setfill('0') << std::setw(6) << frames.size();
                 const auto frame_path = collection_path.parent_path() /
