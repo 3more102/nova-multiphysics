@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nova/fem/transient_heat_3d.hpp"
+#include "nova/linalg/conjugate_gradient.hpp"
 
 #include <vector>
 
@@ -27,7 +28,8 @@ struct PreparedTransientHeat3D {
     const TransientHeat3DProblem& problem,
     const TransientHeat3DOptions& options,
     const PreparedTransientHeat3D& prepared,
-    std::vector<double> initial_state
+    std::vector<double> initial_state,
+    linalg::CachedConjugateGradient* solver_cache = nullptr
 );
 
 } // namespace nova::fem::detail
