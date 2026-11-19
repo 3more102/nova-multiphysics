@@ -1,5 +1,30 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · cached IC(0) for repeated thermal matrices
+
+The CG API now includes `CachedConjugateGradient`, an instance-owned IC(0)
+factor cache. The cache compares every stored nonzero against the supplied
+canonical CSR matrix using exact coefficients, dimensions and sparsity count.
+It rebuilds the incomplete factor if any entry or pattern changes, so updates
+to timestep, conductivity/capacity operators, constrained rows or Robin
+transfer coefficients cannot silently reuse a stale factor. The same factor
+can solve successive right-hand sides with different prescribed temperatures
+and heat sources. Non-IC(0) solver choices retain the uncached code path.
+
+The shared fixed-step thermal integrator owns one cache for its integration
+lifetime. The no-Robin constrained matrix already had assembly reuse; now
+its IC(0) factor is also reusable. When Robin coefficients vary, the full
+matrix is compared and factorization is refreshed as necessary. Adaptive
+3D step-doubling receives reuse within each two-half-step integration, but
+the cache is not yet shared across separate adaptive trials. Solver
+termination still verifies the independently recomputed true residual.
+
+New tests cover repeated RHS, changed numerical coefficients, changed sparsity,
+switching between Jacobi and IC(0), and agreement on a 3D heat problem with
+time-dependent Robin coefficients. Verification on this branch must pass CI
+before the increment is treated as validated.
+
+
 ## 19 November 2026 · zero-fill incomplete Cholesky
 
 The solver increment builds on the verified tensor branch at `92960e071255`. Select `PreconditionerType::IncompleteCholesky0` in the existing CG options for stationary or transient problems. The public factor also supports repeated triangular solves. Seven additional regressions cover a four-cycle with known fill, exact one-iteration CG and its true residual, scaling, nonsymmetric input, breakdown on a verified SPD matrix, an anisotropic stationary patch and adaptive heat history. GCC 14.2 Release passed all 177 unit tests and all nine CTest targets. [Parent Windows/Linux, sanitizer and reference CI](https://github.com/3more102/nova-multiphysics/actions/runs/44478548702)
