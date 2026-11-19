@@ -197,8 +197,6 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
     }));
 }
 
-
-
 NOVA_TEST(transient_heat_3d_robin_ambient_temporal_convergence) {
     // A single tetrahedron with three fixed vertices and an independent
     // convection face {1,2,3} has precisely one unknown T_3.
