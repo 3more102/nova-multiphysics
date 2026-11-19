@@ -31,6 +31,7 @@ Implemented:
 - Triangle orientation-independent integration.
 - Orientation-aware 2D triangle quality analysis (minimum angle, mean ratio, element area and longest edge).
 - Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
+- Conforming global 1-to-8 tetrahedral refinement with shared edge-midpoint nodes, outward surface splitting, parent-face and parent-element maps, P1 nodal transfer and cellwise-constant data replication.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
 - Nonlinear 1D P1 diffusion residual and consistent Jacobian assembly.
