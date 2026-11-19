@@ -310,14 +310,37 @@ TransientHeat3DResult solve_transient_heat_3d(
             if (prescribed[i]) rhs[i] = *prescribed[i];
             if (!std::isfinite(rhs[i])) throw std::overflow_error("Transient 3D boundary RHS overflowed.");
         }
+        // Solve for the small increment rather than the large absolute
+        // temperature. A warm-started CG on absolute T defines its stopping
+        // tolerance using a tiny initial residual, but true-residual
+        // recomputation subtracts O(T) products and can hit the roundoff
+        // floor. Defect correction keeps the same warm start while avoiding
+        // that loss of relative precision inside CG.
+        const auto current_product = system.multiply(state);
+        std::vector<double> increment_rhs(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            increment_rhs[i] = rhs[i] - current_product[i];
+            if (!std::isfinite(increment_rhs[i])) {
+                throw std::overflow_error("Transient 3D correction load overflowed.");
+            }
+        }
         auto solved = nova::linalg::solve_conjugate_gradient(
-            system, rhs, options.solver_options, state
+            system, increment_rhs, options.solver_options
         );
         if (!solved.converged) {
             throw std::runtime_error("Transient 3D step " + std::to_string(step) +
                                      " failed: " + solved.message);
         }
-        const auto& next = solved.solution;
+        std::vector<double> next(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            next[i] = state[i] + solved.solution[i];
+            if (prescribed[i]) next[i] = *prescribed[i];
+            if (!std::isfinite(next[i])) {
+                throw std::overflow_error("Transient 3D corrected temperature overflowed.");
+            }
+        }
+        // Publish the physical state rather than the internal correction.
+        solved.solution = next;
         const auto unconstrained_lhs = lhs.multiply(next);
         const auto previous_robin = robin.multiply(state);
         const auto next_robin = robin.multiply(next);
