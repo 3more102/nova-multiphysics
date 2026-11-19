@@ -4,6 +4,7 @@
 #include "nova/linalg/csr_matrix.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace nova::fem {
@@ -33,6 +34,13 @@ struct TransientHeat3DOptions {
     double start_time{0.0};
     std::size_t steps{1U};
     linalg::SolverOptions solver_options{};
+    // By default, per-step solver results preserve the physical temperature.
+    // Disable to avoid retaining O(steps * nodes) temperature history.
+    bool retain_step_solutions{true};
+    // Receives projected initial state (step 0) and every completed state.
+    // The field reference is valid only for the duration of the call.
+    std::function<void(std::size_t step, double time,
+                       const std::vector<double>& temperature)> on_state;
 };
 
 // All energies are integrated over a single time step in joules.
