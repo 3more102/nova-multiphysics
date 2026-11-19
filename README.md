@@ -212,14 +212,23 @@ See [3D error-norm formulation and verification](docs/VERIFICATION_3D_ERROR_NORM
 - Conjugate Gradient for symmetric positive-definite systems.
 - BiCGSTAB and restarted GMRES for general nonsymmetric systems.
 - Optional Jacobi diagonal preconditioning for all three iterative linear solvers.
+- Natural-order zero-fill incomplete Cholesky (IC(0)) preconditioning for Conjugate Gradient on symmetric systems with resolved positive pivots.
 - Newton nonlinear solver with GMRES or BiCGSTAB linear subsolves.
 - Armijo backtracking, including rejection of non-finite trial residuals.
 - Explicit breakdown and convergence reporting.
 - True-residual recomputation before linear convergence is accepted.
 
-Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
+Select IC(0) for a CG solve with
+`options.preconditioner = nova::linalg::PreconditionerType::IncompleteCholesky0`.
+IC(0) is an unshifted natural-order zero-fill factor: it rejects asymmetric
+matrices and unresolved/non-positive pivots rather than silently changing the
+system or falling back. Some SPD matrices do not admit a usable natural-order
+IC(0) factor; use Jacobi or no preconditioner for those cases. IC(0) is CG-only;
+GMRES and BiCGSTAB continue to accept None or Jacobi. The factor is currently
+built once per CG solve; reuse across identical transient time-step matrices
+is a separate optimization.
 
-The 2D P1/P2 stationary solver supports compatible pure-Neumann components with a zero-area-mean gauge; it remains scalar and isotropic. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. Incomplete Cholesky, error-driven mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The 2D P1/P2 stationary solver supports compatible pure-Neumann components with a zero-area-mean gauge; it remains scalar and isotropic. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. Factor reuse across transient steps, multilevel preconditioning, error-driven mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
