@@ -1,5 +1,21 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · integrate CG dynamic-range fix with exact CSR IC(0) cache (verification pending)
+
+Branch `feature/cg-range-cache-integration-20261119` is based on the
+unmerged exact-CSR cache work in draft #29 (which targets #24). It carries
+the scaled residual norm and Krylov scalar arithmetic from sibling draft #27
+without reverting #29's linear-time exact matrix identity comparison.
+
+A new regression exercises `CachedConjugateGradient` using two distinct
+nonzero right-hand sides of order 1e-200, relative-only stopping, and a
+single reused IC(0) factor. Existing direct CG regressions cover None,
+Jacobi and IC(0) preconditioners, tiny material scales, and large finite
+norms. No change is made to the public solver API. CI on the integrated
+head must pass before this checkpoint is labeled verified. These changes
+remain outside `main` and are not evidence of commercial readiness.
+
+
 ## 19 November 2026 · linear-time exact CSR factor-cache matching (pending CI)
 
 The IC(0) cache now compares canonical CSR row offsets, column indices and
