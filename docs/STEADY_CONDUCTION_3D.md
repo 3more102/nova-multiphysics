@@ -26,6 +26,7 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | Argument | Physical meaning in SI units |
 | --- | --- |
 | `--material volume_id k` | Isotropic conductivity in W/(m·K). Supply each volume ID once, including 0 for untagged tetrahedra when present. |
+| `--material-tensor volume_id xx yy zz xy xz yz` | Symmetric positive-definite 3D conductivity tensor in global coordinates, W/(m·K). Six independent components; use either scalar or tensor for each volume ID. |
 | `--temperature face_id T` | Prescribed nodal temperature in K on that surface. |
 | `--flux face_id q_out` | Outward heat flux in W/m². Positive removes heat. |
 | `--convection face_id h T_inf` | Outward flux equals `h (T − T_inf)`, with `h ≥ 0` in W/(m²·K). |
@@ -75,7 +76,27 @@ is pointwise exact where sources are present.
 
 The C++ problem accepts a spatial scalar callback, a spatial symmetric
 positive-definite tensor callback, or `ScalarDiffusion3DProblem::cell_diffusivity`.
-The vector follows `mesh.elements` ordering. Assembly and flux recovery select the
+The vector follows `mesh.elements` ordering. An alternative
+`ScalarDiffusion3DProblem::cell_diffusivity_tensors` holds one
+`SymmetricTensor3D` per tetrahedron. The two cell arrays and either spatial
+material callback are mutually exclusive. Both the linear solver and flux
+postprocessor validate tensor positive definiteness. For mixed CLI material
+types, scalar values are promoted to diagonal tensors, preserving the physical
+isotropic conductivity.
+
+Run a mixed isotropic/anisotropic tagged wall (here off-diagonals are zero so
+the one-dimensional analytical reference remains valid):
+
+```sh
+./build/nova_gmsh_diffusion_3d examples/gmsh_diffusion_3d/two_layer_wall.msh \
+  --material-tensor 11 2 9 4 0 0 0 --material 22 6 \
+  --temperature 101 400 --convection 102 12 300 --vtk anisotropic-wall.vtk
+```
+
+General nonzero cross terms produce transverse heat flux under an axial
+temperature gradient. Exterior insulation and the prescribed boundaries must
+therefore be physically consistent; no one-dimensional solution is assumed in
+that case. Assembly and flux recovery select the
 same material on each tetrahedron. Continuous P1 interpolation enforces temperature
 continuity across a bonded interface. The recovered flux is the cell average of
 `−K grad(T_h)`. Its tangential components can jump across materials. General raw
@@ -144,7 +165,15 @@ Duffy-transformed tensor Gauss rule integrates the squared temperature error
 The unit-volume domain makes the L2 errors numerically equal to RMS errors in K
 and W/m². Acceptance requires orders of at least 1.7 and 0.85 on both refinements
 and fine-grid errors below 0.08 K and 5 W/m². Both the analytical and the
-refinement tables passed. Separate C++ regressions exercise an oblique interface
+refinement tables passed. The end-to-end verifier also checks a mixed tensor/scalar tagged wall against
+the same analytical temperature, axial flux, transverse flux and heat-rate
+targets, and confirms invalid material tensors cannot replace a prior VTK
+result. Separate C++ regressions exercise per-cell non-diagonal tensor
+stiffness with winding reversal, two anisotropic layers with exact affine
+solutions, continuous normal flux and discontinuous transverse flux, and
+rejection of non-SPD or ambiguous material data.
+
+Separate C++ regressions exercise an oblique interface
 with conserved normal flux and discontinuous tangential flux, symmetry and the
 constant mode of each element matrix, reversed element orientation, bad material
 data and incompatible pure-Neumann loads. The CLI verifier also checks that failed

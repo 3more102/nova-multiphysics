@@ -75,6 +75,7 @@ struct ConductivityField3D {
     const SpatialScalarField3D& scalar;
     const SymmetricTensorField3D& tensor;
     std::optional<double> constant{};
+    std::optional<SymmetricTensor3D> constant_tensor{};
 
     void validate() const;
     [[nodiscard]] double scalar_at(const Point3D& point) const;
