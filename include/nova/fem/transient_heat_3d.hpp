@@ -4,6 +4,7 @@
 #include "nova/linalg/csr_matrix.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace nova::fem {
@@ -27,12 +28,22 @@ enum class TransientHeat3DScheme {
     CrankNicolson
 };
 
+struct TransientHeatStepDiagnostics3D;
+
 struct TransientHeat3DOptions {
     TransientHeat3DScheme scheme{TransientHeat3DScheme::BackwardEuler};
     double time_step{0.1};
     double start_time{0.0};
     std::size_t steps{1U};
     linalg::SolverOptions solver_options{};
+    // True preserves legacy per-step full temperature vectors in linear_solvers.
+    // False keeps solver metadata and final temperature, but drops these vectors.
+    bool retain_step_solution_vectors{true};
+    // Called after each successful step with the physical state and energy budget.
+    // The temperature reference is valid only during the callback; copy if needed.
+    // Exceptions from the callback propagate and abort the solve.
+    std::function<void(std::size_t, const std::vector<double>&,
+                       const TransientHeatStepDiagnostics3D&)> on_step{};
 };
 
 // All energies are integrated over a single time step in joules.
