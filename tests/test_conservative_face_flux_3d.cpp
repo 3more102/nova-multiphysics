@@ -158,3 +158,24 @@ NOVA_TEST(conservative_face_flux_rejects_incompatible_and_duplicate_boundary_rol
             std::span<const PrescribedBoundaryHeatRate3D>{}, faces);
     }));
 }
+
+NOVA_TEST(conservative_face_flux_checks_closed_components_independently) {
+    auto p = tetra();
+    p.mesh.nodes.insert(p.mesh.nodes.end(), {
+        Point3D{10,0,0}, Point3D{11,0,0},
+        Point3D{10,1,0}, Point3D{10,0,1}
+    });
+    p.mesh.elements.push_back({4,5,6,7});
+    const std::array<P1TetrahedralFlux3D,2> raw{{
+        {Point3D{}, Point3D{}}, {Point3D{}, Point3D{}}
+    }};
+    const std::array<double,2> source{1.0e14, 1.0};
+    // The giant source in the open component must never mask the 1 W
+    // incompatible source in the disconnected, fully insulated component.
+    const std::array<BoundaryFace3D,1> open{{{0,1,2}}};
+    NOVA_REQUIRE(invalid([&] {
+        (void)reconstruct_conservative_face_flux_3d(
+            p.mesh, raw, source,
+            std::span<const PrescribedBoundaryHeatRate3D>{}, open);
+    }));
+}
