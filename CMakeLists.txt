@@ -8,6 +8,7 @@ project(NOVA_Multiphysics
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(cmake/NovaSourceGuard.cmake)
 
 option(NOVA_BUILD_TESTS "Build NOVA automated tests" ON)
 option(NOVA_BUILD_EXAMPLES "Build NOVA examples" ON)
@@ -145,6 +146,14 @@ if(NOVA_BUILD_TESTS)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)
     nova_enable_warnings(nova_tests)
     add_test(NAME nova_unit_tests COMMAND nova_tests)
+    # Positive and negative configure tests verify the source-duplication guard.
+    add_test(NAME nova_source_guard_accepts_unique COMMAND "${CMAKE_COMMAND}"
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/source_guard_fixture"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/source_guard_positive" -DGUARD_DUPLICATE=OFF)
+    add_test(NAME nova_source_guard_rejects_duplicate COMMAND "${CMAKE_COMMAND}"
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/source_guard_fixture"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/source_guard_negative" -DGUARD_DUPLICATE=ON)
+    set_tests_properties(nova_source_guard_rejects_duplicate PROPERTIES WILL_FAIL TRUE)
     if(NOVA_BUILD_EXAMPLES)
         add_test(NAME nova_diffusion_3d_smoke COMMAND nova_diffusion_3d)
         add_test(NAME nova_gmsh_diffusion_3d_smoke COMMAND nova_gmsh_diffusion_3d
@@ -194,6 +203,22 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)
     endif()
+endif()
+
+# Fail configuration when a concurrent integration adds a source twice.
+# A duplicate could otherwise hide changes in generated build files or CI.
+nova_assert_unique_target_sources(nova_core)
+if(NOVA_BUILD_TESTS)
+    nova_assert_unique_target_sources(nova_tests)
+endif()
+if(NOVA_BUILD_EXAMPLES)
+    foreach(example IN ITEMS
+        nova_poisson_1d nova_diffusion_2d nova_diffusion_3d
+        nova_gmsh_diffusion_3d nova_transient_heat_3d
+        nova_transient_heat_2d nova_transient_flux_2d
+        nova_adaptive_heat_2d nova_nonlinear_diffusion_1d)
+        nova_assert_unique_target_sources(${example})
+    endforeach()
 endif()
 
 # Install a relocatable CMake package for downstream C++20 applications.
