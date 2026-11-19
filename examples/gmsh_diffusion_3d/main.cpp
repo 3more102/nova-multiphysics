@@ -2,7 +2,7 @@
 #include "nova/fem/energy_balance_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 #include "nova/fem/tagged_boundary_flux_3d.hpp"
-#include "nova/io/gmsh22_tetrahedral.hpp"
+#include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/vtk_legacy_3d.hpp"
 
 #include <algorithm>
@@ -276,7 +276,7 @@ int main(int argc, char** argv) {
         if (argc < 3) throw std::invalid_argument(usage);
         std::ifstream input(argv[1]);
         if (!input) throw std::runtime_error("Cannot open Gmsh input: " + std::string(argv[1]));
-        auto imported = nova::io::read_gmsh22_tetrahedra(input);
+        auto imported = nova::io::read_gmsh_tetrahedra(input);
         const auto settings = read_settings(argc, argv, imported);
         if (settings.vtk && fs::exists(*settings.vtk) && fs::equivalent(*settings.vtk, argv[1])) {
             throw std::invalid_argument("VTK output would overwrite the input mesh.");

@@ -38,7 +38,7 @@ on continuous triangular P1 and P2 meshes using:
 
 ### Steady 3D conduction on a tagged solid
 
-Import a conforming first-order tetrahedral Gmsh MSH 2.2 ASCII mesh, assign
+Import a conforming first-order tetrahedral Gmsh MSH 2.2 or 4.1 ASCII mesh, assign
 conductivities by volume ID and fixed temperature, outward flux or convection
 by exterior surface ID. The result file contains nodal temperature, volume IDs
 and a heat-flux vector per tetrahedron. When region-specific heat sources are
@@ -54,6 +54,30 @@ section. Assign distinct internal heat-generation densities by physical volume
 with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
 per-volume sources add to the optional uniform `--source Q`. The verification suite also measures temperature and flux convergence
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
+
+### Transient 3D heat on tetrahedral solids (experimental)
+
+NOVA now solves `C(x) ∂T/∂t − div(K(x) grad T) = Q(x)` using a
+**consistent P1 tetrahedral thermal mass matrix** and the existing 3D
+conductivity integration kernel. Backward Euler and Crank–Nicolson time
+stepping support scalar or SPD tensor conductivity, positive spatial or
+per-cell heat capacity, volumetric heating, fixed temperature boundaries,
+imposed outward flux and Robin convection. For now, coefficients and
+boundary functions are **time-independent**.
+
+The constant time-step CSR system is reused between steps; the solver
+computes temperature corrections to avoid loss of precision for small
+updates relative to absolute temperature. Each step reports heat content,
+volumetric energy, imposed flux, convection, Dirichlet reactions and the
+discrete energy-balance residual.
+
+```sh
+./build/nova_transient_heat_3d
+```
+
+See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
+This is a C++ API and a structured-box demonstration, not yet an imported
+Gmsh transient study with ParaView time-series output.
 
 ### Triangle mesh quality and uniform refinement
 
@@ -146,6 +170,7 @@ ctest --test-dir build --output-on-failure
 Run the examples:
 ~~~bash
 ./build/nova_poisson_1d
+./build/nova_transient_heat_3d
 ./build/nova_diffusion_2d
 ./build/nova_transient_heat_2d
 ./build/nova_transient_flux_2d
