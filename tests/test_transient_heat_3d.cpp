@@ -196,3 +196,60 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         (void)solve_transient_heat_3d(p, options);
     }));
 }
+
+
+NOVA_TEST(transient_heat_3d_cellwise_tensor_capacity_source_patch) {
+    const auto box = make_box_mesh_3d(0, 1, 0, 1, 0, 1, 1, 1, 1);
+    auto p = unit_heat();
+    p.diffusion.mesh = box.mesh;
+    p.diffusion.cell_diffusivity.clear();
+    p.diffusion.source = {}; // No dummy spatial source is required.
+    p.cell_volumetric_capacity.clear();
+    p.diffusion.cell_source.clear();
+    for (std::size_t i = 0; i < box.mesh.elements.size(); ++i) {
+        const double capacity = 2.0 + static_cast<double>(i);
+        p.cell_volumetric_capacity.push_back(capacity);
+        p.diffusion.cell_source.push_back(4.0 * capacity);
+        p.diffusion.cell_diffusivity_tensors.push_back({
+            1.0 + static_cast<double>(i), 2.0 + static_cast<double>(i),
+            3.0 + static_cast<double>(i), 0.1, 0.0, 0.05
+        });
+    }
+    p.initial_temperature.assign(box.mesh.nodes.size(), 300.0);
+    TransientHeat3DOptions options;
+    options.time_step = 0.25;
+    options.solver_options.relative_tolerance = 1e-12;
+    options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                               TransientHeat3DScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        const auto solved = solve_transient_heat_3d(p, options);
+        for (const double temperature : solved.temperature) {
+            NOVA_REQUIRE_NEAR(temperature, 301.0, 2e-9);
+        }
+        NOVA_REQUIRE_NEAR(solved.diagnostics[0].source_energy, 4.5, 2e-11);
+        NOVA_REQUIRE_NEAR(solved.diagnostics[0].heat_content, 1354.5, 2e-8);
+        NOVA_REQUIRE_NEAR(solved.diagnostics[0].balance_residual, 0.0, 1e-8);
+    }
+}
+
+NOVA_TEST(transient_heat_3d_missing_spatial_and_cell_sources_means_zero_generation) {
+    auto p = unit_heat();
+    p.diffusion.source = {};
+    p.diffusion.cell_source.clear();
+    p.initial_temperature = {291.0, 291.0, 291.0, 291.0};
+    TransientHeat3DOptions options;
+    options.steps = 3;
+    for (auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                        TransientHeat3DScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        const auto result = solve_transient_heat_3d(p, options);
+        for (double value : result.temperature) {
+            NOVA_REQUIRE_NEAR(value, 291.0, 1e-11);
+        }
+        for (const auto& budget : result.diagnostics) {
+            NOVA_REQUIRE_NEAR(budget.source_energy, 0.0, 1e-15);
+            NOVA_REQUIRE_NEAR(budget.balance_residual, 0.0, 1e-10);
+        }
+    }
+}

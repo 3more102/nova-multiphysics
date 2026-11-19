@@ -93,9 +93,6 @@ TransientHeat3DResult solve_transient_heat_3d(
     // Validates geometry, connectivity, and exterior boundary assignments.
     detail::ExteriorFaceAssignments3D exterior(mesh);
     const std::size_t n = mesh.nodes.size();
-    if (!diffusion.source) {
-        throw std::invalid_argument("Transient 3D volumetric source function is required.");
-    }
     const bool spatial_capacity = static_cast<bool>(problem.volumetric_capacity);
     const bool cell_capacity = !problem.cell_volumetric_capacity.empty();
     if (spatial_capacity == cell_capacity) {
@@ -180,7 +177,8 @@ TransientHeat3DResult solve_transient_heat_3d(
                     ? problem.cell_volumetric_capacity[e]
                     : positive(problem.volumetric_capacity(p.x, p.y, p.z),
                                "Volumetric heat capacity");
-                const double spatial = diffusion.source(p.x, p.y, p.z);
+                const double spatial = diffusion.source
+                    ? diffusion.source(p.x, p.y, p.z) : 0.0;
                 if (!std::isfinite(spatial)) {
                     throw std::invalid_argument("Transient 3D source must be finite.");
                 }
