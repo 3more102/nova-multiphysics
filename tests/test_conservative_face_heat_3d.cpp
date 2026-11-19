@@ -291,3 +291,15 @@ NOVA_TEST(face_heat_3d_reconciliation_is_scale_invariant_across_disconnected_com
     NOVA_REQUIRE(std::abs(report.cell_balance_defect[0]) <= 1.0e-28);
     NOVA_REQUIRE(std::abs(report.cell_balance_defect[1]) <= 1.0e12);
 }
+
+
+NOVA_TEST(face_heat_3d_pure_neumann_compatibility_ignores_large_internal_flux_scale) {
+    auto p = example_problem();
+    p.source = [](double, double, double) { return 6.0e-20; };
+    // A large interior flux cancels between the two cells. It must not inflate
+    // the tolerance for the small, incompatible component-wide source.
+    const std::array values{0.0,0.0,0.0,1.0e20,-1.0e20};
+    NOVA_REQUIRE(rejects_invalid([&] {
+        (void)reconcile_p1_face_heat_rates_3d(p, values);
+    }));
+}
