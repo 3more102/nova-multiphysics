@@ -1,5 +1,19 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · adaptive IC(0) factor cache across trials
+
+The `feature/ic0-adaptive-trial-cache` branch extends the fixed-step IC(0)
+cache to adaptive 3D time stepping. A study owns separate full-step and
+half-step caches because those systems generally have different matrices.
+Each cache retains a factor across accepted and rejected attempts while
+comparing the exact current matrix before use. Repeated step sizes can avoid
+additional factorizations; changed timesteps or Robin coefficients trigger
+a rebuild. The public adaptive result reports `ic0_factor_builds`; Jacobi
+and unpreconditioned solves report zero. A constant-step manufactured heat
+regression verifies four accepted steps with two factor builds rather than
+eight, and checks the solution against Jacobi. CI verification is required
+before marking this additional increment validated.
+
 ## 19 November 2026 · cached IC(0) for repeated thermal matrices
 
 The CG API now includes `CachedConjugateGradient`, an instance-owned IC(0)
