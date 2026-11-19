@@ -31,7 +31,7 @@ constexpr const char* usage =
     "       [--temperature face-tag T] [--flux face-tag q_out]\n"
     "       [--convection face-tag h T_ambient] [--source Q]\n"
     "       [--heat-source volume-tag Q] ... [--vtk result.vtk]\n"
-    "       [--flux-report]";
+    "       [--flux-report] [--balance-report]";
 
 template<class T>
 T number(std::string_view token) {
@@ -69,6 +69,7 @@ struct Settings {
     std::optional<fs::path> vtk;
     bool unit_example{};
     bool flux_report{};
+    bool balance_report{};
 };
 
 Settings read_settings(int argc, char** argv) {
@@ -112,6 +113,9 @@ Settings read_settings(int argc, char** argv) {
         } else if (option == "--flux-report") {
             if (settings.flux_report) throw std::invalid_argument("Duplicate --flux-report.");
             settings.flux_report = true;
+        } else if (option == "--balance-report") {
+            if (settings.balance_report) throw std::invalid_argument("Duplicate --balance-report.");
+            settings.balance_report = true;
         } else if (option == "--temperature" || option == "--flux" || option == "--convection") {
             const int tag = physical_tag(next());
             Boundary condition{BoundaryKind::temperature, number<double>(next())};
@@ -237,6 +241,7 @@ int main(int argc, char** argv) {
         }
         auto imported = nova::io::read_gmsh22_tetrahedra(input);
         auto problem = bind_problem(imported, settings);
+        problem.compute_energy_balance = settings.balance_report;
 
         nova::linalg::SolverOptions options;
         options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
@@ -247,6 +252,18 @@ int main(int argc, char** argv) {
         if (settings.vtk) export_result(
             *settings.vtk, problem, result.values, imported.volume_physical_tags,
             settings.source.value_or(0.0));
+        if (settings.balance_report) {
+            const auto& balance = *result.energy_balance;
+            std::cout << std::setprecision(17)
+                      << "FEM energy balance (integrated weak form):\n"
+                      << "  Generated heat [W]: " << balance.generated_heat_rate << '\n'
+                      << "  Dirichlet outward heat [W]: " << balance.dirichlet_outward_heat_rate << '\n'
+                      << "  Neumann outward heat [W]: " << balance.neumann_outward_heat_rate << '\n'
+                      << "  Robin outward heat [W]: " << balance.robin_outward_heat_rate << '\n'
+                      << "  Total outward heat [W]: " << balance.net_outward_heat_rate << '\n'
+                      << "  Energy imbalance [W]: " << balance.imbalance << '\n'
+                      << "  Relative energy imbalance: " << balance.relative_imbalance << '\n';
+        }
         if (settings.flux_report) {
             const auto fields = evaluate_p1_tetrahedral_flux_3d(problem, result.values);
             const auto report = evaluate_tagged_boundary_flux_3d(
