@@ -55,6 +55,30 @@ with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
 per-volume sources add to the optional uniform `--source Q`. The verification suite also measures temperature and flux convergence
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
 
+### Transient 3D heat on tetrahedral solids (experimental)
+
+NOVA now solves `C(x) ∂T/∂t − div(K(x) grad T) = Q(x)` using a
+**consistent P1 tetrahedral thermal mass matrix** and the existing 3D
+conductivity integration kernel. Backward Euler and Crank–Nicolson time
+stepping support scalar or SPD tensor conductivity, positive spatial or
+per-cell heat capacity, volumetric heating, fixed temperature boundaries,
+imposed outward flux and Robin convection. For now, coefficients and
+boundary functions are **time-independent**.
+
+The constant time-step CSR system is reused between steps; the solver
+computes temperature corrections to avoid loss of precision for small
+updates relative to absolute temperature. Each step reports heat content,
+volumetric energy, imposed flux, convection, Dirichlet reactions and the
+discrete energy-balance residual.
+
+```sh
+./build/nova_transient_heat_3d
+```
+
+See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
+This is a C++ API and a structured-box demonstration, not yet an imported
+Gmsh transient study with ParaView time-series output.
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
@@ -146,6 +170,7 @@ ctest --test-dir build --output-on-failure
 Run the examples:
 ~~~bash
 ./build/nova_poisson_1d
+./build/nova_transient_heat_3d
 ./build/nova_diffusion_2d
 ./build/nova_transient_heat_2d
 ./build/nova_transient_flux_2d
