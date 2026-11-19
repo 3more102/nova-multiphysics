@@ -1,11 +1,23 @@
 #include "nova/fem/diffusion_3d.hpp"
+#include "nova/io/vtk_legacy_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
+#include <fstream>
 #include <iostream>
+#include <stdexcept>
+#include <string_view>
 
-int main() {
+int main(int argc, char** argv) {
     using namespace nova::fem;
+    const bool vtk_requested = argc == 3 &&
+        std::string_view(argv[1]) == "--vtk" &&
+        !std::string_view(argv[2]).empty();
+    if (argc != 1 && !vtk_requested) {
+        std::cerr << "Usage: nova_diffusion_3d [--vtk output.vtk]\n";
+        return 1;
+    }
 
     const auto box = make_box_mesh_3d(
         0.0, 1.0, 0.0, 1.0, 0.0, 1.0,
@@ -59,11 +71,33 @@ int main() {
         );
     }
 
+    if (vtk_requested) {
+        std::ofstream output(argv[2], std::ios::out | std::ios::trunc);
+        if (!output) {
+            std::cerr << "Cannot open 3D VTK output file.\n";
+            return 1;
+        }
+        try {
+            nova::io::write_legacy_vtk_scalar_3d(
+                output, problem.mesh, result.values, "solution");
+            output.close();
+            if (!output) {
+                throw std::runtime_error("Failed to finalize 3D VTK output file.");
+            }
+        } catch (const std::exception& error) {
+            std::cerr << "3D VTK export failed: " << error.what() << '\n';
+            return 1;
+        }
+    }
+
     std::cout << "NOVA 3D tetrahedral P1 diffusion\n"
               << "Nodes: " << problem.mesh.nodes.size() << '\n'
               << "Tetrahedra: " << problem.mesh.elements.size() << '\n'
               << "CG iterations: " << result.linear_solver.iterations << '\n'
               << "True residual: " << result.linear_solver.residual_norm << '\n'
               << "Maximum nodal error: " << maximum_nodal_error << '\n';
+    if (vtk_requested) {
+        std::cout << "VTK output: " << argv[2] << '\n';
+    }
     return 0;
 }
