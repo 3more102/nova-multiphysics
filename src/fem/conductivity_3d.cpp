@@ -1,5 +1,7 @@
 #include "p1_integration_3d.hpp"
 
+#include "nova/fem/diffusion_3d.hpp"
+
 #include <limits>
 
 namespace nova::fem::detail {
@@ -7,7 +9,19 @@ namespace {
 
 // K = D R D, with D_ii = sqrt(K_ii). Factor the unit-diagonal R so the
 // pivot test is independent of material units and diagonal contrast.
-void transform_tensor_gradients(const SymmetricTensor3D& k, P1Gradients3D& gradients) {
+struct TensorFactor {
+    double dx, dy, dz;
+    double xy, xz, ly, lzy, lz;
+
+    void transform(P1Gradients3D& gradients) const {
+        for (auto& g : gradients) {
+            const double x = dx * g[0], y = dy * g[1], z = dz * g[2];
+            g = {x + xy * y + xz * z, ly * y + lzy * z, lz * z};
+        }
+    }
+};
+
+[[nodiscard]] TensorFactor factor_tensor(const SymmetricTensor3D& k) {
     if (!(k.xx > 0 && k.yy > 0 && k.zz > 0) ||
         !std::isfinite(k.xx) || !std::isfinite(k.yy) || !std::isfinite(k.zz)) {
         throw std::invalid_argument("Conductivity tensor diagonals must be finite and positive.");
@@ -35,37 +49,82 @@ void transform_tensor_gradients(const SymmetricTensor3D& k, P1Gradients3D& gradi
     if (!(pivot_z > pivot_floor)) {
         throw std::invalid_argument("Conductivity tensor must be numerically positive definite.");
     }
-    const double lz = std::sqrt(pivot_z);
-    for (auto& g : gradients) {
-        const double x = dx * g[0], y = dy * g[1], z = dz * g[2];
-        g = {x + xy * y + xz * z, ly * y + lzy * z, lz * z};
+    return {dx, dy, dz, xy, xz, ly, lzy, std::sqrt(pivot_z)};
+}
+
+void check_scalar(double k) {
+    if (!std::isfinite(k) || k <= 0.0) {
+        throw std::invalid_argument("Scalar 3D conductivity must be finite and positive.");
     }
 }
 
 } // namespace
 
 void ConductivityField3D::validate() const {
-    if (static_cast<bool>(scalar) == static_cast<bool>(tensor)) {
-        throw std::invalid_argument("Supply exactly one scalar or tensor 3D conductivity field.");
+    const int choices = (scalar ? 1 : 0) + (tensor ? 1 : 0) + (constant ? 1 : 0);
+    if (choices != 1) {
+        throw std::invalid_argument("Select exactly one 3D conductivity representation.");
     }
+}
+
+double ConductivityField3D::scalar_at(const Point3D& point) const {
+    if (constant) return *constant; // Checked once when the cell table is bound.
+    const double k = scalar(point.x, point.y, point.z);
+    check_scalar(k);
+    return k;
+}
+
+Point3D ConductivityField3D::diffusive_flux(const Point3D& point, const Point3D& g) const {
+    Point3D flux;
+    if (tensor) {
+        const auto k = tensor(point.x, point.y, point.z);
+        static_cast<void>(factor_tensor(k));
+        flux = {-(k.xx*g.x + k.xy*g.y + k.xz*g.z),
+                -(k.xy*g.x + k.yy*g.y + k.yz*g.z),
+                -(k.xz*g.x + k.yz*g.y + k.zz*g.z)};
+    } else {
+        const double k = scalar_at(point);
+        flux = {-k*g.x, -k*g.y, -k*g.z};
+    }
+    if (!std::isfinite(flux.x) || !std::isfinite(flux.y) || !std::isfinite(flux.z)) {
+        throw std::overflow_error("3D diffusive flux exceeds the finite range.");
+    }
+    return flux;
+}
+
+DiffusionMaterials3D::DiffusionMaterials3D(const ScalarDiffusion3DProblem& problem)
+    : problem_(problem) {
+    if (problem.cell_diffusivity.empty()) {
+        ConductivityField3D{problem.diffusivity, problem.diffusivity_tensor}.validate();
+        return;
+    }
+    if (problem.diffusivity || problem.diffusivity_tensor) {
+        throw std::invalid_argument("Cell conductivity cannot be combined with a spatial field.");
+    }
+    if (problem.cell_diffusivity.size() != problem.mesh.elements.size()) {
+        throw std::invalid_argument("Cell conductivity requires one value per tetrahedron.");
+    }
+    for (const double k : problem.cell_diffusivity) check_scalar(k);
+}
+
+ConductivityField3D DiffusionMaterials3D::on_cell(std::size_t element) const {
+    ConductivityField3D material{problem_.diffusivity, problem_.diffusivity_tensor};
+    if (!problem_.cell_diffusivity.empty()) material.constant = problem_.cell_diffusivity[element];
+    return material;
 }
 
 void add_conductivity_sample(P1Matrix3D& stiffness, const ConductivityField3D& material,
                              const Point3D& point, const P1Gradients3D& gradients,
                              double sqrt_weight) {
-    if (material.scalar) {
-        const double k = material.scalar(point.x, point.y, point.z);
-        if (!std::isfinite(k) || k <= 0) {
-            throw std::invalid_argument("Scalar 3D conductivity must be finite and positive.");
-        }
-        sqrt_weight *= std::sqrt(k);
+    if (!material.tensor) {
+        sqrt_weight *= std::sqrt(material.scalar_at(point));
     }
     auto weighted = gradients;
     for (auto& g : weighted) {
         for (auto& component : g) component *= sqrt_weight;
     }
     if (material.tensor) {
-        transform_tensor_gradients(material.tensor(point.x, point.y, point.z), weighted);
+        factor_tensor(material.tensor(point.x, point.y, point.z)).transform(weighted);
     }
     // Assemble a Gram matrix from sqrt(weight) L^T grad(N), K = L L^T.
     for (std::size_t i = 0; i < 4; ++i) {

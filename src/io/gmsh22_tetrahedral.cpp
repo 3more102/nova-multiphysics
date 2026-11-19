@@ -227,23 +227,21 @@ GmshTetrahedralMesh3D read_gmsh22_tetrahedra(std::istream& input) {
         }
     }
 
-    result.mesh.validate();
+    // Extraction validates the complete tetrahedral topology in the same pass.
     result.exterior_faces = fem::extract_boundary_faces_3d(result.mesh);
-    std::set<FaceKey> exterior_keys;
     result.exterior_physical_tags.reserve(result.exterior_faces.size());
     for (const fem::BoundaryFace3D& face : result.exterior_faces) {
         const FaceKey key = canonical_face(face);
-        exterior_keys.insert(key);
         const auto found = boundary_tags.find(key);
-        result.exterior_physical_tags.push_back(
-            found == boundary_tags.end() ? 0 : found->second
-        );
-    }
-    for (const auto& [face, tag] : boundary_tags) {
-        static_cast<void>(tag);
-        if (!exterior_keys.contains(face)) {
-            throw std::invalid_argument("Gmsh triangle is not an exterior tetrahedral face.");
+        if (found == boundary_tags.end()) {
+            result.exterior_physical_tags.push_back(0);
+        } else {
+            result.exterior_physical_tags.push_back(found->second);
+            boundary_tags.erase(found);
         }
+    }
+    if (!boundary_tags.empty()) {
+        throw std::invalid_argument("Gmsh triangle is not an exterior tetrahedral face.");
     }
     return result;
 }

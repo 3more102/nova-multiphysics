@@ -1,7 +1,6 @@
 #include "nova/io/vtk_legacy_3d.hpp"
 
 #include <cmath>
-#include <iomanip>
 #include <ios>
 #include <limits>
 #include <locale>
@@ -30,6 +29,10 @@ public:
     explicit StreamFormatGuard(std::ostream& output)
         : output_(output), saved_(nullptr) {
         saved_.copyfmt(output_);
+        output_.imbue(std::locale::classic());
+        output_.flags(std::ios::dec);
+        output_.width(0);
+        output_.precision(std::numeric_limits<double>::max_digits10);
     }
     StreamFormatGuard(const StreamFormatGuard&) = delete;
     StreamFormatGuard& operator=(const StreamFormatGuard&) = delete;
@@ -72,8 +75,6 @@ void write_legacy_vtk_scalar_3d(
     mesh.validate();
 
     StreamFormatGuard guard(output);
-    output.imbue(std::locale::classic());
-    output << std::setprecision(std::numeric_limits<double>::max_digits10);
     output << "# vtk DataFile Version 3.0\n"
            << "NOVA P1 tetrahedral scalar result\n"
            << "ASCII\n"
@@ -103,6 +104,32 @@ void write_legacy_vtk_scalar_3d(
     if (!output) {
         throw std::runtime_error("Failed to write VTK tetrahedral result.");
     }
+}
+
+void write_legacy_vtk_conduction_3d(
+    std::ostream& output, const fem::TetrahedralMesh3D& mesh,
+    const std::vector<double>& temperature, std::span<const int> material_ids,
+    std::span<const fem::P1TetrahedralFlux3D> cell_fields
+) {
+    if (material_ids.size() != mesh.elements.size() || cell_fields.size() != mesh.elements.size()) {
+        throw std::invalid_argument("VTK conduction requires one material ID and flux per cell.");
+    }
+    for (const auto& field : cell_fields) {
+        if (!std::isfinite(field.flux.x) || !std::isfinite(field.flux.y) || !std::isfinite(field.flux.z)) {
+            throw std::invalid_argument("VTK cell heat flux must be finite.");
+        }
+    }
+    write_legacy_vtk_scalar_3d(output, mesh, temperature, "temperature");
+
+    StreamFormatGuard guard(output);
+    output << "CELL_DATA " << mesh.elements.size() << '\n'
+           << "SCALARS material_id int 1\nLOOKUP_TABLE default\n";
+    for (int tag : material_ids) output << tag << '\n';
+    output << "VECTORS heat_flux double\n";
+    for (const auto& field : cell_fields) {
+        output << field.flux.x << ' ' << field.flux.y << ' ' << field.flux.z << '\n';
+    }
+    if (!output) throw std::runtime_error("Failed to write VTK thermal cell data.");
 }
 
 } // namespace nova::io

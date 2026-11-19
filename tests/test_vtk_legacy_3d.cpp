@@ -102,3 +102,30 @@ NOVA_TEST(vtk3d_rejects_invalid_mesh_and_unwritable_stream) {
         nova::io::write_legacy_vtk_scalar_3d(output, one_tetrahedron(), {1.,2.,3.,4.});
     }));
 }
+
+NOVA_TEST(vtk3d_tagged_conduction_validates_cell_data_before_emitting_geometry) {
+    const auto mesh = one_tetrahedron();
+    const std::vector<double> temperature(4, 300.0);
+    const std::array tags{12};
+    std::array<nova::fem::P1TetrahedralFlux3D, 1> fields{};
+    std::ostringstream output;
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_conduction_3d(output, mesh, temperature, {}, fields);
+    }));
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_conduction_3d(output, mesh, temperature, tags, {});
+    }));
+    fields[0].flux.z = std::numeric_limits<double>::infinity();
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_conduction_3d(output, mesh, temperature, tags, fields);
+    }));
+    NOVA_REQUIRE(output.str().empty());
+
+    fields[0].flux.z = 1e-50;
+    output << std::hex << std::fixed;
+    const auto flags = output.flags();
+    nova::io::write_legacy_vtk_conduction_3d(output, mesh, temperature, tags, fields);
+    NOVA_REQUIRE(output.flags() == flags);
+    NOVA_REQUIRE(output.str().find("LOOKUP_TABLE default\n12\nVECTORS heat_flux double\n") != std::string::npos);
+    NOVA_REQUIRE(output.str().find("e-50") != std::string::npos);
+}

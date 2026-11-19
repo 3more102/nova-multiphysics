@@ -107,6 +107,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_mesh_topology_3d.cpp
         tests/test_h1_space_3d.cpp
         tests/test_diffusion_3d.cpp
+        tests/test_cell_conduction_3d.cpp
         tests/test_p1_flux_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
@@ -127,6 +128,17 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_diffusion_3d_smoke COMMAND nova_diffusion_3d)
         add_test(NAME nova_gmsh_diffusion_3d_smoke COMMAND nova_gmsh_diffusion_3d
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh" 7)
+        add_test(NAME nova_tagged_wall_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
+            --material 11 2 --material 22 6 --temperature 101 400
+            --convection 102 12 300 --vtk "${CMAKE_CURRENT_BINARY_DIR}/two_layer_wall.vtk")
+        find_package(Python3 COMPONENTS Interpreter QUIET)
+        if(Python3_Interpreter_FOUND)
+            add_test(NAME nova_tagged_wall_verification COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_tagged_conduction_3d.py"
+                "$<TARGET_FILE:nova_gmsh_diffusion_3d>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh")
+        endif()
         add_test(NAME nova_transient_heat_smoke COMMAND nova_transient_heat_2d)
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)

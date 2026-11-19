@@ -43,8 +43,10 @@ struct ScalarDiffusion3DProblem {
     std::vector<DirichletBoundaryFace3D> dirichlet_faces;
     std::vector<NeumannBoundaryFace3D> neumann_faces;
     std::vector<RobinBoundaryFace3D> robin_faces;
-    // Supply exactly one of diffusivity (k I) and diffusivity_tensor (K).
+    // Select one material representation: spatial scalar, spatial SPD tensor,
+    // or one positive isotropic coefficient per tetrahedron in mesh.elements order.
     SymmetricTensorField3D diffusivity_tensor{};
+    std::vector<double> cell_diffusivity{};
 };
 
 struct ScalarDiffusion3DResult {

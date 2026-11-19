@@ -52,8 +52,7 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     detail::DiffusionNullspace nullspace(node_count, problem.mesh.elements.size(),
         [&](std::size_t e) -> std::span<const std::size_t> { return problem.mesh.elements[e]; });
 
-    const detail::ConductivityField3D material{problem.diffusivity, problem.diffusivity_tensor};
-    material.validate();
+    const detail::DiffusionMaterials3D materials(problem);
     if (!problem.source) throw std::invalid_argument("3D diffusion requires a source field.");
 
     std::vector<std::optional<double>> prescribed(node_count);
@@ -149,7 +148,7 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
 
         std::array<double, 4> local_rhs{};
         const auto local_matrix = detail::integrate_p1_volume_3d(
-            problem.mesh, cell, physical, material,
+            problem.mesh, cell, physical, materials.on_cell(element),
             [&](const Point3D& point, const auto& shape, double weight) {
                 const double source = problem.source(point.x, point.y, point.z);
                 if (!std::isfinite(source)) {

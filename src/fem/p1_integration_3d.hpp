@@ -6,8 +6,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <set>
 #include <stdexcept>
+
+namespace nova::fem { struct ScalarDiffusion3DProblem; }
 
 namespace nova::fem::detail {
 
@@ -71,8 +74,22 @@ using P1Matrix3D = std::array<std::array<double, 4>, 4>;
 struct ConductivityField3D {
     const SpatialScalarField3D& scalar;
     const SymmetricTensorField3D& tensor;
+    std::optional<double> constant{};
 
     void validate() const;
+    [[nodiscard]] double scalar_at(const Point3D& point) const;
+    [[nodiscard]] Point3D diffusive_flux(const Point3D& point, const Point3D& gradient) const;
+};
+
+// Validate the global choice once. The quadrature kernel sees only the material
+// of the current cell, including at discontinuities between volume regions.
+class DiffusionMaterials3D {
+public:
+    explicit DiffusionMaterials3D(const ScalarDiffusion3DProblem& problem);
+    [[nodiscard]] ConductivityField3D on_cell(std::size_t element) const;
+
+private:
+    const ScalarDiffusion3DProblem& problem_;
 };
 
 using P1Gradients3D = std::array<std::array<double, 3>, 4>;

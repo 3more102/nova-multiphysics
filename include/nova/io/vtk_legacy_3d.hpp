@@ -1,8 +1,10 @@
 #pragma once
 
 #include "nova/fem/mesh3d.hpp"
+#include "nova/fem/p1_flux_3d.hpp"
 
 #include <iosfwd>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -18,6 +20,14 @@ void write_legacy_vtk_scalar_3d(
     const fem::TetrahedralMesh3D& mesh,
     const std::vector<double>& values,
     const std::string& field_name = "temperature"
+);
+
+// A continuous nodal temperature field, the original Gmsh volume tags and
+// discontinuous physical heat flux vectors in mesh.elements order.
+void write_legacy_vtk_conduction_3d(
+    std::ostream& output, const fem::TetrahedralMesh3D& mesh,
+    const std::vector<double>& temperature, std::span<const int> material_ids,
+    std::span<const fem::P1TetrahedralFlux3D> cell_fields
 );
 
 } // namespace nova::io

@@ -17,7 +17,7 @@ struct P1TetrahedralFlux3D {
 };
 
 // No solver is run. The caller supplies its P1 nodal field (e.g. a stationary
-// diffusion result). Exactly one of scalar or tensor diffusivity is required.
+// diffusion result). Uses the same conductivity selection as the solve.
 // Throws on invalid topology, nonfinite nodal data or invalid conductivity.
 [[nodiscard]] std::vector<P1TetrahedralFlux3D> evaluate_p1_tetrahedral_flux_3d(
     const ScalarDiffusion3DProblem& problem,
