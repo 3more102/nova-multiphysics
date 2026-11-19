@@ -80,6 +80,16 @@ TransientHeat3DResult solve_transient_heat_3d(
     if (!std::isfinite(final_time) || !(final_time > options.start_time)) {
         throw std::invalid_argument("Transient 3D final time must advance and be finite.");
     }
+    double previous_time = options.start_time;
+    for (std::size_t completed = 0; completed < options.steps; ++completed) {
+        const double step_time = options.start_time +
+            options.time_step * static_cast<double>(completed + 1U);
+        if (!std::isfinite(step_time) || !(step_time > previous_time)) {
+            throw std::invalid_argument(
+                "Transient 3D time step is too small to advance representable physical time.");
+        }
+        previous_time = step_time;
+    }
     if (options.scheme != TransientHeat3DScheme::BackwardEuler &&
         options.scheme != TransientHeat3DScheme::CrankNicolson) {
         throw std::invalid_argument("Unknown transient 3D time scheme.");
