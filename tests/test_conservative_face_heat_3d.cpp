@@ -269,3 +269,25 @@ NOVA_TEST(face_heat_3d_rejects_nodal_reactions_and_invalid_inputs) {
         (void)reconcile_p1_face_heat_rates_3d(p, values);
     }));
 }
+
+
+NOVA_TEST(face_heat_3d_reconciliation_is_scale_invariant_across_disconnected_components) {
+    ScalarDiffusion3DProblem p;
+    p.mesh = {
+        {{0,0,0}, {1,0,0}, {0,1,0}, {0,0,1},
+         {3,0,0}, {4,0,0}, {3,1,0}, {3,0,1}},
+        {{0,1,2,3}, {4,5,6,7}}
+    };
+    p.cell_diffusivity = {2.0, 6.0};
+    p.source = [](double, double, double) { return 0.0; };
+    // Each tetrahedron has volume 1/6. The disconnected components differ
+    // by 40 orders of magnitude; each must retain its own conservation scale.
+    p.cell_source = {6.0e-20, 6.0e20};
+    fix_all_exterior(p, 0.0);
+    const std::array values{0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+    const auto report = reconcile_p1_face_heat_rates_3d(p, values);
+    NOVA_REQUIRE_NEAR(report.generated_heat_per_cell[0], 1.0e-20, 1.0e-32);
+    NOVA_REQUIRE_NEAR(report.generated_heat_per_cell[1], 1.0e20, 1.0e8);
+    NOVA_REQUIRE(std::abs(report.cell_balance_defect[0]) <= 1.0e-28);
+    NOVA_REQUIRE(std::abs(report.cell_balance_defect[1]) <= 1.0e12);
+}
