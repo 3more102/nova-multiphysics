@@ -73,11 +73,18 @@ discrete energy-balance residual.
 
 ```sh
 ./build/nova_transient_heat_3d
+./build/nova_transient_heat_3d --vtk-series thermal_case.pvd
 ```
 
+The second command runs the same single 3D FEM solve and streams its
+Dirichlet-projected initial field plus every completed step to separate
+legacy tetrahedral `.vtk` frames. Open `thermal_case.pvd` in ParaView to
+animate temperature over physical time. A validated PVD writer and an optional
+per-step solver observer avoid repeated assembly/solves and avoid retaining
+all intermediate nodal fields when `retain_step_solutions=false`.
 See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
-This is a C++ API and a structured-box demonstration, not yet an imported
-Gmsh transient study with ParaView time-series output.
+This remains a structured-box demonstration; a Gmsh-tagged transient
+study workflow and experimental comparison are not implemented.
 
 ### Triangle mesh quality and uniform refinement
 
@@ -133,6 +140,15 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 - Manufactured solution \(u(x)=\sin(\pi x)\).
 - Mesh-refinement checks at 8, 16, and 32 elements.
 
+### Verified 3D L2 and H1 spatial-error measurement
+
+The P1 tetrahedral verification utility integrates exact-solution L2 and H1
+errors with 125-point Duffy-mapped Gaussian quadrature. Automated analytical
+patch, orientation, quadratic interpolation and manufactured Poisson tests
+check the expected spatial convergence rates.
+
+See [3D error-norm formulation and verification](docs/VERIFICATION_3D_ERROR_NORMS.md).
+
 ### Linear and nonlinear solver capabilities
 - CSR sparse matrix-vector products.
 - Conjugate Gradient for symmetric positive-definite systems.
@@ -170,7 +186,6 @@ ctest --test-dir build --output-on-failure
 Run the examples:
 ~~~bash
 ./build/nova_poisson_1d
-./build/nova_transient_heat_3d
 ./build/nova_diffusion_2d
 ./build/nova_transient_heat_2d
 ./build/nova_transient_flux_2d
