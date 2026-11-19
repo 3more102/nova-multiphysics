@@ -101,10 +101,11 @@ Implemented:
 - Streaming state observers, optional bounded-memory result history, and validated ParaView PVD/VTK output.
 - Optional spatial source plus additive cellwise source; absent source fields represent unforced conduction.
 - Regression tests for heterogeneous cellwise SPD tensors, cell-only heating, zero-source equilibrium and energy-budget closure.
+- Analytical single-mode time-step refinement verifies first-order Backward Euler and second-order Crank–Nicolson with nonzero start time and per-step energy closure.
 
 Remaining:
 - Adaptive 3D time steps and time-varying loads/materials.
-- Gmsh-tagged transient studies and independent temporal-convergence benchmarks.
+- Gmsh-tagged transient studies, time-varying loads/materials, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
 ## M4 — Structural mechanics
