@@ -148,5 +148,7 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_transient_heat_3d_vtk_smoke
             COMMAND nova_transient_heat_3d 3 3 --vtk ${CMAKE_CURRENT_BINARY_DIR}/nova_thermal_3d.vtk)
         add_test(NAME nova_diffusion_3d_smoke COMMAND nova_diffusion_3d)
+        add_test(NAME nova_diffusion_3d_vtk_smoke
+            COMMAND nova_diffusion_3d --vtk ${CMAKE_CURRENT_BINARY_DIR}/nova_diffusion_3d.vtk)
     endif()
 endif()
