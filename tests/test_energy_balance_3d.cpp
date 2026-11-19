@@ -125,6 +125,46 @@ NOVA_TEST(energy_balance_3d_detects_unconverged_field_even_if_global_heat_closes
     NOVA_REQUIRE(b.max_free_equation_residual > 0.01);
 }
 
+
+NOVA_TEST(energy_balance_3d_pure_neumann_zero_mean_gauge_is_not_a_reaction) {
+    auto box = make_box_mesh_3d(0, 1, 0, 1, 0, 1, 2, 2, 2);
+    ScalarDiffusion3DProblem problem;
+    problem.mesh = std::move(box.mesh);
+    problem.diffusivity = [](double, double, double) { return 1.0; };
+    problem.source = [](double, double, double) { return 0.0; };
+    const auto solution = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(solution.linear_solver.converged);
+    const auto b = evaluate_diffusion_energy_balance_3d(problem, solution.values);
+    NOVA_REQUIRE(b.constrained_nodes == 0);
+    NOVA_REQUIRE(b.free_nodes == problem.mesh.nodes.size());
+    NOVA_REQUIRE_NEAR(b.constraint_outward_heat, 0.0, 1e-12);
+    NOVA_REQUIRE_NEAR(b.signed_balance_defect, 0.0, 1e-12);
+    NOVA_REQUIRE_NEAR(b.max_free_equation_residual, 0.0, 1e-12);
+}
+
+NOVA_TEST(energy_balance_3d_explicit_internal_pin_is_counted_as_a_reaction) {
+    auto box = make_box_mesh_3d(0, 1, 0, 1, 0, 1, 2, 2, 2);
+    ScalarDiffusion3DProblem problem;
+    problem.mesh = std::move(box.mesh);
+    problem.diffusivity = [](double, double, double) { return 2.0; };
+    problem.source = [](double, double, double) { return 10.0; };
+    auto it = std::find_if(problem.mesh.nodes.begin(), problem.mesh.nodes.end(),
+                           [](const Point3D& p) {
+                               return p.x == 0.5 && p.y == 0.5 && p.z == 0.5;
+                           });
+    NOVA_REQUIRE(it != problem.mesh.nodes.end());
+    const auto center = static_cast<std::size_t>(it - problem.mesh.nodes.begin());
+    problem.dirichlet_constraints.push_back({center, 0.0});
+    const auto solution = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(solution.linear_solver.converged);
+    const auto b = evaluate_diffusion_energy_balance_3d(problem, solution.values);
+    NOVA_REQUIRE(b.constrained_nodes == 1);
+    NOVA_REQUIRE_NEAR(b.generated_heat, 10.0, 1e-10);
+    NOVA_REQUIRE_NEAR(b.constraint_outward_heat, 10.0, 1e-8);
+    NOVA_REQUIRE_NEAR(b.signed_balance_defect, 0.0, 1e-8);
+    NOVA_REQUIRE(b.max_free_equation_residual < 1e-8);
+}
+
 NOVA_TEST(energy_balance_3d_validates_sources_mesh_boundary_and_constraints) {
     auto problem = wall(false);
     auto solution = solve_scalar_diffusion_3d(problem);
