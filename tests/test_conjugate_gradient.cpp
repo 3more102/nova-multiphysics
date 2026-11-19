@@ -2,6 +2,8 @@
 
 #include "nova/linalg/conjugate_gradient.hpp"
 
+#include <array>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -97,4 +99,94 @@ NOVA_TEST(conjugate_gradient_rejects_dimension_mismatch) {
         threw = true;
     }
     NOVA_REQUIRE(threw);
+}
+
+NOVA_TEST(conjugate_gradient_does_not_falsely_converge_on_tiny_relative_rhs) {
+    using namespace nova::linalg;
+    const auto matrix = CsrMatrix::from_triplets(2, 2, {
+        {0,0,4.0}, {0,1,1.0}, {1,0,1.0}, {1,1,3.0}});
+    const std::array expected{1e-200, 2e-200};
+    const auto rhs = matrix.multiply(expected);
+    for (const auto preconditioner : std::array{
+             PreconditionerType::None, PreconditionerType::Jacobi,
+             PreconditionerType::IncompleteCholesky0}) {
+        SolverOptions options;
+        options.preconditioner = preconditioner;
+        options.absolute_tolerance = 0.0; // Require scale-independent relative accuracy.
+        options.relative_tolerance = 1e-11;
+        const auto result = solve_conjugate_gradient(matrix, rhs, options);
+        NOVA_REQUIRE(result.converged && result.iterations > 0);
+        NOVA_REQUIRE(result.initial_residual_norm > 1e-200);
+        for (std::size_t i = 0; i < 2; ++i) {
+            NOVA_REQUIRE(std::abs(result.solution[i] / expected[i] - 1.0) < 1e-9);
+        }
+        const auto product = matrix.multiply(result.solution);
+        const double true_residual = std::hypot(rhs[0]-product[0], rhs[1]-product[1]);
+        NOVA_REQUIRE(result.residual_norm <= 1.00001 * true_residual + 1e-220);
+        NOVA_REQUIRE(true_residual <= options.relative_tolerance *
+            result.initial_residual_norm);
+    }
+}
+
+NOVA_TEST(conjugate_gradient_supports_tiny_matrix_with_scaled_preconditioner) {
+    using namespace nova::linalg;
+    const double scale = 1e-200;
+    const auto matrix = CsrMatrix::from_triplets(2, 2, {
+        {0,0,4*scale}, {0,1,scale}, {1,0,scale}, {1,1,3*scale}});
+    const std::array expected{1.0, 2.0};
+    const auto rhs = matrix.multiply(expected);
+    for (const auto preconditioner : std::array{
+             PreconditionerType::Jacobi, PreconditionerType::IncompleteCholesky0}) {
+        SolverOptions options;
+        options.preconditioner = preconditioner;
+        options.absolute_tolerance = 0.0;
+        options.relative_tolerance = 1e-11;
+        const auto result = solve_conjugate_gradient(matrix, rhs, options);
+        NOVA_REQUIRE(result.converged && result.iterations > 0);
+        for (std::size_t i = 0; i < 2; ++i) {
+            NOVA_REQUIRE_NEAR(result.solution[i], expected[i], 1e-9);
+        }
+        NOVA_REQUIRE(result.residual_norm <= options.relative_tolerance *
+            result.initial_residual_norm);
+    }
+}
+
+NOVA_TEST(conjugate_gradient_norm_does_not_overflow_on_large_finite_rhs) {
+    using namespace nova::linalg;
+    const auto matrix = CsrMatrix::from_triplets(2, 2, {{0,0,1.0}, {1,1,1.0}});
+    const std::array expected{1e200, -1e200};
+    SolverOptions options;
+    options.relative_tolerance = 1e-12;
+    options.absolute_tolerance = 0.0;
+    const auto result = solve_conjugate_gradient(matrix, expected, options);
+    NOVA_REQUIRE(result.converged && result.iterations == 1);
+    NOVA_REQUIRE(std::isfinite(result.initial_residual_norm));
+    NOVA_REQUIRE(std::abs(result.initial_residual_norm / 1e200 - std::sqrt(2.0)) < 1e-13);
+    NOVA_REQUIRE(result.solution == std::vector<double>(expected.begin(), expected.end()));
+}
+
+NOVA_TEST(cached_conjugate_gradient_reuses_ic0_on_tiny_relative_rhs) {
+    using namespace nova::linalg;
+    const auto matrix = CsrMatrix::from_triplets(2, 2, {
+        {0, 0, 4.0}, {0, 1, 1.0}, {1, 0, 1.0}, {1, 1, 3.0}
+    });
+    SolverOptions options;
+    options.preconditioner = PreconditionerType::IncompleteCholesky0;
+    options.absolute_tolerance = 0.0;
+    options.relative_tolerance = 1e-11;
+
+    CachedConjugateGradient cached;
+    for (const auto expected : std::array{
+             std::array{1e-200, 2e-200},
+             std::array{-2e-200, 3e-200}}) {
+        const auto rhs = matrix.multiply(expected);
+        const auto result = cached.solve(matrix, rhs, options);
+        NOVA_REQUIRE(result.converged);
+        NOVA_REQUIRE(result.iterations > 0);
+        NOVA_REQUIRE(result.initial_residual_norm > 0.0);
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            NOVA_REQUIRE(std::abs(result.solution[i] / expected[i] - 1.0) < 1e-9);
+        }
+    }
+    NOVA_REQUIRE(cached.factor_builds() == 1);
 }
