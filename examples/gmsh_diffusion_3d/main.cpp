@@ -27,7 +27,8 @@ constexpr const char* usage =
     "Usage: nova_gmsh_diffusion_3d mesh.msh <dirichlet-tag>\n"
     "   or: nova_gmsh_diffusion_3d mesh.msh --material volume-tag k ...\n"
     "       [--temperature face-tag T] [--flux face-tag q_out]\n"
-    "       [--convection face-tag h T_ambient] [--source Q] [--vtk result.vtk]";
+    "       [--convection face-tag h T_ambient] [--source Q]\n"
+    "       [--heat-source volume-tag Q] ... [--vtk result.vtk]";
 
 template<class T>
 T number(std::string_view token) {
@@ -59,6 +60,7 @@ struct Boundary {
 
 struct Settings {
     std::map<int, double> materials;
+    std::map<int, double> heat_sources;
     std::map<int, Boundary> surfaces;
     std::optional<double> source;
     std::optional<fs::path> vtk;
@@ -90,6 +92,12 @@ Settings read_settings(int argc, char** argv) {
             if (!(k > 0.0)) throw std::invalid_argument("Material conductivity must be positive.");
             if (!settings.materials.emplace(tag, k).second) {
                 throw std::invalid_argument("Duplicate material tag " + std::to_string(tag));
+            }
+        } else if (option == "--heat-source") {
+            const int tag = physical_tag(next());
+            const double heat = number<double>(next());
+            if (!settings.heat_sources.emplace(tag, heat).second) {
+                throw std::invalid_argument("Duplicate heat source for volume tag " + std::to_string(tag));
             }
         } else if (option == "--source") {
             if (settings.source) throw std::invalid_argument("Duplicate --source.");
@@ -145,6 +153,15 @@ ScalarDiffusion3DProblem bind_problem(nova::io::GmshTetrahedralMesh3D& imported,
                 throw std::invalid_argument("Missing conductivity for volume tag " + std::to_string(tag));
             }
             problem.cell_diffusivity.push_back(material->second);
+        }
+    }
+    check_selected_tags(settings.heat_sources, imported.volume_physical_tags, "volume");
+    if (!settings.heat_sources.empty()) {
+        problem.cell_source.reserve(imported.volume_physical_tags.size());
+        for (const int tag : imported.volume_physical_tags) {
+            const auto found = settings.heat_sources.find(tag);
+            problem.cell_source.push_back(
+                found == settings.heat_sources.end() ? 0.0 : found->second);
         }
     }
     check_selected_tags(settings.surfaces, imported.exterior_physical_tags, "exterior face");

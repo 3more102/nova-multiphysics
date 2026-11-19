@@ -48,7 +48,9 @@ and a heat-flux vector per tetrahedron.
 ```
 
 The included wall has a 340 K interface and transmits 240 W across its 1 m²
-section. The verification suite also measures temperature and flux convergence
+section. Assign distinct internal heat-generation densities by physical volume
+with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
+per-volume sources add to the optional uniform `--source Q`. The verification suite also measures temperature and flux convergence
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
 
 ### Triangle mesh quality and uniform refinement

@@ -47,6 +47,10 @@ struct ScalarDiffusion3DProblem {
     // or one positive isotropic coefficient per tetrahedron in mesh.elements order.
     SymmetricTensorField3D diffusivity_tensor{};
     std::vector<double> cell_diffusivity{};
+    // Optional finite volumetric source density per tetrahedron (W/m^3).
+    // Additive to `source` at every quadrature point; negative means cooling.
+    // If nonempty, follows mesh.elements order and must cover every cell.
+    std::vector<double> cell_source{};
 };
 
 struct ScalarDiffusion3DResult {

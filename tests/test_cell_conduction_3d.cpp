@@ -141,3 +141,80 @@ NOVA_TEST(bonded_oblique_interface_transmits_normal_flux_and_preserves_tangentia
         NOVA_REQUIRE_NEAR(fields[e].flux.z, expected.z, 2e-8);
     }
 }
+
+
+NOVA_TEST(cell_heat_source_adds_to_spatial_density_and_rejects_invalid_data) {
+    auto problem = single_cell();
+    problem.dirichlet_constraints = {{0, 0.0}};
+    problem.source = [](double, double, double) { return 40.0; };
+    problem.cell_source = {80.0};
+    const auto combined = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(combined.linear_solver.converged);
+
+    problem.source = [](double, double, double) { return 120.0; };
+    problem.cell_source.clear();
+    const auto spatial = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(spatial.linear_solver.converged);
+    for (std::size_t node = 0; node < combined.values.size(); ++node) {
+        NOVA_REQUIRE_NEAR(combined.values[node], spatial.values[node], 1e-11);
+    }
+
+    problem.source = [](double, double, double) { return 240.0; };
+    problem.cell_source = {-120.0};
+    const auto cooling = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(cooling.linear_solver.converged);
+    for (std::size_t node = 0; node < spatial.values.size(); ++node) {
+        NOVA_REQUIRE_NEAR(cooling.values[node], spatial.values[node], 1e-11);
+    }
+
+    problem.cell_source = {1.0, 2.0};
+    NOVA_REQUIRE(rejects([&] { (void)solve_scalar_diffusion_3d(problem); }));
+    for (const double bad : {std::numeric_limits<double>::infinity(),
+                             -std::numeric_limits<double>::infinity(),
+                             std::numeric_limits<double>::quiet_NaN()}) {
+        problem.cell_source = {bad};
+        NOVA_REQUIRE(rejects([&] { (void)solve_scalar_diffusion_3d(problem); }));
+    }
+}
+
+NOVA_TEST(cell_heat_source_matches_independent_spatial_piecewise_source) {
+    const auto box = make_box_mesh_3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2, 2, 2);
+    ScalarDiffusion3DProblem tagged;
+    tagged.mesh = box.mesh;
+    tagged.source = [](double, double, double) { return 0.0; };
+    for (const auto& cell : tagged.mesh.elements) {
+        double center_x = 0.0;
+        for (auto node : cell) center_x += tagged.mesh.nodes[node].x / 4.0;
+        tagged.cell_diffusivity.push_back(center_x < 0.5 ? 2.0 : 6.0);
+        tagged.cell_source.push_back(center_x < 0.5 ? 120.0 : 360.0);
+    }
+    const ScalarField3D hot = [](double, double, double) { return 400.0; };
+    const ScalarField3D h = [](double, double, double) { return 12.0; };
+    const ScalarField3D ambient = [](double, double, double) { return 300.0; };
+    for (const auto& face : box.boundary_faces) {
+        bool at_hot = true, at_cold = true;
+        for (auto node : face) {
+            at_hot = at_hot && tagged.mesh.nodes[node].x == 0.0;
+            at_cold = at_cold && tagged.mesh.nodes[node].x == 1.0;
+        }
+        if (at_hot) tagged.dirichlet_faces.push_back({face, hot});
+        if (at_cold) tagged.robin_faces.push_back({face, h, ambient});
+    }
+    nova::linalg::SolverOptions options;
+    options.relative_tolerance = 1e-12;
+    options.absolute_tolerance = 0.0;
+    options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    const auto from_tags = solve_scalar_diffusion_3d(tagged, options);
+    NOVA_REQUIRE(from_tags.linear_solver.converged);
+
+    auto from_callback = tagged;
+    from_callback.cell_source.clear();
+    from_callback.source = [](double x, double, double) {
+        return x < 0.5 ? 120.0 : 360.0;
+    };
+    const auto reference = solve_scalar_diffusion_3d(from_callback, options);
+    NOVA_REQUIRE(reference.linear_solver.converged);
+    for (std::size_t i = 0; i < from_tags.values.size(); ++i) {
+        NOVA_REQUIRE_NEAR(from_tags.values[i], reference.values[i], 2e-9);
+    }
+}
