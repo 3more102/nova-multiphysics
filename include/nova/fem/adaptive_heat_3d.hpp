@@ -38,6 +38,9 @@ struct AdaptiveHeat3DResult {
     double final_time{};
     std::size_t accepted_steps{};
     std::size_t rejected_steps{};
+    // Number of IC(0) factorizations in full-step and half-step caches.
+    // Zero for non-IC(0) preconditioning.
+    std::size_t ic0_factor_builds{};
     std::vector<AdaptiveHeatAttempt3D> attempts;
     // One entry per accepted macro-step; each combines the two half-step budgets.
     std::vector<TransientHeatStepDiagnostics3D> diagnostics;
