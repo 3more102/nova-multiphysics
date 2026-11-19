@@ -1,5 +1,16 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · 3D thermal time-series visualization (pending CI)
+
+A new PVD collection writer validates finite, strictly increasing physical
+times and safe unique VTK frame filenames before serializing XML. The cooling
+cube example supports `--vtk-series prefix`, exporting the initial P1 state
+and one VTK frame per fixed step via exact nodal restart, plus a ParaView
+collection file. This unmerged follow-on depends on PR #33 and #20.
+Its per-frame solver assembly is correct by construction of the fixed-step
+restart API but performance and full numerical/CI validation remain open.
+
+
 ## 19 November 2026 · P1 tetrahedral ParaView export (pending CI)
 
 A standalone legacy VTK UNSTRUCTURED_GRID writer exports validated P1

@@ -1,5 +1,6 @@
 #include "nova/fem/transient_heat_3d.hpp"
 #include "nova/io/vtk_legacy_3d.hpp"
+#include "nova/io/vtk_series.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -8,10 +9,14 @@
 #include <iomanip>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <string_view>
+#include <sstream>
+#include <string>
+#include <vector>
 #include <utility>
 
 namespace {
@@ -36,8 +41,10 @@ int main(int argc, char** argv) {
     try {
         const bool csv = argc == 4 && std::string_view(argv[3]) == "--csv";
         const bool vtk = argc == 5 && std::string_view(argv[3]) == "--vtk";
-        if (argc > 5 || (argc > 3 && !csv && !vtk)) {
-            throw std::invalid_argument("Usage: nova_transient_heat_3d [subdivisions [steps [--csv | --vtk output.vtk]]]");
+        const bool series = argc == 5 && std::string_view(argv[3]) == "--vtk-series";
+        if (argc > 5 || (argc > 3 && !csv && !vtk && !series)) {
+            throw std::invalid_argument(
+                "Usage: nova_transient_heat_3d [subdivisions [steps [--csv | --vtk output.vtk | --vtk-series prefix]]]");
         }
         const std::size_t n = argc > 1 ? positive_count(argv[1]) : 4;
         if (n < 2) throw std::invalid_argument("The cooling cube needs at least two subdivisions.");
@@ -61,10 +68,65 @@ int main(int argc, char** argv) {
         options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
 
         const auto start = std::chrono::steady_clock::now();
-        const auto result = solve_transient_heat_3d(problem, options);
+        TransientHeat3DResult result;
+        if (series) {
+            const std::string prefix = argv[4];
+            if (prefix.empty() || prefix.front() == '.' ||
+                !std::all_of(prefix.begin(), prefix.end(), [](char ch) {
+                    return (ch >= 'a' && ch <= 'z') ||
+                           (ch >= 'A' && ch <= 'Z') ||
+                           (ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
+                })) {
+                throw std::invalid_argument("VTK series prefix must be a safe ASCII filename stem.");
+            }
+            std::vector<nova::io::VtkTimeSeriesEntry> frames;
+            std::vector<double> temperature;
+            temperature.reserve(problem.mesh.nodes.size());
+            for (const auto& point : problem.mesh.nodes) {
+                temperature.push_back(spatial_mode(point.x, point.y, point.z));
+            }
+            const auto write_frame = [&](std::size_t index, double time) {
+                std::ostringstream filename;
+                filename << prefix << '_' << std::setfill('0') << std::setw(6)
+                         << index << ".vtk";
+                const std::string name = filename.str();
+                std::ofstream out(name, std::ios::binary);
+                if (!out) throw std::runtime_error("Cannot open VTK series frame.");
+                nova::io::write_legacy_vtk_scalar_3d(out, problem.mesh, temperature);
+                out.close();
+                if (!out) throw std::runtime_error("Cannot finish VTK series frame.");
+                frames.push_back({time, name});
+            };
+            write_frame(0, options.start_time);
+            TransientHeat3DOptions single = options;
+            single.steps = 1;
+            for (std::size_t i = 0; i < steps; ++i) {
+                single.start_time = options.start_time +
+                                    static_cast<double>(i) * options.time_step;
+                problem.initial_dof_values = temperature;
+                auto next = solve_transient_heat_3d(problem, single);
+                temperature = std::move(next.temperature);
+                result.final_time = next.final_time;
+                result.linear_solvers.insert(result.linear_solvers.end(),
+                    std::make_move_iterator(next.linear_solvers.begin()),
+                    std::make_move_iterator(next.linear_solvers.end()));
+                result.diagnostics.insert(result.diagnostics.end(),
+                    std::make_move_iterator(next.diagnostics.begin()),
+                    std::make_move_iterator(next.diagnostics.end()));
+                write_frame(i + 1, result.final_time);
+            }
+            result.temperature = std::move(temperature);
+            std::ofstream collection(prefix + ".pvd", std::ios::binary);
+            if (!collection) throw std::runtime_error("Cannot open PVD collection.");
+            nova::io::write_pvd_collection(collection, frames);
+            collection.close();
+            if (!collection) throw std::runtime_error("Cannot finish PVD collection.");
+        } else {
+            result = solve_transient_heat_3d(problem, options);
+        }
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         std::cout << std::setprecision(std::numeric_limits<double>::max_digits10);
-        if (argc == 4) {
+        if (csv) {
             std::cout << "x,y,z,temperature\n";
             for (std::size_t i = 0; i < result.temperature.size(); ++i) {
                 const auto& point = problem.mesh.nodes[i];

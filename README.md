@@ -75,9 +75,23 @@ To visualize the final cooling-cube temperature, build the examples and run:
 ~~~
 
 Open `cooling_cube.vtk` in ParaView and select the `temperature` scalar.
-The existing `--csv` machine-readable mode is unchanged. This exporter
-writes only the final scalar state; time-series, vector/tensor fields,
-P2 tetrahedra, and curved geometries remain future work.
+The existing `--csv` machine-readable mode is unchanged. To export all
+time states (including the initial temperature), run:
+
+~~~bash
+./build/nova_transient_heat_3d 4 10 --vtk-series cooling_cube
+~~~
+
+This writes `cooling_cube.pvd` and `cooling_cube_000000.vtk` through
+`cooling_cube_000010.vtk`. Open the .pvd collection in ParaView and
+use the animation controls to inspect the physical timestep sequence.
+Series basenames are restricted to ASCII letters, digits, underscores
+and hyphens. The .pvd writer rejects non-finite, duplicate or
+non-increasing times, unsafe paths and duplicate frame names.
+This prototype restarts one fixed thermal step for each output state;
+it repeats FEM assembly and is slower than a cached time-history solver.
+Partially created frame files may remain on I/O failure. Vector/tensor
+fields, P2 tetrahedra, and curved geometries remain future work.
 
 Pure-Neumann compatibility is checked separately on each connected component without Dirichlet or positive Robin anchoring. The returned field on each such component is normalized to zero volume-weighted mean.
 
