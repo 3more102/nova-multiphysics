@@ -34,6 +34,7 @@ add_library(nova_core
     src/fem/conductivity_3d.cpp
     src/fem/diffusion_nullspace.cpp
     src/fem/diffusion_3d.cpp
+    src/fem/p1_flux_3d.cpp
     src/fem/mesh_refinement_2d.cpp
     src/fem/adaptive_mesh_2d.cpp
     src/fem/mesh_transfer_2d.cpp
@@ -132,6 +133,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_mesh_topology_3d.cpp
         tests/test_h1_space_3d.cpp
         tests/test_diffusion_3d.cpp
+        tests/test_p1_flux_3d.cpp
         tests/test_anisotropic_3d.cpp
         tests/test_mesh_refinement_2d.cpp
         tests/test_mesh_transfer_2d.cpp

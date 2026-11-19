@@ -60,6 +60,19 @@ on validated four-node tetrahedral meshes using:
 
 Example: `examples/diffusion_3d/main.cpp`.
 
+#### 3D P1 element flux postprocessing
+
+Use `nova::fem::evaluate_p1_tetrahedral_flux_3d(problem, result.values)`
+to recover the physical P1 gradient and cell-averaged diffusive flux
+`q = -K grad(u)` from a solved tetrahedral scalar diffusion field.
+Both isotropic scalar and symmetric anisotropic tensor conductivity are
+supported; spatially varying materials use the same positive degree-two
+tetrahedral sampling as the stiffness assembly. Flux is a discontinuous
+**per-element** quantity, not a smoothed nodal field or an equilibrated
+a-posteriori flux estimator. Invalid materials and nonfinite values are
+rejected.
+
+
 Pure-Neumann compatibility is checked separately on each connected component without Dirichlet or positive Robin anchoring. The returned field on each such component is normalized to zero volume-weighted mean.
 
 For direction-dependent materials, set `diffusivity_tensor` on a stationary problem or `conductivity_tensor` on a transient problem. Supply the six components in global Cartesian coordinates and leave the scalar callback empty. Fixed and adaptive time stepping use the same material assembly. [Tensor conventions and supported range](docs/NUMERICAL_CONVENTIONS.md#tetrahedral-conductivity-tensors)
