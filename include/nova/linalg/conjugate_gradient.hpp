@@ -4,6 +4,7 @@
 #include "nova/linalg/incomplete_cholesky.hpp"
 #include "nova/linalg/solver_types.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <span>
 
