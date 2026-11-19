@@ -254,20 +254,16 @@ TransientHeat3DProblem bind_problem(nova::io::GmshTetrahedralMesh3D& imported,
     return problem;
 }
 
-void export_vtk(const fs::path& target, const TransientHeat3DProblem& problem,
-                const std::vector<double>& temperature, const std::vector<int>& volume_tags,
-                const Settings& settings) {
+void export_vtk(
+    const fs::path& target, const TransientHeat3DProblem& problem,
+    const std::vector<double>& temperature, const std::vector<int>& volume_tags,
+    const std::vector<double>& generation
+) {
     const auto& p = problem.diffusion;
-    const auto flux = evaluate_p1_tetrahedral_flux_3d(p, temperature);
-    std::vector<double> generation;
-    generation.reserve(volume_tags.size());
-    for (const int tag : volume_tags) {
-        const auto it = settings.heat_sources.find(tag);
-        const double value = settings.source.value_or(0.0) +
-            (it == settings.heat_sources.end() ? 0.0 : it->second);
-        if (!std::isfinite(value)) throw std::overflow_error("Effective source overflow.");
-        generation.push_back(value);
+    if (generation.size() != volume_tags.size()) {
+        throw std::invalid_argument("VTK heat generation and material tag sizes differ.");
     }
+    const auto flux = evaluate_p1_tetrahedral_flux_3d(p, temperature);
     fs::path temporary;
     bool created = false;
     for (std::size_t attempt = 0; attempt < 1000U; ++attempt) {
@@ -297,7 +293,6 @@ void export_vtk(const fs::path& target, const TransientHeat3DProblem& problem,
     if (!output) throw std::runtime_error("Unable to complete VTK result output.");
     fs::rename(frame, target);
 }
-
 
 std::vector<double> make_heat_generation(
     const std::vector<int>& volume_tags, const Settings& settings
@@ -482,7 +477,7 @@ int main(int argc, char** argv) {
         const auto result = solve_transient_heat_3d(problem, options);
         if (settings.vtk) {
             export_vtk(*settings.vtk, problem, result.temperature,
-                       imported.volume_physical_tags, settings);
+                       imported.volume_physical_tags, generation);
         }
         if (settings.vtk_series) {
             write_series_collection(*settings.vtk_series, frames);

@@ -234,7 +234,7 @@ if(NOVA_BUILD_EXAMPLES)
     foreach(example IN ITEMS
         nova_poisson_1d nova_diffusion_2d nova_diffusion_3d
         nova_gmsh_diffusion_3d nova_transient_heat_3d
-        nova_transient_heat_2d nova_transient_flux_2d
+        nova_gmsh_transient_heat_3d nova_transient_heat_2d nova_transient_flux_2d
         nova_adaptive_heat_2d nova_nonlinear_diffusion_1d)
         nova_assert_unique_target_sources(${example})
     endforeach()
