@@ -1,7 +1,9 @@
 #include "nova/linalg/conjugate_gradient.hpp"
+#include "nova/linalg/incomplete_cholesky.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -102,10 +104,12 @@ SolverResult solve_conjugate_gradient(
         throw std::invalid_argument("Conjugate-gradient input vectors must contain only finite values.");
     }
     if (options.preconditioner != PreconditionerType::None &&
-        options.preconditioner != PreconditionerType::Jacobi) {
+        options.preconditioner != PreconditionerType::Jacobi &&
+        options.preconditioner != PreconditionerType::IncompleteCholesky0) {
         throw std::invalid_argument("Unsupported conjugate-gradient preconditioner.");
     }
 
+    std::optional<IncompleteCholesky0> incomplete_factor;
     std::vector<double> inverse_diagonal;
     if (options.preconditioner == PreconditionerType::Jacobi) {
         const std::vector<double> diagonal = matrix.diagonal();
@@ -125,11 +129,16 @@ SolverResult solve_conjugate_gradient(
                 );
             }
         }
+    } else if (options.preconditioner == PreconditionerType::IncompleteCholesky0) {
+        incomplete_factor.emplace(matrix);
     }
 
     const auto apply_preconditioner = [&](const std::vector<double>& residual) {
         if (options.preconditioner == PreconditionerType::None) {
             return residual;
+        }
+        if (incomplete_factor) {
+            return incomplete_factor->apply(residual);
         }
 
         std::vector<double> result(residual.size(), 0.0);
@@ -258,9 +267,13 @@ SolverResult solve_conjugate_gradient(
             if (result.residual_norm <= convergence_threshold) {
                 result.solution = std::move(solution);
                 result.converged = true;
-                result.message = options.preconditioner == PreconditionerType::Jacobi
-                    ? "Converged with Jacobi preconditioning."
-                    : "Converged.";
+                if (incomplete_factor) {
+                    result.message = "Converged with IC(0) preconditioning.";
+                } else if (options.preconditioner == PreconditionerType::Jacobi) {
+                    result.message = "Converged with Jacobi preconditioning.";
+                } else {
+                    result.message = "Converged.";
+                }
                 return result;
             }
 
