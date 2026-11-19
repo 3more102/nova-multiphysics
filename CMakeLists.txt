@@ -151,6 +151,13 @@ if(NOVA_BUILD_TESTS)
             COMMAND nova_transient_heat_3d 3 3 --vtk ${CMAKE_CURRENT_BINARY_DIR}/nova_thermal_3d.vtk)
         add_test(NAME nova_transient_heat_3d_series_smoke
             COMMAND nova_transient_heat_3d 3 3 --vtk-series nova_thermal_series)
+        find_package(Python3 COMPONENTS Interpreter QUIET)
+        if(Python3_Interpreter_FOUND)
+            add_test(NAME nova_transient_heat_3d_series_verify
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_vtk_series_3d.py"
+                    "$<TARGET_FILE:nova_transient_heat_3d>")
+        endif()
         add_test(NAME nova_diffusion_3d_smoke COMMAND nova_diffusion_3d)
     endif()
 endif()

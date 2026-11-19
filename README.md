@@ -90,8 +90,10 @@ and hyphens. The .pvd writer rejects non-finite, duplicate or
 non-increasing times, unsafe paths and duplicate frame names.
 This prototype restarts one fixed thermal step for each output state;
 it repeats FEM assembly and is slower than a cached time-history solver.
-Partially created frame files may remain on I/O failure. Vector/tensor
-fields, P2 tetrahedra, and curved geometries remain future work.
+Partially created frame files may remain on I/O failure. A standard-library
+Python cross-check validates the PVD frame sequence against a monolithic
+fixed-step solve whenever Python 3 is available to CMake tests.
+Vector/tensor fields, P2 tetrahedra, and curved geometries remain future work.
 
 Pure-Neumann compatibility is checked separately on each connected component without Dirichlet or positive Robin anchoring. The returned field on each such component is normalized to zero volume-weighted mean.
 
