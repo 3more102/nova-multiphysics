@@ -77,6 +77,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 - Uniform insulated heating: `C=4`, `Q=8`, `T(0)=300` gives `T(t)=300+2t`, exactly represented by P1, for both schemes.
 - Three fixed vertices of a unit tetrahedron: the remaining DOF has `M_33=1/60`, `K_33=1/6`. Starting at 10 with `dt=0.1`, the one-step exact algebraic results are 5 (Backward Euler) and 10/3 (Crank–Nicolson).
+- Independent temporal-refinement benchmark: on a unit tetrahedron with three fixed vertices, the remaining degree of freedom obeys `T'(t) = -10 T(t)`, with exact solution `10 exp(-10 t)` (initial value 10). Over a 0.4-second interval, the observed global time orders for steps of 0.1, 0.05, and 0.025 seconds are approximately 1.09/1.07 for Backward Euler and 1.97/2.00 for Crank–Nicolson; the test checks these order bands and energy closure.
 - Neumann-flux heat loss, Robin convection, mixed tensor conductivity with a spatial heat capacity, and numerical energy-budget closure.
 - Rejection of nonpositive capacities, bad source/initial fields, duplicate boundary conditions and invalid time-step options.
 
