@@ -3,6 +3,7 @@
 #include "nova/fem/transient_heat_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/linalg/bicgstab.hpp"
+#include "nova/linalg/conjugate_gradient.hpp"
 #include "nova/linalg/gmres.hpp"
 #include "nova/linalg/incomplete_cholesky.hpp"
 
