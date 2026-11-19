@@ -55,6 +55,16 @@ with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
 per-volume sources add to the optional uniform `--source Q`. The verification suite also measures temperature and flux convergence
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
 
+### Conforming uniform 3D tetrahedral refinement
+
+NOVA supports global 1-to-8 refinement of a conforming tetrahedral P1 mesh.
+It shares original-edge midpoints between cells, preserves exterior-triangle
+orientation and parent boundary-face mappings, and provides exact P1 nodal
+interpolation plus cellwise constant field transfer. This makes successive
+3D mesh-convergence studies possible without introducing hanging nodes.
+See [formulation and verification](docs/UNIFORM_REFINEMENT_3D.md).
+Uniform refinement is not adaptive refinement or physical validation.
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
