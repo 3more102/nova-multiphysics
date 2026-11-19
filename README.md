@@ -83,8 +83,24 @@ animate temperature over physical time. A validated PVD writer and an optional
 per-step solver observer avoid repeated assembly/solves and avoid retaining
 all intermediate nodal fields when `retain_step_solutions=false`.
 See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
-This remains a structured-box demonstration; a Gmsh-tagged transient
-study workflow and experimental comparison are not implemented.
+The structured-box example remains available. Imported tagged Gmsh MSH 2.2
+transient studies with per-region materials, physical boundary groups and
+streamed ParaView PVD output are also supported by the experimental CLI; see
+[Gmsh transient study and verification](docs/GMSH_TRANSIENT_HEAT_3D.md).
+
+### Imported Gmsh transient 3D heat study
+
+Run an implicit thermal study on tagged tetrahedral regions and stream the
+Dirichlet-projected initial field plus every completed time step to ParaView:
+
+~~~sh
+./build/nova_gmsh_transient_heat_3d examples/gmsh_diffusion_3d/two_layer_wall.msh --material 11 2 --material 22 6 --capacity 11 2000000 --capacity 22 3500000 --initial 300 --start-time 0 --dt 0.5 --steps 40 --scheme cn --temperature 101 310 --convection 102 12 290 --vtk-series heated_wall.pvd
+~~~
+
+The PVD collection references rich legacy VTK frames containing nodal
+temperature, per-cell material IDs, heat generation and physical heat flux.
+The solver assembles once and streams snapshots without retaining the full
+per-step nodal history. See [CLI options, numerical conventions and tests](docs/GMSH_TRANSIENT_HEAT_3D.md).
 
 ### Triangle mesh quality and uniform refinement
 
