@@ -75,9 +75,20 @@ To visualize the final cooling-cube temperature, build the examples and run:
 ~~~
 
 Open `cooling_cube.vtk` in ParaView and select the `temperature` scalar.
-The existing `--csv` machine-readable mode is unchanged. This exporter
-writes only the final scalar state; time-series, vector/tensor fields,
-P2 tetrahedra, and curved geometries remain future work.
+For an actual transient animation (including the initial state), use:
+
+~~~bash
+./build/nova_transient_heat_3d 4 10 --vtk-series cooling_cube.pvd
+~~~
+
+Open `cooling_cube.pvd` in ParaView and use the animation controls. The
+program streams each accepted step directly to `cooling_cube_000000.vtk`,
+`cooling_cube_000001.vtk`, etc. The metadata file references the frames
+by basename, so the complete series can be moved together. Output paths
+must have an existing parent directory and an ASCII-safe `.pvd` basename.
+The observer does not re-solve or store every step's field in memory.
+The existing `--csv` and final-only `--vtk` modes are unchanged.
+Vector/tensor fields, P2 tetrahedra, and curved geometries remain future work.
 
 Pure-Neumann compatibility is checked separately on each connected component without Dirichlet or positive Robin anchoring. The returned field on each such component is normalized to zero volume-weighted mean.
 
@@ -129,7 +140,7 @@ The tetrahedral P1 solver supports consistent thermal mass, fixed-step Backward 
 
 The adaptive 3D path adds full-step/two-half-step control for Backward Euler and Crank–Nicolson, automatic acceptance/rejection, RMS absolute/relative tolerances, exact P1 restart states, combined energy diagnostics, and one-time assembly of static mass/stiffness operators per study. Its implementation is on `feature/adaptive-heat-3d`; Windows/Linux Release, sanitizer and static-analysis CI pass. Automated Crank–Nicolson tests compare against a refined fixed-step NOVA reference; independent adaptive cross-solver validation and experimental validation remain open.
 
-Run `nova_transient_heat_3d 8 20` for a cooling cube with a known analytical solution, or `nova_adaptive_heat_3d` for adaptive P1 heating. The optional third argument `--csv` writes all final nodal temperatures. [Fixed-step verification results and reproduction commands](docs/THERMAL_3D_VERIFICATION.md)
+Run `nova_transient_heat_3d 8 20` for a cooling cube with a known analytical solution, or `nova_adaptive_heat_3d` for adaptive P1 heating. The optional `--csv` argument writes all final nodal temperatures. `--vtk-series output.pvd` generates the complete fixed-step ParaView animation. [Fixed-step verification results and reproduction commands](docs/THERMAL_3D_VERIFICATION.md)
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
