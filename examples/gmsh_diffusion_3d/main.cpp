@@ -2,7 +2,7 @@
 #include "nova/fem/energy_balance_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 #include "nova/fem/tagged_boundary_flux_3d.hpp"
-#include "nova/io/gmsh22_tetrahedral.hpp"
+#include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/vtk_legacy_3d.hpp"
 
 #include <algorithm>
@@ -33,7 +33,9 @@ constexpr const char* usage =
     "       [--material-tensor volume-tag-or-name xx yy zz xy xz yz]\n"
     "       [--convection face-tag-or-name h T_ambient] [--source Q]\n"
     "       [--heat-source volume-tag-or-name Q] ... [--vtk result.vtk]\n"
-    "       [--flux-report] [--balance-report]";
+    "       [--flux-report] [--balance-report] [--quality-report]\n"
+    "       [--min-mean-ratio q]\n"
+    "   or: nova_gmsh_diffusion_3d mesh.msh --check-mesh [--min-mean-ratio q]";
 
 template<class T>
 T number(std::string_view token) {
@@ -81,6 +83,9 @@ struct Settings {
     bool unit_example{};
     bool flux_report{};
     bool balance_report{};
+    bool quality_report{};
+    bool check_mesh_only{};
+    std::optional<double> minimum_mean_ratio;
 };
 
 Settings read_settings(int argc, char** argv,
@@ -138,6 +143,20 @@ Settings read_settings(int argc, char** argv,
         } else if (option == "--balance-report") {
             if (settings.balance_report) throw std::invalid_argument("Duplicate --balance-report.");
             settings.balance_report = true;
+        } else if (option == "--quality-report") {
+            if (settings.quality_report) throw std::invalid_argument("Duplicate --quality-report.");
+            settings.quality_report = true;
+        } else if (option == "--check-mesh") {
+            if (settings.check_mesh_only) throw std::invalid_argument("Duplicate --check-mesh.");
+            settings.check_mesh_only = true;
+            settings.quality_report = true;
+        } else if (option == "--min-mean-ratio") {
+            if (settings.minimum_mean_ratio) throw std::invalid_argument("Duplicate --min-mean-ratio.");
+            const double threshold = number<double>(next());
+            if (!(threshold > 0.0 && threshold <= 1.0)) {
+                throw std::invalid_argument("Minimum mean ratio must be in (0, 1].");
+            }
+            settings.minimum_mean_ratio = threshold;
         } else if (option == "--temperature" || option == "--flux" || option == "--convection") {
             const int tag = physical_tag(next(), 2, mesh);
             Boundary condition{BoundaryKind::temperature, number<double>(next())};
@@ -154,7 +173,14 @@ Settings read_settings(int argc, char** argv,
             throw std::invalid_argument("Unknown option " + std::string(option) + "\n" + usage);
         }
     }
-    if (settings.materials.empty() && settings.tensor_materials.empty()) {
+    if (settings.minimum_mean_ratio) settings.quality_report = true;
+    if (settings.check_mesh_only) {
+        if (!settings.materials.empty() || !settings.tensor_materials.empty() ||
+            !settings.heat_sources.empty() || !settings.surfaces.empty() ||
+            settings.source || settings.vtk || settings.flux_report || settings.balance_report) {
+            throw std::invalid_argument("--check-mesh cannot be combined with simulation options.");
+        }
+    } else if (settings.materials.empty() && settings.tensor_materials.empty()) {
         throw std::invalid_argument("Supply at least one --material or --material-tensor.");
     }
     return settings;
@@ -276,11 +302,38 @@ int main(int argc, char** argv) {
         if (argc < 3) throw std::invalid_argument(usage);
         std::ifstream input(argv[1]);
         if (!input) throw std::runtime_error("Cannot open Gmsh input: " + std::string(argv[1]));
-        auto imported = nova::io::read_gmsh22_tetrahedra(input);
+        auto imported = nova::io::read_gmsh_tetrahedra(input);
         const auto settings = read_settings(argc, argv, imported);
         if (settings.vtk && fs::exists(*settings.vtk) && fs::equivalent(*settings.vtk, argv[1])) {
             throw std::invalid_argument("VTK output would overwrite the input mesh.");
         }
+        if (settings.quality_report) {
+            const auto quality = evaluate_mesh_quality_3d(imported.mesh);
+            const auto worst = std::min_element(
+                quality.elements.begin(), quality.elements.end(),
+                [](const auto& a, const auto& b) { return a.mean_ratio < b.mean_ratio; }
+            );
+            const std::size_t worst_index =
+                static_cast<std::size_t>(worst - quality.elements.begin());
+            std::cout << std::setprecision(17)
+                      << "NOVA Gmsh tetrahedral mesh quality\n"
+                      << "Mesh nodes: " << imported.mesh.nodes.size() << '\n'
+                      << "Mesh tetrahedra: " << quality.elements.size() << '\n'
+                      << "Total tetrahedral volume [m^3]: " << quality.total_volume << '\n'
+                      << "Minimum mean ratio: " << quality.minimum_mean_ratio << '\n'
+                      << "Worst tetrahedron index (zero-based): " << worst_index << '\n'
+                      << "Minimum dihedral angle [degrees]: "
+                      << quality.minimum_dihedral_angle * (180.0 / std::acos(-1.0)) << '\n';
+            if (settings.minimum_mean_ratio &&
+                quality.minimum_mean_ratio < *settings.minimum_mean_ratio) {
+                throw std::runtime_error(
+                    "Mesh mean-ratio quality gate failed at tetrahedron " +
+                    std::to_string(worst_index) + ". Required " +
+                    std::to_string(*settings.minimum_mean_ratio) +
+                    ", observed " + std::to_string(quality.minimum_mean_ratio) + ".");
+            }
+        }
+        if (settings.check_mesh_only) return 0;
         auto problem = bind_problem(imported, settings);
 
         nova::linalg::SolverOptions options;
