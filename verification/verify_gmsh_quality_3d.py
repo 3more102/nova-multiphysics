@@ -11,7 +11,7 @@ def execute(cli, mesh, *args):
 
 
 def value(text, label):
-    match = re.search(r"^" + re.escape(label) + r":\\s*([-+0-9.eE]+)\\s*$", text, re.M)
+    match = re.search(r"^" + re.escape(label) + r":\s*([-+0-9.eE]+)\s*$", text, re.M)
     if not match:
         raise AssertionError(f"Missing field {label}: {text}")
     return float(match.group(1))
