@@ -85,3 +85,39 @@ These checks verify the mathematical discretization but **do not** constitute ex
 ## Explicit limits and next milestone
 
 Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Current result history retains every CG solution vector, so a long run can consume memory proportional to steps × node count. Next: a streaming result callback, Gmsh-tagged transient CLI with `.pvd` export, and an independent temporal-convergence benchmark on a spatially varying manufactured solution.
+
+## Streaming long-running solutions
+
+The default API retains the entire `linear_solvers` vector (which contains one
+full nodal temperature field per step) and all energy diagnostics. To write
+outputs incrementally without retaining full per-step fields, use the callback
+and disable both histories:
+
+```cpp
+options.retain_solver_history = false;
+options.retain_diagnostics_history = false;
+options.on_step = [&](std::size_t step,
+                      const std::vector<double>& temperature,
+                      const TransientHeatStepDiagnostics3D& balance) {
+    // Write temperature and the energy budget to an output sink.
+    // The referenced values remain valid only within this invocation.
+};
+const auto result = solve_transient_heat_3d(problem, options);
+// result.temperature and result.final_time remain available.
+```
+
+The callback runs synchronously after each successfully solved step, even when
+history retention is enabled. Callback exceptions propagate to the caller.
+With both histories disabled, the returned per-step result storage is bounded
+independently of the number of steps; the solver still holds its current
+sparse matrices, vectors and the final temperature. A streaming writer can
+connect this callback to VTK/PVD output in a subsequent change.
+
+## Independent temporal convergence
+
+A separate regression uses the nonconstant nodal basis of one tetrahedron with
+three constrained vertices. The remaining free degree of freedom obeys the
+**semidiscrete** exact equation `T' = -10 T` at a final time of 0.4. Mesh
+spatial error is excluded from this check. Refining from 4 to 8 to 16 steps
+must show first-order error reduction for Backward Euler and second-order error
+reduction for Crank–Nicolson against `exp(-4)`.

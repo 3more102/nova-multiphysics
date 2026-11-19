@@ -196,3 +196,69 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         (void)solve_transient_heat_3d(p, options);
     }));
 }
+
+NOVA_TEST(transient_heat_3d_streams_steps_without_storing_solution_history) {
+    auto p = unit_heat();
+    p.cell_volumetric_capacity = {4.0};
+    p.diffusion.source = [](double, double, double) { return 8.0; };
+    p.initial_temperature = {300.0, 300.0, 300.0, 300.0};
+    TransientHeat3DOptions options;
+    options.time_step = 0.125;
+    options.steps = 12;
+    options.retain_solver_history = false;
+    options.retain_diagnostics_history = false;
+    options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    std::size_t callback_count = 0;
+    options.on_step = [&](std::size_t step, const std::vector<double>& temperature,
+                          const TransientHeatStepDiagnostics3D& diag) {
+        NOVA_REQUIRE(step == callback_count + 1);
+        NOVA_REQUIRE(temperature.size() == p.initial_temperature.size());
+        NOVA_REQUIRE_NEAR(diag.time, 0.125 * static_cast<double>(step), 1e-14);
+        for (double t : temperature) {
+            NOVA_REQUIRE_NEAR(t, 300.0 + 0.25 * static_cast<double>(step), 2e-9);
+        }
+        NOVA_REQUIRE_NEAR(diag.balance_residual, 0.0, 1e-10);
+        ++callback_count;
+    };
+    const auto result = solve_transient_heat_3d(p, options);
+    NOVA_REQUIRE(callback_count == options.steps);
+    NOVA_REQUIRE(result.linear_solvers.empty());
+    NOVA_REQUIRE(result.diagnostics.empty());
+    NOVA_REQUIRE_NEAR(result.final_time, 1.5, 1e-14);
+    for (double t : result.temperature) {
+        NOVA_REQUIRE_NEAR(t, 303.0, 2e-9);
+    }
+}
+
+NOVA_TEST(transient_heat_3d_temporal_convergence_for_spatially_varying_p1_mode) {
+    // Three constrained vertices leave the nonconstant z basis mode.
+    // The exact *semi-discrete* ODE for its fourth nodal DOF is
+    // (1/60) T'(t) + (1/6) T(t) = 0, T(0)=1.
+    // This isolates temporal order independently of PDE spatial error.
+    auto p = unit_heat();
+    p.initial_temperature = {0.0, 0.0, 0.0, 1.0};
+    p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
+    const double exact = std::exp(-4.0);
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        std::array<double, 3> errors{};
+        const std::array<std::size_t, 3> step_counts{4U, 8U, 16U};
+        for (std::size_t i = 0; i < step_counts.size(); ++i) {
+            TransientHeat3DOptions options;
+            options.scheme = scheme;
+            options.steps = step_counts[i];
+            options.time_step = 0.4 / static_cast<double>(options.steps);
+            options.solver_options.relative_tolerance = 1e-13;
+            options.solver_options.preconditioner =
+                nova::linalg::PreconditionerType::Jacobi;
+            const auto result = solve_transient_heat_3d(p, options);
+            NOVA_REQUIRE_NEAR(result.final_time, 0.4, 1e-14);
+            errors[i] = std::abs(result.temperature[3] - exact);
+            NOVA_REQUIRE(errors[i] > 1e-9);
+        }
+        const double minimum_ratio =
+            scheme == TransientHeat3DScheme::BackwardEuler ? 1.8 : 3.4;
+        NOVA_REQUIRE(errors[0] / errors[1] > minimum_ratio);
+        NOVA_REQUIRE(errors[1] / errors[2] > minimum_ratio);
+    }
+}

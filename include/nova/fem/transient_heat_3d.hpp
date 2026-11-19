@@ -4,6 +4,7 @@
 #include "nova/linalg/csr_matrix.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace nova::fem {
@@ -27,12 +28,24 @@ enum class TransientHeat3DScheme {
     CrankNicolson
 };
 
+struct TransientHeatStepDiagnostics3D;
+
 struct TransientHeat3DOptions {
     TransientHeat3DScheme scheme{TransientHeat3DScheme::BackwardEuler};
     double time_step{0.1};
     double start_time{0.0};
     std::size_t steps{1U};
     linalg::SolverOptions solver_options{};
+    // Defaults retain the original full per-step result history.
+    // Disable both for O(nodes + elements) result storage instead of
+    // O(steps * nodes); the final temperature is always returned.
+    bool retain_solver_history{true};
+    bool retain_diagnostics_history{true};
+    // Called after a successful step with the step number (1-based), the
+    // current temperature and its energy diagnostics. References are valid
+    // only for the duration of the callback; exceptions propagate.
+    std::function<void(std::size_t, const std::vector<double>&,
+                       const TransientHeatStepDiagnostics3D&)> on_step;
 };
 
 // All energies are integrated over a single time step in joules.
@@ -60,6 +73,8 @@ struct TransientHeat3DResult {
 // One time-independent system matrix is reused across all steps; CG receives a
 // warm-start state. Purely insulated meshes are permitted because positive
 // thermal mass removes the steady-state constant-mode singularity.
+// Use on_step to stream results. Full history is retained by default for
+// backward compatibility; disable history in the options for long runs.
 // No time-varying coefficients, phase change or adaptive 3D time steps yet.
 [[nodiscard]] TransientHeat3DResult solve_transient_heat_3d(
     const TransientHeat3DProblem& problem,
