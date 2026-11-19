@@ -100,8 +100,9 @@ The experimental P1 tetrahedral electrostatics API solves
 It reuses the validated 3D scalar/tensor diffusion assembly and supports scalar or
 symmetric positive-definite tensor permittivity, spatial and additive per-cell
 free-charge density, fixed nodal or exterior-face potentials, and prescribed
-outward displacement D dot n. Unassigned exterior faces have zero normal
-displacement. The result includes nodal potential, per-cell E and D, and
+outward displacement D dot n. Pure-Neumann displacement data use the existing
+component compatibility check and zero-volume-mean gauge. Unassigned exterior
+faces have zero normal displacement. The result includes nodal potential, per-cell E and D, and
 stored energy U = 1/2 integral(E dot D) dV.
 
 ~~~sh
