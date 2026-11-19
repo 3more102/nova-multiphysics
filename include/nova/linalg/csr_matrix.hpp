@@ -25,6 +25,10 @@ public:
     [[nodiscard]] std::size_t columns() const noexcept;
     [[nodiscard]] std::size_t non_zeros() const noexcept;
 
+    // Exact canonical CSR comparison in O(rows + stored entries).
+    // Compares dimensions, row offsets, column indices and coefficients.
+    [[nodiscard]] bool has_identical_entries(const CsrMatrix& other) const noexcept;
+
     [[nodiscard]] std::vector<double> multiply(
         std::span<const double> vector
     ) const;
