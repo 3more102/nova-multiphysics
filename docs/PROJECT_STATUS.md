@@ -1,5 +1,23 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · CG residual dynamic-range regression
+
+On `fix/cg-scaled-residual-convergence`, the CG norm computes a scaled
+sum of squares when the ordinary dot-product norm underflows or overflows.
+The Krylov scalars `rho` and `p^T A p` are retained as exponent/significand
+pairs when direct products exceed the double dynamic range, and `alpha`
+and `beta` are formed from their ratios. Ordinary-scale products keep the
+existing direct arithmetic. This addresses false zero-step convergence on
+nonzero right-hand sides near `1e-200` with relative-only solver tolerance,
+without changing the meaning of explicitly requested absolute tolerances.
+
+Regression cases cover relative-only CG with no/Jacobi/IC(0) preconditioner,
+small-magnitude matrices with Jacobi/IC(0), and large finite residual norms.
+The sparse matrix-vector product and the Jacobi diagonal inversion still
+retain their usual IEEE double dynamic-range limits. This is not arbitrary-
+precision arithmetic. **CI verification is required before this checkpoint
+is considered validated.**
+
 ## 19 November 2026 · cached IC(0) for repeated thermal matrices
 
 The CG API now includes `CachedConjugateGradient`, an instance-owned IC(0)
