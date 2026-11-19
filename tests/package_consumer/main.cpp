@@ -1,9 +1,12 @@
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
 #include "nova/linalg/csr_matrix.hpp"
+#include "nova/linalg/conjugate_gradient.hpp"
+#include "nova/linalg/incomplete_cholesky.hpp"
 #include "nova/physics/electrostatics_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
 
+#include <array>
 #include <cmath>
 #include <sstream>
 #include <string>
@@ -24,6 +27,20 @@ int main() {
     const auto y = a.multiply(x);
     if (y.size() != 2 || std::abs(y[0] - 8.0) > 1.0e-12 ||
         std::abs(y[1] - 15.0) > 1.0e-12) return 2;
+
+    // Exercise the installed IC(0) factor and CG selection API.
+    const auto spd = nova::linalg::CsrMatrix::from_triplets(2, 2,
+        {{0, 0, 4.0}, {0, 1, 1.0}, {1, 0, 1.0}, {1, 1, 3.0}});
+    const std::array<double, 2> rhs{1.0, 2.0};
+    nova::linalg::SolverOptions ic_options;
+    ic_options.preconditioner = nova::linalg::PreconditionerType::IncompleteCholesky0;
+    ic_options.relative_tolerance = 1.0e-12;
+    ic_options.absolute_tolerance = 1.0e-14;
+    const auto ic_solution =
+        nova::linalg::solve_conjugate_gradient(spd, rhs, ic_options);
+    if (!ic_solution.converged || ic_solution.iterations != 1 ||
+        std::abs(ic_solution.solution[0] - 1.0 / 11.0) > 1.0e-12 ||
+        std::abs(ic_solution.solution[1] - 7.0 / 11.0) > 1.0e-12) return 8;
 
     // Independent installed 3D API consumer: -Delta(u)=0, u=x, with
     // fixed temperatures at x=0 and x=1 and insulated remaining faces.
