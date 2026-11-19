@@ -108,7 +108,7 @@ The prototype currently contains:
 - L2 and H1 error-norm calculations for nodal P1 fields.
 - Automated numerical and input-validation tests.
 
-The 2D diffusion path currently lacks pure Neumann nullspace handling, anisotropic tensors, adaptive meshing, and a generalized physics residual/tangent interface. The nonlinear solver is not yet connected to a general material or multiphysics model.
+The 2D and 3D stationary diffusion adapters share a component nullspace implementation. The DOF map defines connectivity; each adapter supplies its exact basis integrals and quadrature load magnitudes. The shared symmetric elimination compacts free triplets in place, and CG initializes identity rows at their prescribed values. P1/P2 triangle pure-Neumann components require compatible loads and return a zero-area-mean physical field. Anisotropic 2D tensors, adaptive meshing and a generalized physics residual/tangent interface remain open. The nonlinear solver is not yet connected to a general material or multiphysics model.
 
 ## 4. Dependency policy
 
