@@ -73,11 +73,18 @@ discrete energy-balance residual.
 
 ```sh
 ./build/nova_transient_heat_3d
+./build/nova_transient_heat_3d --vtk-series thermal_case.pvd
 ```
 
+The second command runs the same single 3D FEM solve and streams its
+Dirichlet-projected initial field plus every completed step to separate
+legacy tetrahedral `.vtk` frames. Open `thermal_case.pvd` in ParaView to
+animate temperature over physical time. A validated PVD writer and an optional
+per-step solver observer avoid repeated assembly/solves and avoid retaining
+all intermediate nodal fields when `retain_step_solutions=false`.
 See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
-This is a C++ API and a structured-box demonstration, not yet an imported
-Gmsh transient study with ParaView time-series output.
+This remains a structured-box demonstration; a Gmsh-tagged transient
+study workflow and experimental comparison are not implemented.
 
 ### Triangle mesh quality and uniform refinement
 
