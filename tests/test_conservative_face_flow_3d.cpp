@@ -8,6 +8,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -165,6 +166,32 @@ NOVA_TEST(conservative_face_flow_respects_robin_faces_and_tagged_sources) {
     }
     NOVA_REQUIRE_NEAR(robin, weak.robin_outward_heat, 2e-8);
     check_cellwise_conservation(result);
+}
+
+
+NOVA_TEST(conservative_face_flow_balances_each_disconnected_component_separately) {
+    auto problem = one_tetra(6.0);
+    problem.mesh.nodes.insert(problem.mesh.nodes.end(), {
+        {3,0,0}, {4,0,0}, {3,1,0}, {3,0,1}
+    });
+    problem.mesh.elements.push_back({4,5,6,7});
+    problem.dirichlet_faces.push_back({
+        {0,1,2}, [](double, double, double) { return 0.0; }
+    });
+    problem.dirichlet_faces.push_back({
+        {4,5,6}, [](double, double, double) { return 0.0; }
+    });
+    const std::array zeros{0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+    const auto balanced = reconstruct_conservative_heat_flow_3d(problem, zeros);
+    NOVA_REQUIRE_NEAR(balanced.total_generated_heat, 2.0, 1e-14);
+    NOVA_REQUIRE_NEAR(balanced.total_exterior_outward_heat, 2.0, 1e-14);
+    check_cellwise_conservation(balanced);
+    // The other component cannot discharge its source through an outlet
+    // owned by the first disconnected component.
+    problem.dirichlet_faces.pop_back();
+    NOVA_REQUIRE(rejects([&] {
+        (void)reconstruct_conservative_heat_flow_3d(problem, zeros);
+    }));
 }
 
 NOVA_TEST(conservative_face_flow_rejects_incompatible_or_invalid_inputs) {
