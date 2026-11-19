@@ -64,6 +64,13 @@ std::size_t CsrMatrix::non_zeros() const noexcept {
     return values_.size();
 }
 
+bool CsrMatrix::has_identical_entries(const CsrMatrix& other) const noexcept {
+    return rows_ == other.rows_ && columns_ == other.columns_ &&
+           row_offsets_ == other.row_offsets_ &&
+           column_indices_ == other.column_indices_ &&
+           values_ == other.values_;
+}
+
 std::vector<double> CsrMatrix::multiply(const std::span<const double> vector) const {
     if (vector.size() != columns_) {
         throw std::invalid_argument("CSR matrix-vector dimension mismatch.");
