@@ -128,6 +128,7 @@ Structural:
 - Anisotropic SPD permittivity tensor: exact affine E and D and stored energy 36.5 J.
 - One-free-DOF tetrahedral space-charge solution with exact potential and energy.
 - Additive spatial plus per-cell charge and cell-only charge with omitted spatial callback.
+- Pure-Neumann affine potential driven by prescribed outward displacement, including the zero-volume-mean gauge and energy.
 - Rejection of non-positive permittivity, conflicting material representations and non-finite charge.
 - Installed SDK consumer solves the parallel-plate benchmark.
 
