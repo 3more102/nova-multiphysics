@@ -28,6 +28,14 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Install experimental NOVA SDK
+        run: cmake --install build --config Release --prefix "${{ runner.temp }}/nova-sdk"
+      - name: Configure installed SDK consumer
+        run: cmake -S tests/package_consumer -B build-package-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ runner.temp }}/nova-sdk"
+      - name: Build installed SDK consumer
+        run: cmake --build build-package-consumer --config Release --parallel
+      - name: Test installed SDK consumer
+        run: ctest --test-dir build-package-consumer -C Release --output-on-failure
 
   sanitize:
     name: Linux address, leak and undefined behavior checks
