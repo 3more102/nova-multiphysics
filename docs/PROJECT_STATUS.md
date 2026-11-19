@@ -1,5 +1,23 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · streaming 3D heat ParaView series (draft PR #37)
+
+Draft [PR #37](https://github.com/3more102/nova-multiphysics/pull/37)
+stacks on draft #33 without merging unreviewed 3D numerical changes into main.
+It adds a fixed-step observer for the projected initial state and each completed
+thermal step; a single solve writes one VTK frame per time level and a validated
+ParaView PVD collection. The writer rejects nonfinite or non-increasing timestamps,
+duplicate frame basenames, unsafe paths and unwritable streams. Unit regressions
+cover observer state and propagated errors, PVD precision/validation and a
+3D cooling-cube CLI smoke. CI results and visual ParaView verification remain
+pending. The fixed-step observer is opt-in; no adaptive 3D observer is claimed.
+
+PR #35 implements a parallel PVD series by restarting a fixed-step solve
+for every frame. Prefer reviewing the no-reassembly observer path in #37
+before selecting one implementation; **do not merge both overlapping exporters**.
+Neither branch is a commercial release or experimental physics validation.
+
+
 ## 19 November 2026 · P1 tetrahedral ParaView export (pending CI)
 
 A standalone legacy VTK UNSTRUCTURED_GRID writer exports validated P1
