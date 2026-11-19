@@ -38,7 +38,7 @@ struct TransientHeat3DOptions {
     std::size_t steps{1U};
     linalg::SolverOptions solver_options{};
     // Defaults preserve the full per-step solver/diagnostic history.
-    // Disable for large runs to keep result memory O(nodes + mesh + steps-free).
+    // Disable for large runs to bound solver working memory by mesh/DOFs, not time steps.
     bool store_step_history{true};
     // Called for every completed step, including when history storage is off.
     // The temperature span and diagnostics reference are only valid during
