@@ -1,3 +1,5 @@
+# NOVA development checkpoint
+
 ## 19 November 2026 · linear-time exact CSR comparisons for IC(0) caching
 
 The `perf/csr-exact-equality-cache` branch replaces row-wise nonzero lookups
@@ -27,8 +29,6 @@ invalidation with time-varying Robin exchange. The repository branch must pass
 the complete Windows/Linux, sanitizer and independent-FEM CI jobs before this
 checkpoint can be labeled verified. This does not merge or supersede PR #23
 or the upstream stack.
-
-# NOVA development checkpoint
 
 ## 19 November 2026 · cached IC(0) for repeated thermal matrices
 
