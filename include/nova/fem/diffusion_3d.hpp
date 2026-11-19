@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <vector>
 
 namespace nova::fem {
@@ -51,6 +52,23 @@ struct ScalarDiffusion3DProblem {
     // Additive to `source` at every quadrature point; negative means cooling.
     // If nonempty, follows mesh.elements order and must cover every cell.
     std::vector<double> cell_source{};
+    // Opt in to a consistent weak-form global energy balance diagnostic.
+    // Keeps normal solves free of additional reaction-row storage.
+    bool compute_energy_balance{};
+};
+
+// Global integrated steady-state balance (SI watts for SI geometry/data).
+// Outward flux is positive; generated heat is positive for a source.
+// Dirichlet heat flow is calculated from the *uneliminated* FEM reactions,
+// not from raw P1 element gradients at a boundary.
+struct EnergyBalance3D {
+    double generated_heat_rate{};
+    double dirichlet_outward_heat_rate{};
+    double neumann_outward_heat_rate{};
+    double robin_outward_heat_rate{};
+    double net_outward_heat_rate{};
+    double imbalance{};           // net outgoing minus generated [W]
+    double relative_imbalance{};  // normalized by max absolute physical contribution
 };
 
 struct ScalarDiffusion3DResult {
@@ -58,6 +76,8 @@ struct ScalarDiffusion3DResult {
     std::vector<double> values;
     // CG iterate and residual for its actual, temporarily pinned linear system.
     linalg::SolverResult linear_solver;
+    // Populated only if ScalarDiffusion3DProblem::compute_energy_balance is true.
+    std::optional<EnergyBalance3D> energy_balance;
 };
 
 // Solves -div(K grad(u)) = f with continuous P1 tetrahedral elements.
