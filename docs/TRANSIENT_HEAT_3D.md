@@ -85,7 +85,7 @@ These checks verify the mathematical discretization but **do not** constitute ex
 
 ## Explicit limits and next milestone
 
-Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Set `options.step_observer` to stream the projected initial state and every
+Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, or transient Gmsh CLI is supported. The example supports ParaView time-series output. Set `options.step_observer` to stream the projected initial state and every
 completed time step. Set `options.retain_step_solutions = false` to keep
 only solver diagnostics rather than all step temperature vectors. Callback
 exceptions abort the simulation; there is no automatic rollback of files.

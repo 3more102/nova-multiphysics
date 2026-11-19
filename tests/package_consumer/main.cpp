@@ -1,5 +1,6 @@
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
+#include "nova/fem/transient_heat_3d.hpp"
 #include "nova/linalg/csr_matrix.hpp"
 
 #include <cmath>
@@ -49,5 +50,28 @@ int main() {
         if (std::abs(three_d.values[i] - problem.mesh.nodes[i].x) > 1.0e-9)
             return 4;
     }
+    // Verify the installed SDK exposes and links the new transient 3D API.
+    // A uniform source on insulated, variable-material tetrahedra yields
+    // dT/dt = Q/C exactly (the P1 conductivity term vanishes).
+    TransientHeat3DProblem transient;
+    transient.diffusion.mesh = box.mesh;
+    transient.diffusion.cell_diffusivity.assign(box.mesh.elements.size(), 2.0);
+    transient.diffusion.source = [](double, double, double) { return 4.0; };
+    transient.cell_volumetric_capacity.assign(box.mesh.elements.size(), 2.0);
+    transient.initial_temperature.assign(box.mesh.nodes.size(), 300.0);
+    TransientHeat3DOptions time;
+    time.time_step = 0.25;
+    time.steps = 2U;
+    time.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    const auto heated = solve_transient_heat_3d(transient, time);
+    if (heated.temperature.size() != box.mesh.nodes.size() ||
+        heated.diagnostics.size() != time.steps) return 5;
+    for (const double t : heated.temperature) {
+        if (std::abs(t - 301.0) > 1.0e-8) return 6;
+    }
+    for (const auto& d : heated.diagnostics) {
+        if (std::abs(d.balance_residual) > 1.0e-8) return 7;
+    }
+
     return 0;
 }

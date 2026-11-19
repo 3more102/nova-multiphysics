@@ -181,6 +181,8 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
         add_test(NAME nova_transient_heat_3d_pvd_smoke COMMAND nova_transient_heat_3d
             --vtk-series "${CMAKE_CURRENT_BINARY_DIR}/nova_transient_heat_3d.pvd")
+        set_tests_properties(nova_transient_heat_3d_pvd_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "ParaView frames: 6")
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)
     endif()
