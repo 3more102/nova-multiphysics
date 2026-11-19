@@ -252,3 +252,55 @@ NOVA_TEST(transient_heat_3d_mainline_cell_tensor_matches_exact_decay) {
     NOVA_REQUIRE_NEAR(result.temperature[3], 5.0, 2e-12);
     NOVA_REQUIRE_NEAR(result.diagnostics[0].balance_residual, 0.0, 2e-12);
 }
+
+NOVA_TEST(transient_heat_3d_step_callback_streams_without_full_solution_history) {
+    auto p = unit_heat();
+    p.cell_volumetric_capacity = {4.0};
+    p.diffusion.source = [](double, double, double) { return 8.0; };
+    p.initial_temperature = {300.0, 300.0, 300.0, 300.0};
+
+    TransientHeat3DOptions opts;
+    opts.time_step = 0.25;
+    opts.start_time = 2.0;
+    opts.steps = 4;
+    opts.retain_step_solution_vectors = false;
+
+    std::size_t observed_steps = 0;
+    opts.on_step = [&](std::size_t step, const std::vector<double>& temperature,
+                       const TransientHeatStepDiagnostics3D& diagnostics) {
+        NOVA_REQUIRE(step == observed_steps + 1);
+        NOVA_REQUIRE(temperature.size() == p.diffusion.mesh.nodes.size());
+        NOVA_REQUIRE_NEAR(diagnostics.time, 2.0 + 0.25 * static_cast<double>(step), 1e-14);
+        NOVA_REQUIRE_NEAR(diagnostics.balance_residual, 0.0, 1e-10);
+        for (const double value : temperature) {
+            NOVA_REQUIRE_NEAR(value, 300.0 + 0.5 * static_cast<double>(step), 2e-9);
+        }
+        ++observed_steps;
+    };
+
+    const auto output = solve_transient_heat_3d(p, opts);
+    NOVA_REQUIRE(observed_steps == opts.steps);
+    NOVA_REQUIRE(output.linear_solvers.size() == opts.steps);
+    NOVA_REQUIRE(output.diagnostics.size() == opts.steps);
+    NOVA_REQUIRE_NEAR(output.final_time, 3.0, 1e-14);
+    for (const auto& solver : output.linear_solvers) {
+        NOVA_REQUIRE(solver.converged);
+        NOVA_REQUIRE(solver.solution.empty());
+    }
+    for (const double value : output.temperature) {
+        NOVA_REQUIRE_NEAR(value, 302.0, 2e-9);
+    }
+
+    // The default behavior remains backward-compatible: store full states.
+    opts.retain_step_solution_vectors = true;
+    opts.on_step = {};
+    opts.steps = 1;
+    const auto default_output = solve_transient_heat_3d(p, opts);
+    NOVA_REQUIRE(default_output.linear_solvers.size() == 1);
+    NOVA_REQUIRE(default_output.linear_solvers[0].solution.size() ==
+                 p.diffusion.mesh.nodes.size());
+    for (std::size_t i = 0; i < p.diffusion.mesh.nodes.size(); ++i) {
+        NOVA_REQUIRE_NEAR(default_output.linear_solvers[0].solution[i],
+                          default_output.temperature[i], 1e-14);
+    }
+}
