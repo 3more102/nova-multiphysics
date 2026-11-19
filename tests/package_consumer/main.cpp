@@ -1,5 +1,6 @@
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
+#include "nova/physics/electrostatics_3d.hpp"
 #include "nova/linalg/csr_matrix.hpp"
 
 #include <cmath>
@@ -49,5 +50,25 @@ int main() {
         if (std::abs(three_d.values[i] - problem.mesh.nodes[i].x) > 1.0e-9)
             return 4;
     }
+    // Verify the installed electrostatic SDK symbol and energy postprocessing.
+    nova::physics::Electrostatics3DProblem electro;
+    electro.mesh = box.mesh;
+    electro.cell_permittivity.assign(electro.mesh.elements.size(), 2.0);
+    for (const auto& face : box.boundary_faces) {
+        const bool left = electro.mesh.nodes[face[0]].x == 0.0 &&
+            electro.mesh.nodes[face[1]].x == 0.0 &&
+            electro.mesh.nodes[face[2]].x == 0.0;
+        const bool right = electro.mesh.nodes[face[0]].x == 1.0 &&
+            electro.mesh.nodes[face[1]].x == 1.0 &&
+            electro.mesh.nodes[face[2]].x == 1.0;
+        if (left || right) {
+            electro.potential_faces.push_back({face,
+                [](double px, double, double) { return 10.0 * px; }});
+        }
+    }
+    const auto capacitor = nova::physics::solve_electrostatics_3d(electro);
+    if (!capacitor.linear_solver.converged ||
+        std::abs(capacitor.stored_energy_joules - 100.0) > 1.0e-7)
+        return 5;
     return 0;
 }
