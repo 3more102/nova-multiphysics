@@ -1,3 +1,15 @@
+## 19 November 2026 · linear-time exact CSR comparisons for IC(0) caching
+
+The `perf/csr-exact-equality-cache` branch replaces row-wise nonzero lookups
+during factor cache validation with `CsrMatrix::has_identical_entries`.
+It compares canonical CSR dimensions, offsets, columns and coefficients
+directly, in linear time over stored entries. This avoids repeated
+binary searches and ensures a changed matrix pattern rebuilds the factor.
+Regression coverage includes canonical triplet reordering and cancellation,
+modified coefficients, row/column pattern changes and dimensions. The branch
+requires independent CI verification before treating this checkpoint as
+validated; no larger-mesh performance measurement is claimed here.
+
 ## 19 November 2026 · cross-trial adaptive 3D IC(0) reuse (pending CI)
 
 This increment follows draft [PR #23](https://github.com/3more102/nova-multiphysics/pull/23).
