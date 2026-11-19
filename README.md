@@ -155,6 +155,21 @@ Run the examples:
 
 On Windows, use the corresponding executable paths under the build directory (or the Release subdirectory for multi-configuration generators).
 
+## Experimental C++ SDK package
+
+NOVA's built core can be installed as a relocatable CMake package, consumed by a separate C++20 project with `find_package(NOVA 0.8 CONFIG REQUIRED)` and `target_link_libraries(... NOVA::Core)`.
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel
+cmake --install build --config Release --prefix ./nova-sdk
+cmake -S tests/package_consumer -B build-package-consumer -DCMAKE_PREFIX_PATH="$(pwd)/nova-sdk"
+cmake --build build-package-consumer --config Release --parallel
+ctest --test-dir build-package-consumer --output-on-failure
+```
+
+See [installation and external consumer verification](docs/SDK_INSTALL.md) for cross-platform instructions and limitations. Installation support **does not** grant commercial redistribution rights or imply certification.
+
 ## Planned product architecture
 - **Application:** Qt desktop interface and project/model management.
 - **Model layer:** geometry entities, materials, fields, parameters, units, boundary conditions, and studies.
