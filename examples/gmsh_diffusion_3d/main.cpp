@@ -29,6 +29,7 @@ constexpr const char* usage =
     "Usage: nova_gmsh_diffusion_3d mesh.msh <dirichlet-tag-or-name>\n"
     "   or: nova_gmsh_diffusion_3d mesh.msh --material volume-tag-or-name k ...\n"
     "       [--temperature face-tag-or-name T] [--flux face-tag-or-name q_out]\n"
+    "       [--material-tensor volume-tag-or-name xx yy zz xy xz yz]\n"
     "       [--convection face-tag-or-name h T_ambient] [--source Q]\n"
     "       [--heat-source volume-tag-or-name Q] ... [--vtk result.vtk]\n"
     "       [--flux-report]";
@@ -71,6 +72,7 @@ struct Boundary {
 
 struct Settings {
     std::map<int, double> materials;
+    std::map<int, SymmetricTensor3D> tensor_materials;
     std::map<int, double> heat_sources;
     std::map<int, Boundary> surfaces;
     std::optional<double> source;
@@ -103,7 +105,17 @@ Settings read_settings(int argc, char** argv,
             const int tag = physical_tag(next(), 3, mesh);
             const double k = number<double>(next());
             if (!(k > 0.0)) throw std::invalid_argument("Material conductivity must be positive.");
-            if (!settings.materials.emplace(tag, k).second) {
+            if (settings.tensor_materials.contains(tag) || !settings.materials.emplace(tag, k).second) {
+                throw std::invalid_argument("Duplicate material tag " + std::to_string(tag));
+            }
+        } else if (option == "--material-tensor") {
+            const int tag = physical_tag(next(), 3, mesh);
+            // Global symmetric-tensor component order: xx yy zz xy xz yz.
+            const SymmetricTensor3D tensor{number<double>(next()), number<double>(next()),
+                                           number<double>(next()), number<double>(next()),
+                                           number<double>(next()), number<double>(next())};
+            if (settings.materials.contains(tag) ||
+                !settings.tensor_materials.emplace(tag, tensor).second) {
                 throw std::invalid_argument("Duplicate material tag " + std::to_string(tag));
             }
         } else if (option == "--heat-source") {
@@ -137,7 +149,9 @@ Settings read_settings(int argc, char** argv,
             throw std::invalid_argument("Unknown option " + std::string(option) + "\n" + usage);
         }
     }
-    if (settings.materials.empty()) throw std::invalid_argument("Supply at least one --material.");
+    if (settings.materials.empty() && settings.tensor_materials.empty()) {
+        throw std::invalid_argument("Supply at least one --material or --material-tensor.");
+    }
     return settings;
 }
 
@@ -162,13 +176,30 @@ ScalarDiffusion3DProblem bind_problem(nova::io::GmshTetrahedralMesh3D& imported,
         problem.diffusivity = constant(1.0);
     } else {
         check_selected_tags(settings.materials, imported.volume_physical_tags, "volume");
-        problem.cell_diffusivity.reserve(imported.volume_physical_tags.size());
+        check_selected_tags(settings.tensor_materials, imported.volume_physical_tags, "volume");
+        const bool any_tensor = !settings.tensor_materials.empty();
+        if (any_tensor) {
+            problem.cell_diffusivity_tensors.reserve(imported.volume_physical_tags.size());
+        } else {
+            problem.cell_diffusivity.reserve(imported.volume_physical_tags.size());
+        }
         for (int tag : imported.volume_physical_tags) {
-            const auto material = settings.materials.find(tag);
-            if (material == settings.materials.end()) {
+            const auto scalar = settings.materials.find(tag);
+            const auto tensor = settings.tensor_materials.find(tag);
+            if (scalar == settings.materials.end() &&
+                tensor == settings.tensor_materials.end()) {
                 throw std::invalid_argument("Missing conductivity for volume tag " + std::to_string(tag));
             }
-            problem.cell_diffusivity.push_back(material->second);
+            if (any_tensor) {
+                // Promote scalar tags to diagonal tensors when the mesh has
+                // mixed isotropic and anisotropic material regions.
+                const SymmetricTensor3D k = tensor == settings.tensor_materials.end()
+                    ? SymmetricTensor3D{scalar->second, scalar->second, scalar->second}
+                    : tensor->second;
+                problem.cell_diffusivity_tensors.push_back(k);
+            } else {
+                problem.cell_diffusivity.push_back(scalar->second);
+            }
         }
     }
     check_selected_tags(settings.heat_sources, imported.volume_physical_tags, "volume");
