@@ -1,5 +1,6 @@
 #include "nova/io/gmsh_tetrahedral.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -179,6 +180,7 @@ void parse_entities(
                 names << entry << '\n';
             }
             expect(stream, "$EndPhysicalNames");
+            names << "$EndPhysicalNames\n";
         } else if (section == "$Entities" && !has_entities && !has_nodes) {
             has_entities = true;
             parse_entities(stream, physical);
