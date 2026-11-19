@@ -79,6 +79,8 @@ ctest --test-dir build -C Release --output-on-failure
 - Three fixed vertices of a unit tetrahedron: the remaining DOF has `M_33=1/60`, `K_33=1/6`. Starting at 10 with `dt=0.1`, the one-step exact algebraic results are 5 (Backward Euler) and 10/3 (Crank–Nicolson).
 - Neumann-flux heat loss, Robin convection, mixed tensor conductivity with a spatial heat capacity, and numerical energy-budget closure.
 - Rejection of nonpositive capacities, bad source/initial fields, duplicate boundary conditions and invalid time-step options.
+- Semidiscrete unit-tetra eigenmode temporal-refinement check against `T(0.1) = 10 exp(-1)` (kelvin): halving the time step converges with approximately 2x error reduction for Backward Euler and 4x for Crank–Nicolson.
+- Exact one-step decay with a per-element SPD tensor material, ensuring compatibility with mainline anisotropic material selection.
 
 These checks verify the mathematical discretization but **do not** constitute experimental or industrial validation.
 

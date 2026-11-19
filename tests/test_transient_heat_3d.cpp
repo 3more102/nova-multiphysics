@@ -196,3 +196,58 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         (void)solve_transient_heat_3d(p, options);
     }));
 }
+
+NOVA_TEST(transient_heat_3d_temporal_refinement_matches_be_and_cn_orders) {
+    // Three fixed unit-tetra vertices leave one scalar semidiscrete mode:
+    // M33=1/60, K33=1/6 => dT/dt = -10*T. Its exact solution at t=0.1
+    // is 10*exp(-1), independent of either time integrator.
+    auto p = unit_heat();
+    p.initial_temperature = {0,0,0,10};
+    p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
+    const double exact = 10.0 * std::exp(-1.0);
+    const auto error = [&](TransientHeat3DScheme scheme, std::size_t steps) {
+        TransientHeat3DOptions opts;
+        opts.scheme = scheme;
+        opts.time_step = 0.1 / static_cast<double>(steps);
+        opts.steps = steps;
+        opts.solver_options.relative_tolerance = 1e-13;
+        opts.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+        const auto r = solve_transient_heat_3d(p, opts);
+        NOVA_REQUIRE_NEAR(r.final_time, 0.1, 1e-14);
+        NOVA_REQUIRE_NEAR(r.diagnostics.back().balance_residual, 0.0, 1e-12);
+        return std::abs(r.temperature[3] - exact);
+    };
+
+    const double be4 = error(TransientHeat3DScheme::BackwardEuler, 4);
+    const double be8 = error(TransientHeat3DScheme::BackwardEuler, 8);
+    const double cn4 = error(TransientHeat3DScheme::CrankNicolson, 4);
+    const double cn8 = error(TransientHeat3DScheme::CrankNicolson, 8);
+    NOVA_REQUIRE(be8 > 0.0);
+    NOVA_REQUIRE(cn8 > 0.0);
+    // First-order global BE error ~dt; second-order global CN error ~dt^2.
+    NOVA_REQUIRE(be4 / be8 > 1.75);
+    NOVA_REQUIRE(be4 / be8 < 2.1);
+    NOVA_REQUIRE(cn4 / cn8 > 3.5);
+    NOVA_REQUIRE(cn4 / cn8 < 4.5);
+}
+
+NOVA_TEST(transient_heat_3d_mainline_cell_tensor_matches_exact_decay) {
+    // Verify the newer mainline per-tetrahedron SPD tensor path is accepted
+    // by the transient assembler, not just the original spatial tensor path.
+    auto p = unit_heat();
+    p.diffusion.cell_diffusivity.clear();
+    p.diffusion.cell_diffusivity_tensors = {
+        SymmetricTensor3D{2.0,3.0,4.0,0.1,0.2,-0.1}
+    };
+    p.cell_volumetric_capacity = {2.0};
+    p.initial_temperature = {0,0,0,10};
+    p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
+    TransientHeat3DOptions opts;
+    opts.time_step = 0.05;
+    opts.solver_options.relative_tolerance = 1e-13;
+    opts.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    // dT/dt = -(10 * Kzz / C)*T = -20*T; one BE step halves the free DOF.
+    const auto result = solve_transient_heat_3d(p, opts);
+    NOVA_REQUIRE_NEAR(result.temperature[3], 5.0, 2e-12);
+    NOVA_REQUIRE_NEAR(result.diagnostics[0].balance_residual, 0.0, 2e-12);
+}
