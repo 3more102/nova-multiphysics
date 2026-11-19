@@ -194,6 +194,43 @@ NOVA_TEST(adaptive_heat_3d_crank_nicolson_tightening_improves_against_refined_fi
     NOVA_REQUIRE_NEAR(strict.final_time, 0.2, 1.0e-14);
 }
 
+NOVA_TEST(adaptive_heat_3d_ic0_reuses_both_factors_across_constant_size_trials) {
+    using namespace nova::fem;
+    auto problem = unit_tetrahedron();
+    // Constant load gives a uniform, analytically linear temperature history.
+    problem.initial_temperature = [](double, double, double) { return 1.0; };
+    problem.source = [](double, double, double, double) { return 1.0; };
+
+    AdaptiveHeat3DOptions options;
+    options.scheme = TransientTimeScheme::CrankNicolson;
+    options.end_time = 0.5;
+    options.initial_step = 0.125;
+    options.max_step = 0.125;
+    options.absolute_tolerance = 1e-7;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1e-12;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+    const auto ic0 = solve_adaptive_heat_3d(problem, options);
+
+    NOVA_REQUIRE(ic0.accepted_steps == 4U && ic0.rejected_steps == 0U);
+    // Without reuse there are two factor builds per trial (eight total).
+    // An exact full/half pair is prepared only once for the whole study.
+    NOVA_REQUIRE(ic0.ic0_factor_builds == 2U);
+    for (double value : ic0.temperature) {
+        NOVA_REQUIRE_NEAR(value, 1.5, 1e-10);
+    }
+
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+    const auto jacobi = solve_adaptive_heat_3d(problem, options);
+    NOVA_REQUIRE(jacobi.ic0_factor_builds == 0U);
+    NOVA_REQUIRE(jacobi.accepted_steps == ic0.accepted_steps);
+    for (std::size_t i = 0; i < ic0.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(ic0.temperature[i], jacobi.temperature[i], 1e-11);
+    }
+}
+
 NOVA_TEST(adaptive_heat_3d_rejects_invalid_controls_restart_and_attempt_exhaustion) {
     using namespace nova::fem;
     auto problem = unit_tetrahedron();
