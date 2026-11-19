@@ -186,7 +186,13 @@ GmshTetrahedralMesh3D read_gmsh22_tetrahedra(std::istream& input) {
         if (data.size() - 3U - tag_count != nodes_per_element) {
             throw std::invalid_argument("Incorrect Gmsh element node count.");
         }
-        const int physical_tag = tag_count != 0U ? signed_tag(data[3]) : 0;
+        int physical_tag = 0;
+        for (std::size_t j = 0; j < tag_count; ++j) {
+            const int parsed_tag = signed_tag(data[3U + j]);
+            if (j == 0U) {
+                physical_tag = parsed_tag;
+            }
+        }
         std::array<std::size_t, 4> vertices{};
         for (std::size_t j = 0; j < nodes_per_element; ++j) {
             const auto id = positive_integer(data[3U + tag_count + j]);
