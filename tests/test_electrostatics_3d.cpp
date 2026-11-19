@@ -152,3 +152,39 @@ NOVA_TEST(electrostatics_3d_cell_only_charge_source) {
     NOVA_REQUIRE_NEAR(result.potential[1], 1.0, 1e-11);
     NOVA_REQUIRE_NEAR(result.stored_energy_joules, 1.0 / 12.0, 1e-11);
 }
+
+NOVA_TEST(electrostatics_3d_prescribed_displacement_recovers_pure_neumann_affine_field) {
+    using namespace nova::fem;
+    const auto box = make_box_mesh_3d(0, 1, 0, 1, 0, 1, 2U, 2U, 2U);
+    Electrostatics3DProblem p;
+    p.mesh = box.mesh;
+    p.permittivity = [](double, double, double) { return 2.0; };
+    for (const auto& face : box.boundary_faces) {
+        const auto on_x = [&](double x) {
+            return std::all_of(face.begin(), face.end(),
+                [&](std::size_t vertex) { return p.mesh.nodes[vertex].x == x; });
+        };
+        const double outward_displacement = on_x(0.0) ? 2.0 : (on_x(1.0) ? -2.0 : 0.0);
+        p.displacement_flux_faces.push_back({face,
+            [outward_displacement](double, double, double) { return outward_displacement; }});
+    }
+
+    // Pure-Neumann compatibility fixes V only up to a constant; NOVA returns
+    // the zero-volume-mean representative V=x-1/2.
+    const auto result = solve_electrostatics_3d(p);
+    NOVA_REQUIRE(result.linear_solver.converged);
+    for (std::size_t i = 0; i < result.potential.size(); ++i) {
+        NOVA_REQUIRE_NEAR(result.potential[i], p.mesh.nodes[i].x - 0.5, 1e-9);
+    }
+    for (const auto& field : result.electric_field) {
+        NOVA_REQUIRE_NEAR(field.x, -1.0, 1e-9);
+        NOVA_REQUIRE_NEAR(field.y, 0.0, 1e-9);
+        NOVA_REQUIRE_NEAR(field.z, 0.0, 1e-9);
+    }
+    for (const auto& displacement : result.displacement) {
+        NOVA_REQUIRE_NEAR(displacement.x, -2.0, 1e-9);
+        NOVA_REQUIRE_NEAR(displacement.y, 0.0, 1e-9);
+        NOVA_REQUIRE_NEAR(displacement.z, 0.0, 1e-9);
+    }
+    NOVA_REQUIRE_NEAR(result.stored_energy_joules, 1.0, 1e-9);
+}
