@@ -55,6 +55,25 @@ with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
 per-volume sources add to the optional uniform `--source Q`. The verification suite also measures temperature and flux convergence
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
 
+### Transient 3D heat transfer (experimental)
+
+NOVA supports time-dependent heat conduction on conforming first-order tetrahedral
+meshes through its C++20 API. A **consistent volumetric heat-capacity matrix**
+and symmetric positive-definite scalar or tensor conductivity enable Backward
+Euler and Crank–Nicolson time stepping with fixed coefficients, fixed step sizes,
+volumetric sources, temperature constraints, flux and convection boundaries.
+Each step reports a discrete energy balance, including constrained reactions.
+The timestep matrix is assembled once and reused between steps.
+
+```sh
+./build/nova_transient_heat_3d
+```
+
+[Formulation, examples, and temporal-order verification](docs/TRANSIENT_HEAT_3D.md).
+This remains an experimental **in-memory API**; an imported Gmsh transient
+workflow, adaptive time integration, and ParaView time-series export are not
+included in this mainline milestone.
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
@@ -147,6 +166,7 @@ Run the examples:
 ~~~bash
 ./build/nova_poisson_1d
 ./build/nova_diffusion_2d
+./build/nova_transient_heat_3d
 ./build/nova_transient_heat_2d
 ./build/nova_transient_flux_2d
 ./build/nova_adaptive_heat_2d
