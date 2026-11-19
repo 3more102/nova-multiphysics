@@ -45,9 +45,10 @@ struct FaceHeatReconciliation3D {
 //
 // Unknowns are interior face rates and Dirichlet-boundary face rates.
 // Explicit Neumann and Robin integrated rates remain fixed; unassigned
-// exterior faces remain insulated (zero). Correction minimizes
-// sum_F ((new_rate - raw_rate) / face_area)^2, subject to each tetrahedron's
-// integrated heat generation equaling its signed outgoing face rates.
+// exterior faces remain insulated (zero). Correction minimizes the
+// physical surface L2 norm of correction flux density:
+// sum_F area_F * ((new_rate - raw_rate) / area_F)^2, subject to each
+// tetrahedron's integrated heat generation equaling its signed outgoing rates.
 //
 // The raw interior rate is the average of the two opposite P1 cell rates.
 // Output is a single integrated normal rate per face, NOT an H(div)-conforming
