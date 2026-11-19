@@ -85,3 +85,22 @@ These checks verify the mathematical discretization but **do not** constitute ex
 ## Explicit limits and next milestone
 
 Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Current result history retains every CG solution vector, so a long run can consume memory proportional to steps × node count. Next: a streaming result callback, Gmsh-tagged transient CLI with `.pvd` export, and an independent temporal-convergence benchmark on a spatially varying manufactured solution.
+
+## Streaming ParaView time series
+
+The optional `TransientHeat3DOptions::state_observer` receives
+`(step_index, physical_time, nodal_temperatures)` after the Dirichlet-projected
+initial state (index 0) and each completed step. The passed temperature vector
+is borrowed: copy it inside the callback if persistence is needed. Exceptions
+from the callback propagate and stop the solve. No additional linear solves or
+full-field history are needed to export snapshots.
+
+The example `nova_transient_heat_3d --vtk-series safe_prefix` emits
+`safe_prefix.pvd` and `safe_prefix_000000.vtk` through
+`safe_prefix_000005.vtk` for the default five-step demonstration.
+The PVD writer validates finite, strictly increasing times and safe unique VTK
+basenames; use ParaView to open the collection and select the `temperature`
+point-data field. A Python end-to-end regression checks frame count, initial
+state, times, temperatures and final-state consistency. This prototype does
+not yet offer imported Gmsh transient studies, adaptive stepping, or
+atomic multi-file output.
