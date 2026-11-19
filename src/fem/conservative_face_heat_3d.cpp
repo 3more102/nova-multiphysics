@@ -210,6 +210,9 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
 
     std::vector<bool> anchored(n, false);
     std::vector<long double> outgoing_baseline(n, 0.0L);
+    // Compatibility scaling uses only exterior prescribed rates; interior
+    // face rates cancel exactly in a connected component's global balance.
+    std::vector<long double> exterior_baseline_magnitude(n, 0.0L);
     for (auto& [key, record] : faces) {
         const auto& a = mesh.nodes[key[0]];
         const auto ab = difference(mesh.nodes[key[1]], a);
@@ -266,6 +269,8 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
         outgoing_baseline[record.face.first_cell] += heat;
         if (record.face.interior) {
             outgoing_baseline[record.face.second_cell] -= heat;
+        } else {
+            exterior_baseline_magnitude[record.face.first_cell] += std::abs(heat);
         }
     }
 
@@ -285,7 +290,7 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
         const auto root = components.find(cell);
         component_defect[root] += imbalance[cell];
         component_rate_scale[root] += std::abs(generation[cell]) +
-                                      std::abs(outgoing_baseline[cell]);
+                                      exterior_baseline_magnitude[cell];
     }
 
     std::vector<bool> gauges(n, false);
@@ -375,6 +380,7 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
     result.generated_heat_per_cell.reserve(n);
     result.cell_balance_defect.resize(n, 0.0);
     std::vector<long double> outgoing(n, 0.0L);
+    std::vector<long double> outgoing_magnitude(n, 0.0L);
     long double correction_density_square = 0.0L;
     long double maximum_correction = 0.0L;
     long double total_exterior = 0.0L;
@@ -403,8 +409,10 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
         }
         const long double heat = record.face.outward_heat;
         outgoing[record.face.first_cell] += heat;
+        outgoing_magnitude[record.face.first_cell] += std::abs(heat);
         if (record.face.interior) {
             outgoing[record.face.second_cell] -= heat;
+            outgoing_magnitude[record.face.second_cell] += std::abs(heat);
         } else {
             total_exterior += heat;
         }
@@ -413,8 +421,10 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
 
     for (std::size_t cell = 0; cell < n; ++cell) {
         const long double defect = generation[cell] - outgoing[cell];
+        // Use the sum of absolute face rates, not the net outgoing sum:
+        // large Neumann/Robin rates may cancel while the local defect is tiny.
         const long double scale =
-            std::abs(generation[cell]) + std::abs(outgoing[cell]);
+            std::abs(generation[cell]) + outgoing_magnitude[cell];
         if (std::abs(defect) > 1.0e-8L * scale) {
             throw std::runtime_error(
                 "Face heat correction has an excessive local conservation defect."
