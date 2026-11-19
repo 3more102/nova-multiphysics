@@ -102,10 +102,11 @@ Implemented:
 - Optional spatial source plus additive cellwise source; absent source fields represent unforced conduction.
 - Regression tests for heterogeneous cellwise SPD tensors, cell-only heating, zero-source equilibrium and energy-budget closure.
 - Analytical single-mode time-step refinement verifies first-order Backward Euler and second-order Crank–Nicolson with nonzero start time and per-step energy closure.
+- Gmsh MSH 2.2 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
 
 Remaining:
 - Adaptive 3D time steps and time-varying loads/materials.
-- Gmsh-tagged transient studies, time-varying loads/materials, and independent cross-solver thermal benchmarks.
+- Gmsh MSH 4.1/binary and higher-order element import, time-varying loads/materials, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
 ### 3D steady conduction flux recovery (experimental)
