@@ -54,6 +54,16 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
 
     const detail::DiffusionMaterials3D materials(problem);
     if (!problem.source) throw std::invalid_argument("3D diffusion requires a source field.");
+    if (!problem.cell_source.empty()) {
+        if (problem.cell_source.size() != problem.mesh.elements.size()) {
+            throw std::invalid_argument("Cell source requires one value per tetrahedron.");
+        }
+        for (const double value : problem.cell_source) {
+            if (!std::isfinite(value)) {
+                throw std::invalid_argument("Cell source densities must be finite.");
+            }
+        }
+    }
 
     std::vector<std::optional<double>> prescribed(node_count);
     std::set<std::size_t> explicit_nodes;
@@ -147,12 +157,17 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         }
 
         std::array<double, 4> local_rhs{};
+        const double cell_source = problem.cell_source.empty() ? 0.0 : problem.cell_source[element];
         const auto local_matrix = detail::integrate_p1_volume_3d(
             problem.mesh, cell, physical, materials.on_cell(element),
             [&](const Point3D& point, const auto& shape, double weight) {
-                const double source = problem.source(point.x, point.y, point.z);
-                if (!std::isfinite(source)) {
+                const double spatial_source = problem.source(point.x, point.y, point.z);
+                if (!std::isfinite(spatial_source)) {
                     throw std::invalid_argument("3D source must be finite.");
+                }
+                const double source = spatial_source + cell_source;
+                if (!std::isfinite(source)) {
+                    throw std::overflow_error("Combined 3D source density exceeds the finite range.");
                 }
                 for (std::size_t i = 0; i < local_dof_count; ++i) {
                     const double load = source * shape[i] * weight;

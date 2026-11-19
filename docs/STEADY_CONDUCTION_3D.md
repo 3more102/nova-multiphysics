@@ -28,6 +28,7 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--flux face_id q_out` | Outward heat flux in W/m². Positive removes heat. |
 | `--convection face_id h T_inf` | Outward flux equals `h (T − T_inf)`, with `h ≥ 0` in W/(m²·K). |
 | `--source Q` | Uniform volumetric heating in W/m³. Default zero. |
+| `--heat-source volume_id Q` | Signed volumetric source density in W/m³ for a selected volume ID. Can repeat for different IDs; unlisted IDs add zero. This density adds to `--source`. |
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 
 Use meters for mesh coordinates. Supply conforming four-node tetrahedra with shared
@@ -50,6 +51,24 @@ NOVA assembles CSR and solves with Jacobi-preconditioned CG. Tagged mode uses a
 relative true-residual tolerance of 1e-12 with zero absolute tolerance. An
 unanchored connected component needs balanced loads and receives a volume-mean-zero
 reference temperature.
+
+The same physical-tag table can now supply different volumetric heat-generation
+densities. For example, `--heat-source 11 120 --heat-source 22 360` heats the
+two layers at 120 and 360 W/m³ respectively. Negative values represent cooling.
+The optional `ScalarDiffusion3DProblem::cell_source` is additive to the
+spatial source callback and follows exactly the tetrahedron element order.
+Nonfinite source densities and incomplete per-cell source vectors are rejected.
+Per-volume sources are applied at volume quadrature points, including in the
+pure-Neumann compatibility test.
+
+With the 400 K hot wall, 12 W/(m²·K) convection to 300 K and the
+two conductivities 2 and 6 W/(m·K), the independent one-dimensional solution
+has heat flux 144 W/m² at the hot wall, 204 W/m² at the material interface
+and 384 W/m² at the cold surface; the interface temperature is 356.5 K
+and the cold temperature is 332 K. The total volumetric generation is 240 W.
+The Python verifier checks exported temperature/flux convergence on
+successively refined meshes, rather than assuming raw P1 element flux
+is pointwise exact where sources are present.
 
 The C++ problem accepts a spatial scalar callback, a spatial symmetric
 positive-definite tensor callback, or `ScalarDiffusion3DProblem::cell_diffusivity`.
