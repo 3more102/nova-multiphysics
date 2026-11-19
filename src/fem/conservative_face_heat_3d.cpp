@@ -280,12 +280,12 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
     // component without a Dirichlet face. Check compatibility *before*
     // grounding one multiplier in each such component.
     std::vector<long double> component_defect(n, 0.0L);
-    std::vector<long double> component_scale(n, 0.0L);
+    std::vector<long double> component_rate_scale(n, 0.0L);
     for (std::size_t cell = 0; cell < n; ++cell) {
         const auto root = components.find(cell);
         component_defect[root] += imbalance[cell];
-        component_scale[root] += std::abs(generation[cell]) +
-                                 std::abs(outgoing_baseline[cell]);
+        component_rate_scale[root] += std::abs(generation[cell]) +
+                                      std::abs(outgoing_baseline[cell]);
     }
 
     std::vector<bool> gauges(n, false);
@@ -296,7 +296,7 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
         if (anchored[root] || seen[root]) continue;
         seen[root] = true;
         const long double limit =
-            1.0e-10L * std::max(1.0L, component_scale[root]);
+            1.0e-10L * component_rate_scale[root];
         if (std::abs(component_defect[root]) > limit) {
             throw std::invalid_argument(
                 "Unanchored component has incompatible net heat generation "
@@ -305,6 +305,22 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
         }
         gauges[cell] = true;
         ++floating_count;
+    }
+
+    // Normalize each disconnected component independently. This keeps the
+    // correction solve relative-scale accurate even when different components
+    // carry heat rates many orders of magnitude apart; the CG absolute
+    // tolerance must not silently suppress a small-power component.
+    std::vector<long double> component_rhs_scale(n, 0.0L);
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        const auto root = components.find(cell);
+        component_rhs_scale[root] = std::max(
+            component_rhs_scale[root], std::abs(imbalance[cell])
+        );
+    }
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        const auto root = components.find(cell);
+        if (component_rhs_scale[root] == 0.0L) component_rhs_scale[root] = 1.0L;
     }
 
     std::vector<linalg::Triplet> entries;
@@ -332,7 +348,10 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
         if (gauges[cell]) {
             entries.push_back({cell, cell, 1.0});
         } else {
-            rhs[cell] = checked(imbalance[cell], "Cell correction RHS overflows.");
+            rhs[cell] = checked(
+                imbalance[cell] / component_rhs_scale[components.find(cell)],
+                "Scaled cell correction RHS overflows."
+            );
         }
     }
     const auto matrix = linalg::CsrMatrix::from_triplets(n, n, entries);
@@ -366,8 +385,9 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
                     result.multiplier_solver.solution[record.face.second_cell];
             }
             const long double correction =
-                static_cast<long double>(record.face.area) *
-                record.face.area * multiplier_difference;
+                static_cast<long double>(record.face.area) * record.face.area *
+                multiplier_difference *
+                component_rhs_scale[components.find(record.face.first_cell)];
             record.face.outward_heat = checked(
                 static_cast<long double>(record.face.raw_outward_heat) +
                 correction, "Reconciled face rate overflows."
@@ -388,9 +408,8 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
 
     for (std::size_t cell = 0; cell < n; ++cell) {
         const long double defect = generation[cell] - outgoing[cell];
-        const long double scale = std::max(
-            1.0L, std::abs(generation[cell]) + std::abs(outgoing[cell])
-        );
+        const long double scale =
+            std::abs(generation[cell]) + std::abs(outgoing[cell]);
         if (std::abs(defect) > 1.0e-8L * scale) {
             throw std::runtime_error(
                 "Face heat correction has an excessive local conservation defect."
