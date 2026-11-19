@@ -151,8 +151,7 @@ def read_balance(stdout):
 
 
 def check_wall(exe, mesh, vtk, materials=MATERIALS):
-    execution = run(exe, mesh, vtk, materials + HOT + ROBIN
-                    + ["--flux-report", "--balance-report"])
+    execution = run(exe, mesh, vtk, materials + HOT + ROBIN + ["--flux-report", "--balance-report"])
     energy = read_balance(execution.stdout)
     measure("FEM wall generation [W]", energy["source"], 0, 2e-8)
     measure("FEM wall Robin heat [W]", energy["robin"], 240, 2e-7)
