@@ -87,6 +87,10 @@ TransientHeat3DResult solve_transient_heat_3d(
     const double theta =
         options.scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
     const double dt = options.time_step;
+    if (!(options.start_time + dt > options.start_time)) {
+        throw std::invalid_argument(
+            "Transient 3D time step does not advance the starting time.");
+    }
 
     const auto& diffusion = problem.diffusion;
     const auto& mesh = diffusion.mesh;
@@ -296,6 +300,7 @@ TransientHeat3DResult solve_transient_heat_3d(
     result.final_time = final_time;
     result.linear_solvers.reserve(options.steps);
     result.diagnostics.reserve(options.steps);
+    if (options.step_observer) options.step_observer(options.start_time, state);
 
     for (std::size_t step = 1; step <= options.steps; ++step) {
         std::vector<double> rhs = rhs_operator.multiply(state);
@@ -367,9 +372,11 @@ TransientHeat3DResult solve_transient_heat_3d(
             throw std::overflow_error("Transient 3D energy diagnostic overflowed.");
         }
 
-        state = next;
+        state = std::move(next);
+        if (!options.retain_step_solutions) solved.solution.clear();
         result.diagnostics.push_back(diag);
         result.linear_solvers.push_back(std::move(solved));
+        if (options.step_observer) options.step_observer(diag.time, state);
     }
     result.temperature = std::move(state);
     return result;

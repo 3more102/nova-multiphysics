@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 using namespace nova::fem;
@@ -253,4 +254,66 @@ NOVA_TEST(transient_heat_3d_integrated_cell_tensors_validate_input) {
         bad.diffusion.cell_diffusivity = {1.0};
         (void)solve_transient_heat_3d(bad);
     }));
+}
+
+NOVA_TEST(transient_heat_3d_streams_projected_initial_and_each_solved_step) {
+    auto p = unit_heat();
+    p.cell_volumetric_capacity = {4.0};
+    p.diffusion.source = [](double, double, double) { return 8.0; };
+    p.initial_temperature = {123, 300, 300, 300};
+    p.diffusion.dirichlet_constraints = {{0, 300.0}};
+    TransientHeat3DOptions options;
+    options.steps = 3;
+    options.time_step = 0.25;
+    options.start_time = 2.0;
+    options.retain_step_solutions = false;
+    options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    std::vector<double> times;
+    std::vector<std::vector<double>> snapshots;
+    options.step_observer = [&](double t, const std::vector<double>& values) {
+        times.push_back(t);
+        snapshots.push_back(values);
+    };
+    const auto result = solve_transient_heat_3d(p, options);
+    NOVA_REQUIRE(times.size() == options.steps + 1);
+    NOVA_REQUIRE(snapshots.size() == options.steps + 1);
+    NOVA_REQUIRE_NEAR(times.front(), options.start_time, 1e-14);
+    NOVA_REQUIRE_NEAR(times.back(), result.final_time, 1e-14);
+    NOVA_REQUIRE_NEAR(snapshots.front()[0], 300.0, 1e-14);
+    NOVA_REQUIRE(result.linear_solvers.size() == options.steps);
+    NOVA_REQUIRE(result.diagnostics.size() == options.steps);
+    for (const auto& solver : result.linear_solvers) {
+        NOVA_REQUIRE(solver.solution.empty());
+        NOVA_REQUIRE(solver.converged);
+    }
+    for (std::size_t i = 0; i < result.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(snapshots.back()[i], result.temperature[i], 1e-13);
+    }
+}
+
+NOVA_TEST(transient_heat_3d_observer_errors_propagate) {
+    auto p = unit_heat();
+    TransientHeat3DOptions options;
+    options.steps = 3;
+    std::size_t count = 0;
+    options.step_observer = [&](double, const std::vector<double>&) {
+        if (++count == 2) throw std::domain_error("Output failed.");
+    };
+    bool propagated = false;
+    try {
+        (void)solve_transient_heat_3d(p, options);
+    } catch (const std::domain_error&) {
+        propagated = true;
+    }
+    NOVA_REQUIRE(propagated);
+    NOVA_REQUIRE(count == 2);
+}
+
+NOVA_TEST(transient_heat_3d_rejects_nonadvancing_step_time) {
+    auto p = unit_heat();
+    TransientHeat3DOptions options;
+    options.start_time = 1.0e20;
+    options.time_step = 1.0e-4;
+    options.steps = 100;
+    NOVA_REQUIRE(rejects([&] { (void)solve_transient_heat_3d(p, options); }));
 }
