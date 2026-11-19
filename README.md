@@ -64,6 +64,38 @@ Pure-Neumann compatibility is checked separately on each connected component wit
 
 For direction-dependent materials, set `diffusivity_tensor` on a stationary problem or `conductivity_tensor` on a transient problem. Supply the six components in global Cartesian coordinates and leave the scalar callback empty. Fixed and adaptive time stepping use the same material assembly. [Tensor conventions and supported range](docs/NUMERICAL_CONVENTIONS.md#tetrahedral-conductivity-tensors)
 
+### Import external tetrahedral meshes (Gmsh MSH 2.2 ASCII)
+
+Use `nova::io::read_gmsh22_tetrahedra(std::istream&)` from
+`nova/io/gmsh22_tetrahedral.hpp` to import a mesh generated externally
+by Gmsh. The reader accepts linear four-node tetrahedra (Gmsh type 4),
+optional surface triangles (type 2), and line/point records. It remaps
+arbitrary positive Gmsh node IDs to zero-based NOVA P1 vertex indices,
+preserves per-tetrahedron and per-exterior-face physical IDs, and
+reorients boundary faces outward. Unassigned exterior faces receive
+physical ID 0. The returned `mesh` can be passed directly to
+`ScalarDiffusion3DProblem` or the transient 3D thermal problem.
+
+Only **MSH 2.2 ASCII, double precision, first-order tetrahedra** are
+supported. MSH 4.x, binary meshes, higher-order cells and other volume
+cell types are rejected instead of silently discarded. Topology,
+coordinates, element references and exported surface labels are checked;
+a mesh with isolated vertices, nonmanifold faces, degeneracy or
+surface triangles on interior faces is rejected.
+
+For example, generate a first-order 3D mesh in Gmsh using
+`gmsh geometry.geo -3 -format msh2 -o model.msh`. Then:
+
+~~~cpp
+std::ifstream mesh_file("model.msh");
+auto imported = nova::io::read_gmsh22_tetrahedra(mesh_file);
+// imported.mesh; imported.exterior_faces;
+// imported.exterior_physical_tags; imported.volume_physical_tags
+~~~
+
+The caller must explicitly assign boundary conditions and material
+properties from the physical IDs; the importer does not infer them.
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
