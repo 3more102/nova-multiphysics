@@ -347,7 +347,7 @@ TransientHeat3DResult solve_transient_heat_3d(
         if (options.retain_step_solutions) {
             solved.solution = next;
         } else {
-            solved.solution.clear();
+            std::vector<double>{}.swap(solved.solution);
         }
         const auto unconstrained_lhs = lhs.multiply(next);
         const auto previous_robin = robin.multiply(state);
