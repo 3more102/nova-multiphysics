@@ -210,8 +210,9 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
 
     std::vector<bool> anchored(n, false);
     std::vector<long double> outgoing_baseline(n, 0.0L);
-    // Compatibility scaling uses only exterior prescribed rates; interior
-    // face rates cancel exactly in a connected component's global balance.
+    // Compatibility uses only generation and signed prescribed exterior rates;
+    // internal face fluxes cancel and must never set the component scale.
+    std::vector<long double> exterior_baseline_rate(n, 0.0L);
     std::vector<long double> exterior_baseline_magnitude(n, 0.0L);
     for (auto& [key, record] : faces) {
         const auto& a = mesh.nodes[key[0]];
@@ -270,6 +271,7 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
         if (record.face.interior) {
             outgoing_baseline[record.face.second_cell] -= heat;
         } else {
+            exterior_baseline_rate[record.face.first_cell] += heat;
             exterior_baseline_magnitude[record.face.first_cell] += std::abs(heat);
         }
     }
@@ -288,7 +290,7 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
     std::vector<long double> component_rate_scale(n, 0.0L);
     for (std::size_t cell = 0; cell < n; ++cell) {
         const auto root = components.find(cell);
-        component_defect[root] += imbalance[cell];
+        component_defect[root] += generation[cell] - exterior_baseline_rate[cell];
         component_rate_scale[root] += std::abs(generation[cell]) +
                                       exterior_baseline_magnitude[cell];
     }
@@ -388,6 +390,7 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
 
     for (auto& [key, record] : faces) {
         (void)key;
+        long double correction_magnitude = 0.0L;
         if (record.adjustable) {
             const auto a = record.face.first_cell;
             long double multiplier_difference = result.multiplier_solver.solution[a];
@@ -398,6 +401,7 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
             const long double correction =
                 static_cast<long double>(record.face.area) * multiplier_difference *
                 component_rhs_scale[components.find(a)];
+            correction_magnitude = std::abs(correction);
             record.face.outward_heat = checked(
                 static_cast<long double>(record.face.raw_outward_heat) +
                 correction, "Reconciled face rate overflows."
@@ -408,11 +412,18 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
                 static_cast<long double>(record.face.area) * density * density;
         }
         const long double heat = record.face.outward_heat;
+        // Include the magnitudes of both terms in an adjustable-face
+        // subtraction. If a large raw flux is cancelled by a large correction,
+        // the remaining roundoff must be judged against those operation scales.
+        const long double face_magnitude = record.adjustable
+            ? std::abs(static_cast<long double>(record.face.raw_outward_heat)) +
+                  correction_magnitude
+            : std::abs(heat);
         outgoing[record.face.first_cell] += heat;
-        outgoing_magnitude[record.face.first_cell] += std::abs(heat);
+        outgoing_magnitude[record.face.first_cell] += face_magnitude;
         if (record.face.interior) {
             outgoing[record.face.second_cell] -= heat;
-            outgoing_magnitude[record.face.second_cell] += std::abs(heat);
+            outgoing_magnitude[record.face.second_cell] += face_magnitude;
         } else {
             total_exterior += heat;
         }
