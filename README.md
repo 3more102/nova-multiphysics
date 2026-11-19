@@ -86,7 +86,7 @@ program streams each accepted step directly to `cooling_cube_000000.vtk`,
 `cooling_cube_000001.vtk`, etc. The metadata file references the frames
 by basename, so the complete series can be moved together. Output paths
 must have an existing parent directory and an ASCII-safe `.pvd` basename.
-The observer does not re-solve or store every step's field in memory.
+The exporter does not re-solve or create an additional field-history buffer; the solver's existing per-step linear-solver records still retain solution vectors.
 The existing `--csv` and final-only `--vtk` modes are unchanged.
 Vector/tensor fields, P2 tetrahedra, and curved geometries remain future work.
 
