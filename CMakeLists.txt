@@ -42,6 +42,7 @@ add_library(nova_core
     src/fem/transient_heat_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
+    src/io/pvd_collection.cpp
     src/fem/mesh_refinement_2d.cpp
     src/fem/poisson_1d.cpp
     src/fem/diffusion_2d.cpp
@@ -124,6 +125,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_energy_balance_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
+        tests/test_pvd_collection.cpp
         tests/test_diffusion_h1_2d.cpp
         tests/test_transient_heat_2d.cpp
         tests/test_transient_heat_3d.cpp
@@ -177,6 +179,8 @@ if(NOVA_BUILD_TESTS)
         endif()
         add_test(NAME nova_transient_heat_smoke COMMAND nova_transient_heat_2d)
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
+        add_test(NAME nova_transient_heat_3d_pvd_smoke COMMAND nova_transient_heat_3d
+            --vtk-series "${CMAKE_CURRENT_BINARY_DIR}/nova_transient_heat_3d.pvd")
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)
     endif()

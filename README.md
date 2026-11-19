@@ -66,8 +66,11 @@ scalar or symmetric positive-definite tensor conductivity representations.
 Each step reports a discrete energy budget including prescribed-temperature
 reactions. The constrained CSR matrix is assembled once and reused.
 
-API: `nova/fem/transient_heat_3d.hpp`. Example:
-`./build/nova_transient_heat_3d`. See
+API: `nova/fem/transient_heat_3d.hpp`. Examples:
+`./build/nova_transient_heat_3d` and
+`./build/nova_transient_heat_3d --vtk-series cooling_cube.pvd`.
+The second exports the initial and five step fields to ParaView;
+optional callbacks support bounded-history streaming. See
 [formulation, verification and limitations](docs/TRANSIENT_HEAT_3D.md).
 This fixed-coefficient C++ prototype is not a validated 3D production
 thermal design tool.

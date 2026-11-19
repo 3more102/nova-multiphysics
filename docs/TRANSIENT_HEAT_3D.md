@@ -85,4 +85,14 @@ These checks verify the mathematical discretization but **do not** constitute ex
 
 ## Explicit limits and next milestone
 
-Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Current result history retains every CG solution vector, so a long run can consume memory proportional to steps × node count. Next: a streaming result callback, Gmsh-tagged transient CLI with `.pvd` export, and an independent temporal-convergence benchmark on a spatially varying manufactured solution.
+Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Set `options.step_observer` to stream the projected initial state and every
+completed time step. Set `options.retain_step_solutions = false` to keep
+only solver diagnostics rather than all step temperature vectors. Callback
+exceptions abort the simulation; there is no automatic rollback of files.
+
+Run `./build/nova_transient_heat_3d --vtk-series cooling_cube.pvd`
+to write an initial VTK field, five solved VTK frames, and a PVD
+collection for ParaView, without re-running the FEM solver. The
+selected output directory must exist. The filename stem is restricted
+to safe ASCII characters. General transient Gmsh studies, independent
+temporal convergence benchmarks and time-dependent data remain future work.
