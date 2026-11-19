@@ -33,6 +33,7 @@ on continuous triangular P1 and P2 meshes using:
 - Neumann outward-flux integration on validated exterior edges.
 - Robin boundary integration with non-negative transfer coefficients and ambient values.
 - Mixed Dirichlet-Neumann and Dirichlet-Robin benchmarks.
+- Per-connected-component pure-Neumann compatibility checks and zero-area-mean P1/P2 gauges, including mixed floating, Robin-anchored and Dirichlet-anchored components.
 - L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
@@ -161,7 +162,7 @@ See [3D error-norm formulation and verification](docs/VERIFICATION_3D_ERROR_NORM
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The 2D stationary solver requires an anchored problem and a scalar diffusivity. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. Incomplete Cholesky, error-driven mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The 2D P1/P2 stationary solver supports compatible pure-Neumann components with a zero-area-mean gauge; it remains scalar and isotropic. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. Incomplete Cholesky, error-driven mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
