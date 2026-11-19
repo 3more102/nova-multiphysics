@@ -122,6 +122,7 @@ NOVA_TEST(gmsh22_import_rejects_unsupported_versions_types_and_bad_sections) {
     reject(replaced(sample_mesh(), "2.2 0 8", "2.2 1 8"));
     reject(replaced(sample_mesh(), "2.2 0 8", "2.2 0 4"));
     reject(replaced(sample_mesh(), "200 4 2", "200 11 2"));
+    reject(replaced(sample_mesh(), "200 4 2 42 1", "200 4 2 42 broken"));
     reject(replaced(sample_mesh(), "$EndNodes", "$EndNodex"));
     reject(replaced(sample_mesh(), "$EndElements", "$EndElementx"));
     reject(sample_mesh() + "surprise\n");
