@@ -1,6 +1,6 @@
 #include "nova/fem/transient_heat_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
-#include "nova/io/gmsh22_tetrahedral.hpp"
+#include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/vtk_legacy_3d.hpp"
 #include "nova/io/vtk_series.hpp"
 
@@ -432,7 +432,7 @@ int main(int argc, char** argv) {
         if (argc < 3) throw std::invalid_argument(usage);
         std::ifstream file(argv[1]);
         if (!file) throw std::runtime_error("Cannot open Gmsh mesh: " + std::string(argv[1]));
-        auto imported = nova::io::read_gmsh22_tetrahedra(file);
+        auto imported = nova::io::read_gmsh_tetrahedra(file);
         const auto settings = read_settings(argc, argv, imported);
         if (settings.vtk) {
             const fs::path parent = settings.vtk->parent_path().empty()

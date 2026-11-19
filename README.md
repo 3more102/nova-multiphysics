@@ -39,7 +39,7 @@ on continuous triangular P1 and P2 meshes using:
 
 ### Steady 3D conduction on a tagged solid
 
-Import a conforming first-order tetrahedral Gmsh MSH 2.2 ASCII mesh, assign
+Import a conforming first-order tetrahedral Gmsh MSH 2.2 or 4.1 ASCII mesh, assign
 conductivities by volume ID and fixed temperature, outward flux or convection
 by exterior surface ID. The result file contains nodal temperature, volume IDs
 and a heat-flux vector per tetrahedron. When region-specific heat sources are
@@ -55,6 +55,18 @@ section. Assign distinct internal heat-generation densities by physical volume
 with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
 per-volume sources add to the optional uniform `--source Q`. The verification suite also measures temperature and flux convergence
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
+
+Inspect a mesh before simulation, or apply a user-selected quality gate before
+the FEM solve. NOVA reports total tetrahedral volume, minimum mean ratio,
+minimum dihedral angle and the worst element index:
+
+```sh
+./build/nova_gmsh_diffusion_3d tests/data/unit_tetrahedron.msh --check-mesh --min-mean-ratio 0.8
+```
+
+Add `--quality-report --min-mean-ratio q` to a thermal solve to reject a mesh
+before assembly when its minimum mean ratio is below `q`. This is a geometric
+screening threshold, not proof of solution accuracy or engineering certification.
 
 ### Transient 3D heat on tetrahedral solids (experimental)
 
@@ -85,7 +97,7 @@ per-step solver observer avoid repeated assembly/solves and avoid retaining
 all intermediate nodal fields when `retain_step_solutions=false`.
 See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
 The structured-box example is complemented by an imported-mesh CLI. It
-reads Gmsh MSH 2.2 tetrahedra, maps conductivity, heat capacity, heat sources
+reads Gmsh MSH 2.2 or 4.1 ASCII tetrahedra, maps conductivity, heat capacity, heat sources
 and thermal boundary conditions from physical groups, and streams all solved
 states to ParaView `.pvd` time series:
 

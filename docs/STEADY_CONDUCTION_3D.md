@@ -35,10 +35,13 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 | `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
 | `--balance-report` | Independently reassemble FEM weak-form residuals and report global source, Neumann, Robin, nodal reactions and free-equation residuals in W. |
+| `--quality-report` | Report total mesh volume, minimum tetrahedral mean ratio, minimum dihedral angle and worst element index before solving. |
+| `--min-mean-ratio q` | Reject a mesh before assembly if its minimum mean ratio is below the user-selected threshold (0 < q ≤ 1); also enables the quality report. |
+| `--check-mesh` | Import and report mesh quality without running a thermal solve. May be combined with `--min-mean-ratio q`. |
 
 ### Gmsh named physical groups
 
-The Gmsh MSH 2.2 `$PhysicalNames` section can define quoted group names,
+The Gmsh MSH 2.2 or 4.1 ASCII `$PhysicalNames` section can define quoted group names,
 including spaces and escaped quotes. Every tagged argument (`--material`,
 `--material-tensor`, `--heat-source`, `--temperature`, `--flux`,
 `--convection`) accepts a numeric physical tag or its exact name.
@@ -57,6 +60,38 @@ the adjoining solids by their volume IDs. Unassigned exterior faces are insulate
 The executable rejects absent, duplicate and conflicting assignments. The shorthand
 `nova_gmsh_diffusion_3d mesh.msh tag` runs the unit-conductivity, unit-source example
 with zero temperature on the selected tag.
+
+### Gmsh MSH 4.1 and mesh-quality screening
+
+The public `read_gmsh_tetrahedra` importer accepts both MSH 2.2 ASCII and
+MSH 4.1 ASCII. For MSH 4.1 it maps entity physical groups and names, handles
+sparse node/element identifiers, multiple node and element blocks, and
+parametric node coordinates, then reuses NOVA's validated topology and
+outward-boundary-face extraction. The steady and transient Gmsh CLIs use this
+same importer, so the two study types share the same format and physical-group
+semantics.
+
+Only first-order point, line, triangle and tetrahedron records are accepted.
+Binary input, high-order elements, partitioned/periodic metadata, unsupported
+sections and entities assigned to multiple physical groups are rejected rather
+than silently discarded. The current MSH 4.1 adapter buffers and normalizes the
+input before passing it through the MSH 2.2 topology reader; very large files
+may therefore require additional memory.
+
+Inspect a mesh without assigning materials or running the solver:
+
+```sh
+./build/nova_gmsh_diffusion_3d tests/data/unit_tetrahedron41.msh --check-mesh
+```
+
+The report includes total tetrahedral volume, minimum mean ratio (0 to 1,
+with 1 representing a regular tetrahedron), minimum dihedral angle and the
+zero-based index of the worst element. Apply a pre-solve screening threshold
+with `--check-mesh --min-mean-ratio 0.8`, or combine
+`--quality-report --min-mean-ratio 0.8` with a normal thermal solve. A failed
+threshold stops the run before FEM assembly. The threshold is user-selected:
+it is not a universal acceptance limit and does not establish discretization
+accuracy, solver convergence or engineering certification.
 
 ## Discretization
 

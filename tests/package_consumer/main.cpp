@@ -2,8 +2,11 @@
 #include "nova/fem/poisson_1d.hpp"
 #include "nova/linalg/csr_matrix.hpp"
 #include "nova/physics/electrostatics_3d.hpp"
+#include "nova/io/gmsh_tetrahedral.hpp"
 
 #include <cmath>
+#include <sstream>
+#include <string>
 #include <vector>
 
 int main() {
@@ -74,5 +77,33 @@ int main() {
         if (std::abs(capacitor.potential[i] - 10.0 * electrostatic.mesh.nodes[i].x) > 1.0e-9)
             return 6;
     }
+    // Verify the newly installed generic Gmsh importer as an SDK consumer.
+    // This minimal MSH 4.1 file has sparse-compatible block records and no
+    // physical groups; topology and exterior faces are reconstructed by NOVA.
+    const std::string msh41 = R"msh($MeshFormat
+4.1 0 8
+$EndMeshFormat
+$Nodes
+1 4 1 4
+3 1 0 4
+1 2 3 4
+0 0 0
+1 0 0
+0 1 0
+0 0 1
+$EndNodes
+$Elements
+1 1 1 1
+3 1 4 1
+1 1 2 3 4
+$EndElements
+)msh";
+    std::istringstream mesh_stream(msh41);
+    const auto imported = nova::io::read_gmsh_tetrahedra(mesh_stream);
+    if (imported.mesh.nodes.size() != 4 ||
+        imported.mesh.elements.size() != 1 ||
+        imported.volume_physical_tags.size() != 1 ||
+        imported.volume_physical_tags[0] != 0 ||
+        imported.exterior_faces.size() != 4) return 7;
     return 0;
 }

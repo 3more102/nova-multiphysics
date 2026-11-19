@@ -44,6 +44,7 @@ add_library(nova_core
     src/fem/conservative_face_heat_3d.cpp
     src/physics/electrostatics_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
+    src/io/gmsh_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
     src/io/vtk_series.cpp
     src/fem/mesh_refinement_2d.cpp
@@ -140,6 +141,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_electrostatics_3d.cpp
         tests/test_transient_heat_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
+        tests/test_gmsh41_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
         tests/test_vtk_series.cpp
         tests/test_transient_heat_3d_streaming.cpp
@@ -173,6 +175,9 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_gmsh_named_groups_smoke COMMAND nova_gmsh_diffusion_3d
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh"
             --material solid 1 --temperature fixed-temperature 0 --heat-source solid 20)
+        add_test(NAME nova_gmsh41_named_groups_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron41.msh"
+            --material solid 1 --temperature fixed-temperature 0)
         add_test(NAME nova_gmsh_named_tensor_smoke COMMAND nova_gmsh_diffusion_3d
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh"
             --material-tensor solid 1 1 1 0 0 0 --temperature fixed-temperature 0)
@@ -196,12 +201,32 @@ if(NOVA_BUILD_TESTS)
             --convection 102 12 300 --balance-report)
         set_tests_properties(nova_energy_balance_3d_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "FEM signed energy balance defect")
+        add_test(NAME nova_gmsh_mesh_quality_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh" --check-mesh)
+        set_tests_properties(nova_gmsh_mesh_quality_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "Minimum mean ratio")
+        add_test(NAME nova_gmsh_mesh_quality_gate_reject COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh"
+            --check-mesh --min-mean-ratio 0.9)
+        set_tests_properties(nova_gmsh_mesh_quality_gate_reject PROPERTIES WILL_FAIL TRUE)
+        add_test(NAME nova_gmsh_mesh_quality_msh41_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron41.msh" --check-mesh)
+        set_tests_properties(nova_gmsh_mesh_quality_msh41_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "Minimum mean ratio")
         find_package(Python3 COMPONENTS Interpreter QUIET)
         if(Python3_Interpreter_FOUND)
             add_test(NAME nova_tagged_wall_verification COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_tagged_conduction_3d.py"
                 "$<TARGET_FILE:nova_gmsh_diffusion_3d>"
                 "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh")
+            add_test(NAME nova_gmsh_mesh_quality_analytical COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_gmsh_quality_3d.py"
+                "$<TARGET_FILE:nova_gmsh_diffusion_3d>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh")
+            add_test(NAME nova_gmsh_mesh_quality_analytical_msh41 COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_gmsh_quality_3d.py"
+                "$<TARGET_FILE:nova_gmsh_diffusion_3d>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron41.msh")
         endif()
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
         add_test(NAME nova_electrostatics_3d_smoke COMMAND nova_electrostatics_3d)
@@ -227,6 +252,13 @@ if(NOVA_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh"
             --material solid 1 --capacity solid 1 --initial 300
             --temperature fixed-temperature 300 --dt 0.1 --steps 1)
+        add_test(NAME nova_gmsh_transient_heat_3d_msh41_smoke
+            COMMAND nova_gmsh_transient_heat_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron41.msh"
+            --material solid 1 --capacity solid 1 --initial 320
+            --temperature fixed-temperature 320 --dt 0.1 --steps 1)
+        set_tests_properties(nova_gmsh_transient_heat_3d_msh41_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "min_temperature 320 max_temperature 320")
         add_test(NAME nova_transient_heat_smoke COMMAND nova_transient_heat_2d)
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)

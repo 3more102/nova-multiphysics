@@ -32,6 +32,7 @@ Implemented:
 - Rejection of folded shared-edge neighbors and unused triangle-mesh vertices.
 - Triangle orientation-independent integration.
 - Orientation-aware 2D triangle quality analysis (minimum angle, mean ratio, element area and longest edge).
+- 3D tetrahedral mesh quality analysis (total volume, mean ratio and minimum dihedral angle), exposed through pre-solve CLI inspection and user-selected quality gates.
 - Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
@@ -102,11 +103,11 @@ Implemented:
 - Optional spatial source plus additive cellwise source; absent source fields represent unforced conduction.
 - Regression tests for heterogeneous cellwise SPD tensors, cell-only heating, zero-source equilibrium and energy-budget closure.
 - Analytical single-mode time-step refinement verifies first-order Backward Euler and second-order Crank–Nicolson with nonzero start time and per-step energy closure.
-- Gmsh MSH 2.2 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
+- Gmsh MSH 2.2 and 4.1 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
 
 Remaining:
 - Adaptive 3D time steps and time-varying loads/materials.
-- Gmsh MSH 4.1/binary and higher-order element import, time-varying loads/materials, and independent cross-solver thermal benchmarks.
+- Gmsh binary and higher-order element import, time-varying loads/materials, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
 ### 3D steady conduction flux recovery (experimental)
@@ -151,8 +152,14 @@ Remaining:
 - Coupled electrothermal and thermoelastic examples.
 
 ## M7 — Geometry, meshing, and visualization
+
+Implemented (experimental):
+- Gmsh MSH 2.2 and 4.1 ASCII first-order tetrahedral import with physical-group names, sparse IDs, exterior-face tagging and shared topology validation.
+- Pre-solve tetrahedral mesh-quality reporting and user-selected minimum-mean-ratio screening gates for steady Gmsh studies.
+
+Remaining:
 - CAD import and geometry model.
-- Mesh generation and quality inspection.
+- Mesh generation and quality-driven remeshing.
 - 2D and 3D results visualization.
 - Derived quantities and export.
 - Project persistence.
