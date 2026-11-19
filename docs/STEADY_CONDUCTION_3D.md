@@ -15,7 +15,9 @@ python verification/verify_tagged_conduction_3d.py ./build/nova_gmsh_diffusion_3
 On a Visual Studio multi-configuration build the executable is
 `build/Release/nova_gmsh_diffusion_3d.exe`. Open `wall.vtk` as a legacy
 unstructured grid. It has nodal `temperature`, cell `material_id` and cell
-`heat_flux` vectors in global Cartesian coordinates. The verifier uses the
+`heat_flux` vectors in global Cartesian coordinates. With `--heat-source`
+the VTK result additionally contains `heat_generation` in W/m³ per cell,
+including the uniform `--source` contribution if specified. The verifier uses the
 Python standard library. CTest registers it when a Python interpreter is available.
 The C++ library, CLI, unit tests and wall smoke test run independently of Python.
 

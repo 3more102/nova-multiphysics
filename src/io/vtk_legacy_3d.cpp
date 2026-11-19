@@ -109,10 +109,19 @@ void write_legacy_vtk_scalar_3d(
 void write_legacy_vtk_conduction_3d(
     std::ostream& output, const fem::TetrahedralMesh3D& mesh,
     const std::vector<double>& temperature, std::span<const int> material_ids,
-    std::span<const fem::P1TetrahedralFlux3D> cell_fields
+    std::span<const fem::P1TetrahedralFlux3D> cell_fields,
+    std::span<const double> cell_heat_generation
 ) {
     if (material_ids.size() != mesh.elements.size() || cell_fields.size() != mesh.elements.size()) {
         throw std::invalid_argument("VTK conduction requires one material ID and flux per cell.");
+    }
+    if (!cell_heat_generation.empty() && cell_heat_generation.size() != mesh.elements.size()) {
+        throw std::invalid_argument("VTK heat generation needs one value per cell.");
+    }
+    for (double source : cell_heat_generation) {
+        if (!std::isfinite(source)) {
+            throw std::invalid_argument("VTK heat generation must be finite.");
+        }
     }
     for (const auto& field : cell_fields) {
         if (!std::isfinite(field.flux.x) || !std::isfinite(field.flux.y) || !std::isfinite(field.flux.z)) {
@@ -125,6 +134,10 @@ void write_legacy_vtk_conduction_3d(
     output << "CELL_DATA " << mesh.elements.size() << '\n'
            << "SCALARS material_id int 1\nLOOKUP_TABLE default\n";
     for (int tag : material_ids) output << tag << '\n';
+    if (!cell_heat_generation.empty()) {
+        output << "SCALARS heat_generation double 1\nLOOKUP_TABLE default\n";
+        for (double source : cell_heat_generation) output << source << '\n';
+    }
     output << "VECTORS heat_flux double\n";
     for (const auto& field : cell_fields) {
         output << field.flux.x << ' ' << field.flux.y << ' ' << field.flux.z << '\n';
