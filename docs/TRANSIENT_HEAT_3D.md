@@ -65,6 +65,31 @@ const auto output = solve_transient_heat_3d(problem, options);
 
 The `diffusion` member also accepts the existing steady 3D `dirichlet_constraints`, `dirichlet_faces`, `neumann_faces`, `robin_faces`, `cell_source`, scalar and tensor conductivity representations. Heat capacity must be provided **either** as `volumetric_capacity` **or** a `cell_volumetric_capacity` vector; both simultaneously are invalid.
 
+## Streaming snapshots and memory control
+
+An optional `TransientHeat3DOptions::on_state` callback receives the
+**Dirichlet-projected initial state** at step 0, then the completed temperature
+field at each step, together with the physical time. Its vector reference is
+valid only during the callback. This supports external VTK/PVD frame writers
+without accumulating all snapshots in memory.
+
+By default, `result.linear_solvers[n].solution` contains the physical
+temperature at step `n+1`, preserving the original API. Set
+`options.retain_step_solutions = false` for long runs: all per-step solver
+metadata and diagnostics remain available, but each stored solver's
+`solution` is empty; `result.temperature` still contains the final field.
+This reduces retained temperature history from O(steps × nodes) to O(nodes),
+excluding user-managed copies in the callback. The diagnostics and solver
+metadata themselves still consume O(steps) space.
+
+```cpp
+options.retain_step_solutions = false;
+options.on_state = [](std::size_t step, double time,
+                      const std::vector<double>& temperature) {
+    // Stream or serialize this temperature field before returning.
+};
+```
+
 ## Reproduce and tests
 
 ```sh
@@ -79,9 +104,11 @@ ctest --test-dir build -C Release --output-on-failure
 - Three fixed vertices of a unit tetrahedron: the remaining DOF has `M_33=1/60`, `K_33=1/6`. Starting at 10 with `dt=0.1`, the one-step exact algebraic results are 5 (Backward Euler) and 10/3 (Crank–Nicolson).
 - Neumann-flux heat loss, Robin convection, mixed tensor conductivity with a spatial heat capacity, and numerical energy-budget closure.
 - Rejection of nonpositive capacities, bad source/initial fields, duplicate boundary conditions and invalid time-step options.
+- Streaming callback receives projected state at t=0 and every completed step without retaining solver solution vectors.
+- Semidiscrete one-DOF exponential decay confirms first-order Backward Euler and second-order Crank–Nicolson time convergence under time-step refinement.
 
 These checks verify the mathematical discretization but **do not** constitute experimental or industrial validation.
 
 ## Explicit limits and next milestone
 
-Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Current result history retains every CG solution vector, so a long run can consume memory proportional to steps × node count. Next: a streaming result callback, Gmsh-tagged transient CLI with `.pvd` export, and an independent temporal-convergence benchmark on a spatially varying manufactured solution.
+Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Streaming snapshots and disabling retained solver solutions are now supported. Next: a Gmsh-tagged transient CLI with `.pvd` export, plus temporal-convergence verification on a spatially varying manufactured solution with multiple free degrees of freedom.
