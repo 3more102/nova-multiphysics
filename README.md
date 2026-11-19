@@ -79,6 +79,27 @@ See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_
 This is a C++ API and a structured-box demonstration, not yet an imported
 Gmsh transient study with ParaView time-series output.
 
+### Electrostatics 3D on tetrahedral solids (experimental)
+
+The `nova/physics/electrostatics_3d.hpp` API reuses the independent P1 tetrahedral
+Poisson engine to solve `-div(epsilon grad(V)) = rho_free`, with scalar or SPD
+tensor permittivity, optional free-volume charge, prescribed electrode potentials
+and exterior normal displacement. Unassigned faces have zero normal displacement.
+It returns nodal potential, per-element electric field `E = -grad(V)`,
+quadrature-averaged displacement `D = epsilon E`, and stored energy
+`0.5 * integral(E dot D) dV` in SI units.
+
+```sh
+./build/nova_electrostatics_3d
+```
+
+The example is a 1 m cube with permittivity 2 F/m and two 10 V-separated
+electrodes, with exact capacitor energy 100 J. Tests also cover anisotropic
+tensor fields and rejection of invalid dielectric/charge inputs.
+The API is experimental: no floating electrodes, nonlinear dielectric response
+or time-dependent Maxwell equations. Per-cell displacement is not an
+equilibrated face flux or local Gauss-law error estimator.
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
