@@ -30,6 +30,16 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--source Q` | Uniform volumetric heating in W/m³. Default zero. |
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 
+**Named physical groups:** Gmsh MSH 2.2 files may declare quoted `$PhysicalNames`.
+For each `--material`, `--temperature`, `--flux`, and `--convection` selector,
+use its numeric physical tag or its exact group name (quote names with spaces in
+your shell). Names are scoped by entity dimension: materials use dimension 3,
+boundary conditions use dimension 2. An untagged group uses numeric tag 0.
+The importer rejects malformed, duplicate, or same-dimension ambiguous names.
+For example, the included unit tetrahedron mesh supports:
+`nova_gmsh_diffusion_3d tests/data/unit_tetrahedron.msh --material solid 1 --temperature fixed-temperature 0`.
+Existing numeric-tag commands remain compatible.
+
 Use meters for mesh coordinates. Supply conforming four-node tetrahedra with shared
 interface vertices. Surface triangle records identify *exterior* faces. An interior
 physical triangle record is rejected. Omit interior surface records and identify
