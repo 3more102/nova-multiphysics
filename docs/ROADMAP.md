@@ -72,16 +72,18 @@ Implemented:
 - Stationary scalar conduction/diffusion with P1/P2 H1 elements.
 - Consistent scalar capacity and stiffness FEM operators.
 - Backward Euler and Crank–Nicolson implicit transient time integration.
+- Adaptive, fixed-mesh time stepping by step doubling, absolute/relative local error control, accepted/rejected attempt histories, minimum/maximum step size and attempt limits.
+- Exact H1 nodal DOF restarts with nonzero physical start times.
 - Spatially varying positive (time-independent) volumetric heat capacity and conductivity.
 - Time-dependent volumetric heating, essential Dirichlet temperatures, Neumann outward heat fluxes, and Robin ambient convection.
 - Validated, mutually exclusive exterior-edge boundary assignment; other edges insulated by default.
 - Integrated discrete heat budget with Dirichlet reaction contributions.
 - Manufactured-solution temporal convergence and source/boundary energy-balance tests.
-- Cooling plate and convective boundary-flux example executables.
+- Cooling plate, convective boundary-flux, and adaptive time-step example executables.
 
 Remaining:
 - Nonlinear temperature-dependent constitutive properties and time-dependent materials.
-- Adaptive time stepping and temporal error estimation.
+- Optimized adaptive stepping with shared preassembled FEM operators, factorization/preconditioner reuse and a global temporal error estimator.
 - Independently recovered normal heat fluxes and physical energy-balance cross-checks.
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.

@@ -80,6 +80,11 @@ Implemented transient thermal regression cases:
 - First-order temporal convergence of a quadratic-in-time manufactured P2 field.
 - Second-order Crank–Nicolson temporal convergence of a cubic-in-time manufactured P2 field.
 - Crank–Nicolson exact linear space-time P1/P2 solution.
+- Restart at a nonzero physical start time with exact P1/P2 initial DOF values.
+- Adaptive constant-field preservation and discrete thermal energy budgets.
+- Adaptive Backward Euler time-dependent source and rejected-step control.
+- Adaptive Crank–Nicolson tolerance tightening on a cubic-time manufactured P2 field.
+- Adaptive rejection of invalid time ranges, tolerances, attempt limits and non-finite restart values.
 - Global heat-content budgets under constant volumetric heating.
 - Time-dependent Neumann flux integrated energy budget for Backward Euler and Crank–Nicolson.
 - Time-dependent Robin convection integrated heat budget.
@@ -90,7 +95,7 @@ Implemented transient thermal regression cases:
   interior Dirichlet edges, and conflicting corner temperature values.
 
 Required next verification:
-- Quantify discrete energy decay and time step sensitivity for a cooling plate.
+- Quantify discrete energy decay, adaptive error-controller sensitivity, and step efficiency for a cooling plate.
 - Cross-check transient thermal benchmarks against an independent reference solver.
 - Cross-check independent physical fluxes, Dirichlet boundary reactions, and energy changes.
 - Add distorted-mesh verification for transient Neumann/Robin conditions.
