@@ -107,6 +107,7 @@ TransientHeatResult integrate_heat(
     const auto base = linalg::CsrMatrix::linear_combination(
         operators.mass, 1.0, operators.stiffness, implicit_dt);
     std::optional<ConstrainedSystem> base_constrained;
+    linalg::CachedConjugateGradient cached_cg;
     HeatRate previous;
     if (trapezoidal) {
         previous = evaluate_rate(operators.stiffness, loads_at(options.start_time), state);
@@ -155,7 +156,7 @@ TransientHeatResult integrate_heat(
         }
         // Start identity rows at their prescribed values. Their residual and all
         // Krylov updates are then exactly zero, including across a restart.
-        auto solver = linalg::solve_conjugate_gradient(
+        auto solver = cached_cg.solve(
             system.matrix, rhs, options.solver_options, prescribed);
         if (!solver.converged) {
             throw std::runtime_error("Transient linear solve failed at step " +
