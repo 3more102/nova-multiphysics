@@ -370,6 +370,9 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
     result.generated_heat_per_cell.reserve(n);
     result.cell_balance_defect.resize(n, 0.0);
     std::vector<long double> outgoing(n, 0.0L);
+    // Scale local conservation defects by the magnitudes of the terms being
+    // balanced, not by the magnitude of their near-zero signed sum.
+    std::vector<long double> outgoing_magnitude(n, 0.0L);
     long double correction_density_square = 0.0L;
     long double maximum_correction = 0.0L;
     long double total_exterior = 0.0L;
@@ -398,8 +401,10 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
         }
         const long double heat = record.face.outward_heat;
         outgoing[record.face.first_cell] += heat;
+        outgoing_magnitude[record.face.first_cell] += std::abs(heat);
         if (record.face.interior) {
             outgoing[record.face.second_cell] -= heat;
+            outgoing_magnitude[record.face.second_cell] += std::abs(heat);
         } else {
             total_exterior += heat;
         }
@@ -409,7 +414,7 @@ FaceHeatReconciliation3D reconcile_p1_face_heat_rates_3d(
     for (std::size_t cell = 0; cell < n; ++cell) {
         const long double defect = generation[cell] - outgoing[cell];
         const long double scale =
-            std::abs(generation[cell]) + std::abs(outgoing[cell]);
+            std::abs(generation[cell]) + outgoing_magnitude[cell];
         if (std::abs(defect) > 1.0e-8L * scale) {
             throw std::runtime_error(
                 "Face heat correction has an excessive local conservation defect."
