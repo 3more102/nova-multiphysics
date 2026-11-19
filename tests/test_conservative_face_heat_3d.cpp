@@ -47,6 +47,43 @@ void fix_all_exterior(ScalarDiffusion3DProblem& p, double value) {
 }
 } // namespace
 
+NOVA_TEST(face_heat_3d_single_tetra_projection_matches_exact_weights) {
+    ScalarDiffusion3DProblem p;
+    p.mesh = {{{0,0,0},{1,0,0},{0,1,0},{0,0,1}},{{0,1,2,3}}};
+    p.cell_diffusivity = {1.0};
+    p.source = [](double, double, double) { return 6.0; };
+    fix_all_exterior(p, 0.0);
+    const std::array values{0.0,0.0,0.0,0.0};
+    const auto report = reconcile_p1_face_heat_rates_3d(p, values);
+    NOVA_REQUIRE(report.faces.size() == 4U);
+    // A_opp0^2=3/4, A_other^2=1/4; sum weights=3/2.
+    // Minimum-area-normalized correction for 1 W generation yields
+    // H_opp0=1/2 W and H_other=1/6 W.
+    for (const auto& f : report.faces) {
+        const bool large_face = f.nodes == BoundaryFace3D{1,2,3};
+        NOVA_REQUIRE_NEAR(f.outward_heat, large_face ? 0.5 : 1.0/6.0, 1e-12);
+    }
+    NOVA_REQUIRE_NEAR(report.total_generated_heat, 1.0, 1e-13);
+    NOVA_REQUIRE_NEAR(report.max_absolute_cell_defect, 0.0, 1e-12);
+}
+
+NOVA_TEST(face_heat_3d_balanced_nonzero_neumann_component_uses_dual_gauge) {
+    auto p = example_problem();
+    p.source = [](double, double, double) { return 6.0; };
+    // One exterior triangular face has area 1/2: outward flux 4 gives 2 W,
+    // equal to the 1 W generated in each of the two tetrahedra.
+    p.neumann_faces.push_back({
+        {0,1,3}, [](double, double, double) { return 4.0; }
+    });
+    const std::array values{0.0,0.0,0.0,0.0,0.0};
+    const auto report = reconcile_p1_face_heat_rates_3d(p, values);
+    NOVA_REQUIRE(report.floating_components == 1U);
+    NOVA_REQUIRE(report.multiplier_solver.converged);
+    NOVA_REQUIRE_NEAR(report.total_generated_heat, 2.0, 1e-13);
+    NOVA_REQUIRE_NEAR(report.total_exterior_outward_heat, 2.0, 1e-13);
+    NOVA_REQUIRE_NEAR(report.max_absolute_cell_defect, 0.0, 1e-10);
+}
+
 NOVA_TEST(face_heat_3d_exact_two_material_flux_patch_has_no_correction) {
     auto p = example_problem();
     for (const auto& face : extract_boundary_faces_3d(p.mesh)) {
