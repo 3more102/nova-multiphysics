@@ -31,7 +31,8 @@ The regression suite includes:
 2. An anisotropic SPD dielectric tensor with an affine exact potential, exact E and D, and U = 36.5 J.
 3. A one-free-DOF tetrahedron with spatial plus per-cell charge density, giving V = 1 V and U = 1/12 J.
 4. The same one-free-DOF tetrahedron with cell-only charge, verifying that an omitted spatial source is treated as zero.
-5. Rejection of negative permittivity, conflicting material representations and non-finite charge.
+5. A pure-Neumann affine field driven by prescribed D dot n, verifying outward-displacement sign, zero-volume-mean gauge and stored energy.
+6. Rejection of negative permittivity, conflicting material representations and non-finite charge.
 
 The installed SDK consumer also solves the capacitor benchmark, so the public header and exported link symbol are checked outside the source tree.
 
