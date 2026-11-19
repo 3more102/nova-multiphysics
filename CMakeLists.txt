@@ -170,8 +170,20 @@ if(NOVA_BUILD_TESTS)
             --convection 102 12 300 --balance-report)
         set_tests_properties(nova_energy_balance_3d_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "FEM signed energy balance defect")
+        add_test(NAME nova_gmsh_mesh_quality_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh" --check-mesh)
+        set_tests_properties(nova_gmsh_mesh_quality_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "Minimum mean ratio")
+        add_test(NAME nova_gmsh_mesh_quality_gate_reject COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh"
+            --check-mesh --min-mean-ratio 0.9)
+        set_tests_properties(nova_gmsh_mesh_quality_gate_reject PROPERTIES WILL_FAIL TRUE)
         find_package(Python3 COMPONENTS Interpreter QUIET)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME nova_gmsh_mesh_quality_analytical COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_gmsh_quality_3d.py"
+                "$<TARGET_FILE:nova_gmsh_diffusion_3d>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh")
             add_test(NAME nova_tagged_wall_verification COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_tagged_conduction_3d.py"
                 "$<TARGET_FILE:nova_gmsh_diffusion_3d>"

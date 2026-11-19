@@ -55,6 +55,22 @@ with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
 per-volume sources add to the optional uniform `--source Q`. The verification suite also measures temperature and flux convergence
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
 
+### Gmsh tetrahedral mesh quality gate
+
+Inspect imported tetrahedra before solving, without requiring material or boundary
+conditions. The report includes mesh volume, worst mean-ratio element (0–1,
+where 1 is regular), and minimum dihedral angle. A failing quality gate returns
+nonzero and prevents simulation; the acceptance limit is user-selected rather
+than a universal engineering certification threshold.
+
+```sh
+./build/nova_gmsh_diffusion_3d tests/data/unit_tetrahedron.msh --check-mesh --min-mean-ratio 0.8
+# Or add --quality-report --min-mean-ratio 0.1 to an existing thermal solve
+```
+
+The one-tetrahedron analytical verification checks volume, mean ratio, dihedral
+angle and both passing/failing quality thresholds.
+
 ### Transient 3D heat on tetrahedral solids (experimental)
 
 NOVA now solves `C(x) ∂T/∂t − div(K(x) grad T) = Q(x)` using a
