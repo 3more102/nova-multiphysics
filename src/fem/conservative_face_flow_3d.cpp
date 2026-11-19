@@ -296,13 +296,22 @@ ConservativeHeatFlow3D reconstruct_conservative_heat_flow_3d(
         }
         result.faces.push_back(entry);
     }
+    // Recompute conservation defects from the exported double-precision rates,
+    // not the long-double forest bookkeeping, so diagnostics describe the
+    // actual face flows that downstream SDK consumers receive.
+    std::vector<long double> exported_defects = generation;
+    for (const auto& face : result.faces) {
+        exported_defects[face.owner_cell] -= face.outward_heat_rate;
+        if (face.neighbor_cell)
+            exported_defects[*face.neighbor_cell] += face.outward_heat_rate;
+    }
     result.generated_heat_per_cell.reserve(n);
     result.defect_before.reserve(n);
     result.defect_after.reserve(n);
     for (std::size_t c = 0; c < n; ++c) {
         const double g = checked(generation[c], "Cell generation overflow.");
         const double b = checked(before[c], "Unreconstructed cell balance overflow.");
-        const double a = checked(defects[c], "Reconstructed cell balance overflow.");
+        const double a = checked(exported_defects[c], "Reconstructed cell balance overflow.");
         result.generated_heat_per_cell.push_back(g);
         result.defect_before.push_back(b);
         result.defect_after.push_back(a);
