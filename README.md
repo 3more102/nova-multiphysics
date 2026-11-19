@@ -96,6 +96,17 @@ auto imported = nova::io::read_gmsh22_tetrahedra(mesh_file);
 The caller must explicitly assign boundary conditions and material
 properties from the physical IDs; the importer does not infer them.
 
+A runnable integration example demonstrates physical-group boundary selection
+and a positive-source P1 diffusion solve:
+
+~~~bash
+./build/nova_gmsh_diffusion_3d tests/data/unit_tetrahedron.msh 7
+~~~
+
+The second argument is the physical ID of exterior faces assigned zero
+Dirichlet value. Other exterior faces are insulated. This is a demonstrator,
+not a generic materials-and-boundary-condition configuration format.
+
 ### Triangle mesh quality and uniform refinement
 
 The mesh kernel now evaluates each triangle's signed area, minimum interior
