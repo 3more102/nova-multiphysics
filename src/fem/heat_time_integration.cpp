@@ -118,6 +118,9 @@ TransientHeatResult integrate_heat(
     result.final_time = options.start_time;
     result.linear_solvers.reserve(options.steps);
     result.diagnostics.reserve(options.steps);
+    if (options.step_observer) {
+        options.step_observer(options.start_time, state);
+    }
     for (std::size_t step = 0; step < options.steps; ++step) {
         const double time = options.start_time + static_cast<double>(step + 1) * dt;
         if (time <= result.final_time || !std::isfinite(time)) {
@@ -192,6 +195,9 @@ TransientHeatResult integrate_heat(
         result.diagnostics.push_back(diagnostic);
         result.linear_solvers.push_back(std::move(solver));
         result.final_time = time;
+        if (options.step_observer) {
+            options.step_observer(time, result.linear_solvers.back().solution);
+        }
     }
     result.temperature = result.linear_solvers.back().solution;
     return result;
