@@ -33,6 +33,7 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--heat-source volume_id Q` | Signed volumetric source density in W/m³ for a selected volume ID. Can repeat for different IDs; unlisted IDs add zero. This density adds to `--source`. |
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 | `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
+| `--balance-report` | Print consistent FEM-integrated generation, physical Dirichlet reaction flow, Neumann and Robin heat flow, plus signed and relative conservation defect. |
 
 Use meters for mesh coordinates. Supply conforming four-node tetrahedra with shared
 interface vertices. Surface triangle records identify *exterior* faces. An interior
@@ -105,6 +106,45 @@ equilibrated. Reported surface rates therefore are estimates and their sum
 is **not** an enforced conservation identity. The volume-integrated source
 and FEM reaction require a separate consistent balance computation before
 the output can be used as a strict energy-conservation certificate.
+
+## Consistent finite-element energy balance
+
+Use `--balance-report` to request a physically signed global heat budget in
+watts, independent of the optional raw `--flux-report`. Positive outward rates
+remove heat from the solid. The diagnostic evaluates source density with the
+**same tetrahedral quadrature used in assembly**, records prescribed Neumann
+integrals, and computes Robin heat exchange from the originally sampled face
+quadrature using the solved P1 face temperature. The Dirichlet contribution
+comes from unconstrained nodal FEM reactions **before** rows are eliminated
+or artificial pure-Neumann reference pins are applied. In the solver's weak
+form, the physical Dirichlet outward heat rate equals minus `(A*T - b)`
+summed over genuinely prescribed nodes.
+
+The resulting discrete energy identity is
+
+```text
+Q_Dirichlet,out + Q_Neumann,out + Q_Robin,out - Q_generated = imbalance
+relative_imbalance = abs(imbalance) / max(abs(each contribution))
+```
+
+An exactly zero reference uses relative imbalance zero. The reported quantities
+are global integrals, **not** separately equilibrated local face fluxes.
+The relative defect is a diagnostic of *discrete* global balance, not a
+physical accuracy estimate: convergence of the temperature field, gradients,
+and boundary fluxes still needs analytical or mesh-refinement verification.
+The solve must also converge before interpreting the result. The optional
+`ScalarDiffusion3DResult::energy_balance` is absent unless
+`ScalarDiffusion3DProblem::compute_energy_balance` is enabled; normal
+solves avoid storing additional uneliminated reaction rows.
+
+For the source-free analytical wall, Dirichlet rate is −240 W, Robin rate
+is +240 W, and the generated rate is zero. With
+`--heat-source 11 120 --heat-source 22 360`, the total integrated source
+is **240 W**. The conservation defect should remain small even when the
+raw element-face flux diagnostic does not close due to discretization error.
+The new tests exercise signed Dirichlet reactions, simultaneous spatial and
+cellwise generation, prescribed Neumann flux, convection, and pure-Neumann
+gauge exclusion.
 
 ## Analytical verification
 
