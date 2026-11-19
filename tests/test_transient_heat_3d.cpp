@@ -313,7 +313,7 @@ NOVA_TEST(transient_heat_3d_rejects_nonadvancing_step_time) {
     auto p = unit_heat();
     TransientHeat3DOptions options;
     options.start_time = 1.0e20;
-    options.time_step = 1.0e-4;
+    options.time_step = 1.0e3;
     options.steps = 100;
     NOVA_REQUIRE(rejects([&] { (void)solve_transient_heat_3d(p, options); }));
 }

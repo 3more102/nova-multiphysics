@@ -114,10 +114,10 @@ int main(int argc, char** argv) {
               << "Temperature range [K]: " << *lo << " ... " << *hi << '\n'
               << "Final-step energy residual [J]: " << energy.balance_residual << '\n'
               << "Final-step CG iterations: " << result.linear_solvers.back().iterations << '\n';
-    if (series) std::cout << "ParaView frames: " << frames.size() << '\\n';
+    if (series) std::cout << "ParaView frames: " << frames.size() << '\n';
     return 0;
     } catch (const std::exception& error) {
-        std::cerr << "NOVA transient heat error: " << error.what() << '\\n';
+        std::cerr << "NOVA transient heat error: " << error.what() << '\n';
         return 1;
     }
 }
