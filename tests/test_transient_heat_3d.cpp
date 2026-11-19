@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 using namespace nova::fem;
@@ -289,4 +290,37 @@ NOVA_TEST(heat_3d_reports_a_failed_linear_step) {
     TransientHeat3DOptions o;
     o.solver_options.max_iterations = 1;
     NOVA_REQUIRE(throws_as<std::runtime_error>([&] { (void)solve_transient_heat_3d(p, o); }));
+}
+
+NOVA_TEST(heat_3d_step_observer_receives_projected_initial_and_every_solved_state) {
+    auto p = reference_tet();
+    p.dirichlet_faces.push_back({{0,2,3}, zero});
+    TransientHeat3DOptions o;
+    o.steps = 3;
+    o.time_step = 0.05;
+    o.start_time = 0.5;
+    std::vector<double> times;
+    std::vector<std::vector<double>> snapshots;
+    o.step_observer = [&](double time, const std::vector<double>& state) {
+        times.push_back(time);
+        snapshots.push_back(state);
+    };
+    const auto r = solve_transient_heat_3d(p, o);
+    NOVA_REQUIRE(times.size() == 4 && snapshots.size() == 4);
+    for (std::size_t i = 0; i < times.size(); ++i) {
+        NOVA_REQUIRE_NEAR(times[i], o.start_time + static_cast<double>(i) * o.time_step, 1e-14);
+        NOVA_REQUIRE(snapshots[i].size() == r.temperature.size());
+        NOVA_REQUIRE(snapshots[i][0] == 0.0);
+    }
+    NOVA_REQUIRE_NEAR(snapshots.front()[1], 1.0, 1e-14);
+    for (std::size_t i = 0; i < r.temperature.size(); ++i) {
+        NOVA_REQUIRE(snapshots.back()[i] == r.temperature[i]);
+    }
+
+    o.step_observer = [&](double time, const std::vector<double>&) {
+        if (time > o.start_time) throw std::domain_error("observer write failed");
+    };
+    NOVA_REQUIRE(throws_as<std::domain_error>([&] {
+        (void)solve_transient_heat_3d(p, o);
+    }));
 }
