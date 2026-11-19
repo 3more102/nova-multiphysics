@@ -30,7 +30,7 @@ bool safe_series_prefix(std::string_view name) {
 int main(int argc, char** argv) {
     if (argc != 1 && (argc != 3 || std::string_view(argv[1]) != "--vtk-series" ||
                       !safe_series_prefix(argv[2]))) {
-        std::cerr << "Usage: nova_transient_heat_3d [--vtk-series safe_prefix]\\n";
+        std::cerr << "Usage: nova_transient_heat_3d [--vtk-series safe_prefix]\n";
         return 2;
     }
     using namespace nova::fem;
@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
         nova::io::write_pvd_collection(manifest, frames);
         manifest.close();
         if (!manifest) throw std::runtime_error("Failed to save PVD collection.");
-        std::cout << "ParaView time series: " << collection << '\\n';
+        std::cout << "ParaView time series: " << collection << '\n';
     }
     const auto [lo, hi] = std::minmax_element(
         result.temperature.begin(), result.temperature.end()

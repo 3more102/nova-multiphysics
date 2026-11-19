@@ -50,7 +50,7 @@ def verify(exe: Path) -> None:
             raise AssertionError("Initial temperature should be 300 K")
         if any(len(x) != len(frames[0]) for x in frames):
             raise AssertionError("Inconsistent mesh vertex count across frames")
-        m = re.search(r"Temperature range \\[K\\]:\\s*([0-9.eE+-]+)\\s*\\.\\.\\.\\s*([0-9.eE+-]+)", p.stdout)
+        m = re.search(r"Temperature range \[K\]:\s*([0-9.eE+-]+)\s*\.\.\.\s*([0-9.eE+-]+)", p.stdout)
         if not m:
             raise AssertionError("Missing solver temperature range")
         lo, hi = map(float, m.groups())
