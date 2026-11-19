@@ -26,6 +26,7 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | Argument | Physical meaning in SI units |
 | --- | --- |
 | `--material volume_id k` | Isotropic conductivity in W/(m·K). Supply each volume ID once, including 0 for untagged tetrahedra when present. |
+| `--material-tensor volume_id xx yy zz xy xz yz` | Symmetric positive-definite 3D conductivity tensor in global coordinates, W/(m·K). Six independent components; use either scalar or tensor for each volume ID. |
 | `--temperature face_id T` | Prescribed nodal temperature in K on that surface. |
 | `--flux face_id q_out` | Outward heat flux in W/m². Positive removes heat. |
 | `--convection face_id h T_inf` | Outward flux equals `h (T − T_inf)`, with `h ≥ 0` in W/(m²·K). |
@@ -33,6 +34,21 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--heat-source volume_id Q` | Signed volumetric source density in W/m³ for a selected volume ID. Can repeat for different IDs; unlisted IDs add zero. This density adds to `--source`. |
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 | `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
+| `--balance-report` | Independently reassemble FEM weak-form residuals and report global source, Neumann, Robin, nodal reactions and free-equation residuals in W. |
+
+### Gmsh named physical groups
+
+The Gmsh MSH 2.2 `$PhysicalNames` section can define quoted group names,
+including spaces and escaped quotes. Every tagged argument (`--material`,
+`--material-tensor`, `--heat-source`, `--temperature`, `--flux`,
+`--convection`) accepts a numeric physical tag or its exact name.
+The importer validates records, and names are scoped by geometric dimension
+(3 for volumes, 2 for boundary surfaces). Untagged IDs use numeric 0.
+
+```sh
+nova_gmsh_diffusion_3d tests/data/unit_tetrahedron.msh \
+  --material solid 1 --temperature fixed-temperature 0 --heat-source solid 20
+```
 
 Use meters for mesh coordinates. Supply conforming four-node tetrahedra with shared
 interface vertices. Surface triangle records identify *exterior* faces. An interior
@@ -75,7 +91,27 @@ is pointwise exact where sources are present.
 
 The C++ problem accepts a spatial scalar callback, a spatial symmetric
 positive-definite tensor callback, or `ScalarDiffusion3DProblem::cell_diffusivity`.
-The vector follows `mesh.elements` ordering. Assembly and flux recovery select the
+The vector follows `mesh.elements` ordering. An alternative
+`ScalarDiffusion3DProblem::cell_diffusivity_tensors` holds one
+`SymmetricTensor3D` per tetrahedron. The two cell arrays and either spatial
+material callback are mutually exclusive. Both the linear solver and flux
+postprocessor validate tensor positive definiteness. For mixed CLI material
+types, scalar values are promoted to diagonal tensors, preserving the physical
+isotropic conductivity.
+
+Run a mixed isotropic/anisotropic tagged wall (here off-diagonals are zero so
+the one-dimensional analytical reference remains valid):
+
+```sh
+./build/nova_gmsh_diffusion_3d examples/gmsh_diffusion_3d/two_layer_wall.msh \
+  --material-tensor 11 2 9 4 0 0 0 --material 22 6 \
+  --temperature 101 400 --convection 102 12 300 --vtk anisotropic-wall.vtk
+```
+
+General nonzero cross terms produce transverse heat flux under an axial
+temperature gradient. Exterior insulation and the prescribed boundaries must
+therefore be physically consistent; no one-dimensional solution is assumed in
+that case. Assembly and flux recovery select the
 same material on each tetrahedron. Continuous P1 interpolation enforces temperature
 continuity across a bonded interface. The recovered flux is the cell average of
 `−K grad(T_h)`. Its tangential components can jump across materials. General raw
@@ -105,6 +141,44 @@ equilibrated. Reported surface rates therefore are estimates and their sum
 is **not** an enforced conservation identity. The volume-integrated source
 and FEM reaction require a separate consistent balance computation before
 the output can be used as a strict energy-conservation certificate.
+
+## Discrete global energy balance
+
+Append `--balance-report` to the Gmsh CLI to evaluate the *assembled weak
+form*, using the same volume and boundary quadrature as the steady FEM solver.
+This is separate from the `--flux-report` option, which integrates raw,
+non-equilibrated P1 cell fluxes across exterior faces.
+
+With positive heat **leaving** the mesh, the accounting is:
+
+`total_generated = Neumann_out + Robin_out + constraint_out + signed_defect`
+
+- `total_generated` integrates the spatial `--source` plus all
+  per-volume `--heat-source` contributions (negative for cooling).
+- `Neumann_out` integrates prescribed outward boundary flux.
+- `Robin_out` integrates `h (T_h - T_ambient)` at the same face samples.
+- `constraint_out` is minus the sum of **unconstrained-system weak residuals
+  evaluated at constrained nodes**. It includes reactions at face-prescribed
+  and explicitly pinned vertices. It is not a per-Dirichlet-face traction map.
+- `signed_defect` is what remains after the above flows are accounted for.
+  The maximum absolute weak residual on free nodes is also printed; this
+  provides an additional numerical check even when the signed sum cancels.
+
+For the zero-source two-layer reference, FEM Robin outflow is 240 W and the
+Dirichlet reaction is −240 W, with a near-zero defect. For the regional source
+case, the FEM integral produces 240 W of generation; its Neumann + Robin +
+constraint rates add to the same value within the numerical acceptance
+tolerance. The pure-Neumann zero-mean gauge is not counted as a physical
+boundary reaction.
+
+**Scope and limitations:** these quantities certify *discrete global
+equilibrium* of the particular Galerkin system and supplied field to the
+reported tolerances. They do not certify pointwise heat-flux continuity,
+local element conservation, continuum discretization accuracy or
+experimental agreement. An intentionally unconverged field may still have
+a small global signed defect, which is why the free-equation residual is
+reported. Reassembling the residual requires an extra pass over the mesh
+only when the option is requested.
 
 ## Analytical verification
 
@@ -144,7 +218,15 @@ Duffy-transformed tensor Gauss rule integrates the squared temperature error
 The unit-volume domain makes the L2 errors numerically equal to RMS errors in K
 and W/m². Acceptance requires orders of at least 1.7 and 0.85 on both refinements
 and fine-grid errors below 0.08 K and 5 W/m². Both the analytical and the
-refinement tables passed. Separate C++ regressions exercise an oblique interface
+refinement tables passed. The end-to-end verifier also checks a mixed tensor/scalar tagged wall against
+the same analytical temperature, axial flux, transverse flux and heat-rate
+targets, and confirms invalid material tensors cannot replace a prior VTK
+result. Separate C++ regressions exercise per-cell non-diagonal tensor
+stiffness with winding reversal, two anisotropic layers with exact affine
+solutions, continuous normal flux and discontinuous transverse flux, and
+rejection of non-SPD or ambiguous material data.
+
+Separate C++ regressions exercise an oblique interface
 with conserved normal flux and discontinuous tangential flux, symmetry and the
 constant mode of each element matrix, reversed element orientation, bad material
 data and incompatible pure-Neumann loads. The CLI verifier also checks that failed

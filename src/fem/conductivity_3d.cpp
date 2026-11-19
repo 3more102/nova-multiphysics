@@ -61,7 +61,8 @@ void check_scalar(double k) {
 } // namespace
 
 void ConductivityField3D::validate() const {
-    const int choices = (scalar ? 1 : 0) + (tensor ? 1 : 0) + (constant ? 1 : 0);
+    const int choices = (scalar ? 1 : 0) + (tensor ? 1 : 0) +
+                        (constant ? 1 : 0) + (constant_tensor ? 1 : 0);
     if (choices != 1) {
         throw std::invalid_argument("Select exactly one 3D conductivity representation.");
     }
@@ -76,8 +77,8 @@ double ConductivityField3D::scalar_at(const Point3D& point) const {
 
 Point3D ConductivityField3D::diffusive_flux(const Point3D& point, const Point3D& g) const {
     Point3D flux;
-    if (tensor) {
-        const auto k = tensor(point.x, point.y, point.z);
+    if (tensor || constant_tensor) {
+        const auto k = constant_tensor ? *constant_tensor : tensor(point.x, point.y, point.z);
         static_cast<void>(factor_tensor(k));
         flux = {-(k.xx*g.x + k.xy*g.y + k.xz*g.z),
                 -(k.xy*g.x + k.yy*g.y + k.yz*g.z),
@@ -94,37 +95,57 @@ Point3D ConductivityField3D::diffusive_flux(const Point3D& point, const Point3D&
 
 DiffusionMaterials3D::DiffusionMaterials3D(const ScalarDiffusion3DProblem& problem)
     : problem_(problem) {
-    if (problem.cell_diffusivity.empty()) {
+    const bool cell_scalar = !problem.cell_diffusivity.empty();
+    const bool cell_tensor = !problem.cell_diffusivity_tensors.empty();
+    if (cell_scalar && cell_tensor) {
+        throw std::invalid_argument("Select cell scalar or cell tensor conductivity, not both.");
+    }
+    if (!cell_scalar && !cell_tensor) {
         ConductivityField3D{problem.diffusivity, problem.diffusivity_tensor}.validate();
         return;
     }
     if (problem.diffusivity || problem.diffusivity_tensor) {
         throw std::invalid_argument("Cell conductivity cannot be combined with a spatial field.");
     }
-    if (problem.cell_diffusivity.size() != problem.mesh.elements.size()) {
-        throw std::invalid_argument("Cell conductivity requires one value per tetrahedron.");
+    if (cell_scalar) {
+        if (problem.cell_diffusivity.size() != problem.mesh.elements.size()) {
+            throw std::invalid_argument("Cell conductivity requires one value per tetrahedron.");
+        }
+        for (const double k : problem.cell_diffusivity) check_scalar(k);
+    } else {
+        if (problem.cell_diffusivity_tensors.size() != problem.mesh.elements.size()) {
+            throw std::invalid_argument("Cell tensor conductivity requires one value per tetrahedron.");
+        }
+        for (const auto& k : problem.cell_diffusivity_tensors) {
+            static_cast<void>(factor_tensor(k));
+        }
     }
-    for (const double k : problem.cell_diffusivity) check_scalar(k);
 }
 
 ConductivityField3D DiffusionMaterials3D::on_cell(std::size_t element) const {
     ConductivityField3D material{problem_.diffusivity, problem_.diffusivity_tensor};
-    if (!problem_.cell_diffusivity.empty()) material.constant = problem_.cell_diffusivity[element];
+    if (!problem_.cell_diffusivity.empty()) {
+        material.constant = problem_.cell_diffusivity[element];
+    } else if (!problem_.cell_diffusivity_tensors.empty()) {
+        material.constant_tensor = problem_.cell_diffusivity_tensors[element];
+    }
     return material;
 }
 
 void add_conductivity_sample(P1Matrix3D& stiffness, const ConductivityField3D& material,
                              const Point3D& point, const P1Gradients3D& gradients,
                              double sqrt_weight) {
-    if (!material.tensor) {
+    if (!material.tensor && !material.constant_tensor) {
         sqrt_weight *= std::sqrt(material.scalar_at(point));
     }
     auto weighted = gradients;
     for (auto& g : weighted) {
         for (auto& component : g) component *= sqrt_weight;
     }
-    if (material.tensor) {
-        factor_tensor(material.tensor(point.x, point.y, point.z)).transform(weighted);
+    if (material.tensor || material.constant_tensor) {
+        const auto k = material.constant_tensor ? *material.constant_tensor :
+            material.tensor(point.x, point.y, point.z);
+        factor_tensor(k).transform(weighted);
     }
     // Assemble a Gram matrix from sqrt(weight) L^T grad(N), K = L L^T.
     for (std::size_t i = 0; i < 4; ++i) {

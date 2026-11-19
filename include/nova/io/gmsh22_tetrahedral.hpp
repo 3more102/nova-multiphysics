@@ -3,6 +3,9 @@
 #include "nova/fem/mesh3d.hpp"
 
 #include <iosfwd>
+#include <map>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace nova::io {
@@ -17,6 +20,9 @@ struct GmshTetrahedralMesh3D {
     std::vector<fem::BoundaryFace3D> exterior_faces;
     std::vector<int> exterior_physical_tags;
     std::vector<int> volume_physical_tags;
+    // Gmsh $PhysicalNames, keyed by (entity dimension, physical tag).
+    // Different dimensions may intentionally use the same tag or name.
+    std::map<std::pair<int, int>, std::string> physical_names;
 };
 
 // Rejects binary/4.x/high-order or malformed MSH files, missing nodes,
