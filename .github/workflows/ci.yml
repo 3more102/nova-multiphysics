@@ -7,6 +7,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  # Keep the newest run for each branch/event; never cancel a different branch.
+  # Separate push and PR checks so required PR checks remain independently visible.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
