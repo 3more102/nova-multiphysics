@@ -1,5 +1,13 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · tensor diffusion and adaptive thermal verification
+
+The pre-change audit found 19 open PRs. All current base commits were ancestors of their PR heads. The default head was `0d56a5efe268`, and the full tetrahedral stack ended at #20 (`b68cbd326a4b`). Its clean Linux Release build passed 163 unit tests and eight CTest targets. The stationary 3D example used 3,072 tetrahedra, 50 CG iterations and had a true residual of 7.74e-13 with maximum nodal error 0.00255202. The dependency table below identifies the six open sibling PRs outside the 3D path.
+
+[PR #21](https://github.com/3more102/nova-multiphysics/pull/21) targets #20. The shared P1 kernel now accepts Cartesian SPD conductivity for steady, fixed-step and adaptive solves. Two scalar range regressions reproduced on #20. A conductivity of 1e-90 on a right tetrahedron of side 1e-90 gave a zero thermal stiffness entry. A stationary patch with conductivity 1e200 on the same mesh raised overflow. The corrected kernel returns the analytical 1.66667e-181 and the patch value 1.0. The implementation passed seven new tests and all four hosted jobs. [Implementation CI](https://github.com/3more102/nova-multiphysics/actions/runs/44477873595)
+
+The adaptive comparison covers eight combinations of mesh, scheme and tolerance. The Linux suite including the new example passed 170 unit tests and nine CTest targets. The largest same-step difference from independent sparse direct solves was 6.15e-12 or less. The separate time-adaptive Radau comparison and serial timings through 82,944 tetrahedra are recorded in the [verification dossier](THERMAL_3D_VERIFICATION.md#adaptive-tensor-heat). Remaining work includes stronger sparse preconditioning, higher-order tetrahedra, material calibration and independent physical validation.
+
 ## Active numerical checkpoint
 
 | Checkpoint | Tested scope | Evidence |

@@ -95,7 +95,7 @@ Implemented:
 - Cooling plate, convective boundary-flux, and adaptive time-step example executables.
 
 Remaining:
-- Adaptive P1 tetrahedral step doubling is implemented on `feature/adaptive-heat-3d`; Windows/Linux Release, ASan/UBSan, static analysis and the refined fixed-step regression pass ([CI run 44379306942](https://github.com/3more102/nova-multiphysics/actions/runs/44379306942)). Independent adaptive cross-solver validation, experimental validation and larger-scale performance benchmarks remain open.
+- Broaden the adaptive reference beyond the prescribed-temperature tensor cube to independent mixed-boundary studies and experimental observations. Independent time-integration comparisons and serial measurements through 82,944 tetrahedra are in the [verification dossier](THERMAL_3D_VERIFICATION.md#adaptive-tensor-heat).
 - Nonlinear thermal properties and higher-order tetrahedral spaces.
 - General material models and time-dependent volume coefficients.
 - Adaptive stepping with system-matrix factorization/preconditioner reuse and a global temporal error estimator.

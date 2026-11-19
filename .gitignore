@@ -19,6 +19,7 @@ Thumbs.db
 *.h5
 *.hdf5
 *.xdmf
+__pycache__/
 *.log
 CMakeFiles/
 CMakeCache.txt

@@ -56,8 +56,9 @@ jobs:
       - name: Install verification tools
         run: python -m pip install numpy==2.3.5 scipy==1.17.0 scikit-fem==12.0.2 clang-tidy==23.1.4
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNOVA_BUILD_TESTS=OFF
-      - run: cmake --build build --target nova_transient_heat_3d --parallel 3
+      - run: cmake --build build --target nova_transient_heat_3d nova_anisotropic_heat_3d --parallel 3
       - run: python verification/compare_transient_heat_3d.py ./build/nova_transient_heat_3d
+      - run: python verification/compare_adaptive_heat_3d.py ./build/nova_anisotropic_heat_3d
       - name: Check numerical translation units
         run: >-
           clang-tidy

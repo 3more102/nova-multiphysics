@@ -16,9 +16,7 @@ from skfem import Basis, ElementTetP1, MeshTet, asm
 from skfem.models.poisson import laplace, mass
 
 
-def compare(executable, n, steps):
-    text = subprocess.check_output([executable, str(n), str(steps), "--csv"], text=True)
-    field = np.loadtxt(io.StringIO(text), delimiter=",", skiprows=1)
+def kuhn_cube(n):
     # Independently construct Kuhn simplices as all monotone corner-to-corner paths.
     side = n + 1
     vertices = [(x / n, y / n, z / n) for z, y, x in itertools.product(range(side), repeat=3)]
@@ -28,8 +26,15 @@ def compare(executable, n, steps):
         for a, b, c in itertools.permutations((1, side, side**2)):
             cells.append([origin, origin + a, origin + a + b, origin + a + b + c])
     coords = np.array(vertices)
-    np.testing.assert_allclose(field[:, :3], coords, rtol=0, atol=2e-15)
     mesh = MeshTet(np.ascontiguousarray(coords.T), np.ascontiguousarray(np.array(cells).T))
+    return coords, mesh
+
+
+def compare(executable, n, steps):
+    text = subprocess.check_output([executable, str(n), str(steps), "--csv"], text=True)
+    field = np.loadtxt(io.StringIO(text), delimiter=",", skiprows=1)
+    coords, mesh = kuhn_cube(n)
+    np.testing.assert_allclose(field[:, :3], coords, rtol=0, atol=2e-15)
     basis = Basis(mesh, ElementTetP1(), intorder=2)
     free = basis.complement_dofs(basis.get_dofs())
     capacity = asm(mass, basis)[free][:, free]
@@ -49,7 +54,7 @@ def compare(executable, n, steps):
     points = quadrature.global_coordinates()
     exact = np.exp(-3 * np.pi**2 * 0.02) * np.prod(np.sin(np.pi * points), axis=0)
     error = np.sqrt(np.sum((quadrature.interpolate(field[:, 3]) - exact)**2 * quadrature.dx))
-    print(f"n={n:2d} dofs={len(coords):5d} tets={len(cells):6d} "
+    print(f"n={n:2d} dofs={len(coords):5d} tets={mesh.nelements:6d} "
           f"max_backend_difference={discrepancy:.4e} L2_error={error:.6e}")
     return error
 

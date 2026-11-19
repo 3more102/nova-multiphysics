@@ -1,6 +1,6 @@
 # Transient 3D heat verification
 
-The scope is fixed-step, isotropic P1 heat diffusion on affine tetrahedra with positive, spatially variable, time-independent volume materials. All comparisons below are numerical verification. Material calibration and experimental validation remain open.
+This dossier covers scalar and tensor P1 heat diffusion on affine tetrahedra with spatially variable, time-independent volume materials. The cooling-cube comparison uses fixed steps. The tensor study also checks adaptive trials and an independently integrated terminal state. Material calibration and experimental validation remain open.
 
 ## Element and boundary evidence
 
@@ -51,3 +51,38 @@ python verification/compare_transient_heat_3d.py ./build/nova_transient_heat_3d
 ~~~
 
 The last two commands are for an optional verification environment. The C++ library and examples build with the standard library alone. For Linux memory reproduction, run the example under GNU time with format `%M` for peak KiB. The example's `solve_seconds` reports the solve-only interval.
+
+## Adaptive tensor heat
+
+The unit cube has unit capacity, zero prescribed temperature on its exterior, source $(1+t)(1+z)$ and initial field $64x(1-x)y(1-y)z(1-z)(1+x/2)$. Conductivity is $(1+x/2)$ times a Cartesian tensor with diagonal $(2,1.5,1)$ and off-diagonal $(K_{xy},K_{xz},K_{yz})=(0.4,-0.25,0.3)$. NOVA integrates to $t=0.02$ with Jacobi CG. The adaptive relative tolerance is zero.
+
+The reference script builds its own mesh, stiffness, mass and source using scikit-fem. SciPy sparse direct solves repeat every full and half trial from the last independently accepted state. The script checks each normalized error, acceptance decision, physical time and final nodal value. A second reference integrates the same spatial system with SciPy Radau on its own time grid at relative tolerance $10^{-11}$ and absolute tolerance $10^{-13}$. This comparison measures time-integration error at fixed spatial resolution. [SciPy Radau](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.Radau.html)
+
+| Cells per axis | Scheme | Absolute step tolerance | Accepted / rejected | Maximum nodal difference, same steps | Maximum nodal difference, Radau |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 3 | Backward Euler | 1e-4 | 36 / 3 | 6.38e-16 | 3.63e-3 |
+| 3 | Backward Euler | 1e-6 | 358 / 4 | 1.61e-15 | 3.69e-4 |
+| 3 | Crank–Nicolson | 1e-4 | 8 / 3 | 3.89e-16 | 3.93e-4 |
+| 3 | Crank–Nicolson | 1e-6 | 32 / 3 | 3.05e-16 | 2.08e-5 |
+| 4 | Backward Euler | 1e-4 | 36 / 3 | 1.28e-13 | 4.64e-3 |
+| 4 | Backward Euler | 1e-6 | 355 / 4 | 6.14e-12 | 4.64e-4 |
+| 4 | Crank–Nicolson | 1e-4 | 8 / 3 | 1.78e-14 | 3.70e-4 |
+| 4 | Crank–Nicolson | 1e-6 | 32 / 3 | 6.76e-14 | 2.16e-5 |
+
+The repeated-step comparison accepts at most 2e-11 absolute nodal error. Tightening the tolerance by 100 must reduce the Radau discrepancy by at least four on both meshes. The tight-run terminal-error limits are 1e-3 for Backward Euler and 5e-5 for Crank–Nicolson. The mixed-face analytical case and a stationary two-layer flux-continuity case in `tests/test_anisotropic_3d.cpp` exercise boundary and interface terms separately.
+
+### Adaptive serial measurements
+
+Linux x86-64, AMD EPYC 9V74, GCC 14.2 Release. Each Crank–Nicolson run used one pinned logical CPU and absolute tolerance 1e-4. The medians cover three new processes after one warm-up at each size. Wall time includes launch, mesh generation, assembly, all accepted and rejected trials, and exit. Peak RSS is per process.
+
+| Tetrahedra | DOFs | Accepted / rejected | Wall time (s) | Peak RSS (MiB) | Maximum step energy imbalance |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 384 | 125 | 8 / 3 | 0.0051 | 2.1 | 4.27e-16 |
+| 3,072 | 729 | 8 / 4 | 0.0272 | 5.1 | 3.04e-15 |
+| 24,576 | 4,913 | 9 / 5 | 0.2406 | 28.8 | 2.64e-15 |
+| 82,944 | 15,625 | 9 / 5 | 1.1196 | 89.6 | 1.02e-14 |
+
+~~~sh
+python verification/compare_adaptive_heat_3d.py ./build/nova_anisotropic_heat_3d
+./build/nova_anisotropic_heat_3d cn 24 1e-4
+~~~
