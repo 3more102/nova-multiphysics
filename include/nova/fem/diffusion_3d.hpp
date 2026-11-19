@@ -38,6 +38,7 @@ struct RobinBoundaryFace3D {
 struct ScalarDiffusion3DProblem {
     TetrahedralMesh3D mesh;
     ScalarField3D diffusivity;
+    // Optional spatial volumetric source density; an empty callback means zero.
     ScalarField3D source;
     std::vector<DirichletConstraint3D> dirichlet_constraints;
     std::vector<DirichletBoundaryFace3D> dirichlet_faces;
@@ -51,7 +52,8 @@ struct ScalarDiffusion3DProblem {
     // Mutually exclusive with spatial scalar/tensor and cell scalar materials.
     std::vector<SymmetricTensor3D> cell_diffusivity_tensors{};
     // Optional finite volumetric source density per tetrahedron (W/m^3).
-    // Additive to `source` at every quadrature point; negative means cooling.
+    // Additive to `source` at every quadrature point; an empty spatial callback
+    // contributes zero. Negative means cooling.
     // If nonempty, follows mesh.elements order and must cover every cell.
     std::vector<double> cell_source{};
 };

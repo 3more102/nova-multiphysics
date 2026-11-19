@@ -255,6 +255,21 @@ NOVA_TEST(cell_heat_source_adds_to_spatial_density_and_rejects_invalid_data) {
         NOVA_REQUIRE_NEAR(combined.values[node], spatial.values[node], 1e-11);
     }
 
+    // Cellwise heating is valid without a dummy spatial-source callback.
+    problem.source = {};
+    problem.cell_source = {120.0};
+    const auto cell_only = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(cell_only.linear_solver.converged);
+    for (std::size_t node = 0; node < spatial.values.size(); ++node) {
+        NOVA_REQUIRE_NEAR(cell_only.values[node], spatial.values[node], 1e-11);
+    }
+
+    // With neither source supplied, the anchored insulated problem stays at zero.
+    problem.cell_source.clear();
+    const auto unforced = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(unforced.linear_solver.converged);
+    for (const double value : unforced.values) NOVA_REQUIRE_NEAR(value, 0.0, 1e-11);
+
     problem.source = [](double, double, double) { return 240.0; };
     problem.cell_source = {-120.0};
     const auto cooling = solve_scalar_diffusion_3d(problem);
