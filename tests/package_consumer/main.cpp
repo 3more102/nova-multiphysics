@@ -42,6 +42,16 @@ int main() {
         std::abs(ic_solution.solution[0] - 1.0 / 11.0) > 1.0e-12 ||
         std::abs(ic_solution.solution[1] - 7.0 / 11.0) > 1.0e-12) return 8;
 
+    nova::linalg::CachedConjugateGradient cached_cg;
+    const std::array<double, 2> second_exact{-1.0, 2.0};
+    const auto cached_first = cached_cg.solve(spd, rhs, ic_options);
+    const auto cached_second =
+        cached_cg.solve(spd, spd.multiply(second_exact), ic_options);
+    if (!cached_first.converged || !cached_second.converged ||
+        cached_cg.factor_builds() != 1 ||
+        std::abs(cached_second.solution[0] + 1.0) > 1.0e-12 ||
+        std::abs(cached_second.solution[1] - 2.0) > 1.0e-12) return 9;
+
     // Independent installed 3D API consumer: -Delta(u)=0, u=x, with
     // fixed temperatures at x=0 and x=1 and insulated remaining faces.
     using namespace nova::fem;

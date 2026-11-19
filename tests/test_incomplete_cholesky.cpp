@@ -3,6 +3,7 @@
 #include "nova/fem/transient_heat_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/linalg/bicgstab.hpp"
+#include "nova/linalg/conjugate_gradient.hpp"
 #include "nova/linalg/gmres.hpp"
 #include "nova/linalg/incomplete_cholesky.hpp"
 
@@ -188,4 +189,61 @@ NOVA_TEST(ic0_and_jacobi_agree_on_fixed_step_transient_heat_histories) {
             NOVA_REQUIRE_NEAR(jacobi.diagnostics[step].balance_residual, 0.0, 2e-10);
         }
     }
+}
+
+
+NOVA_TEST(cached_cg_reuses_identical_matrices_and_rebuilds_changed_coefficients_or_patterns) {
+    const auto matrix = CsrMatrix::from_triplets(3, 3, {
+        {0,0,4}, {1,1,5}, {2,2,6},
+        {0,1,-1}, {1,0,-1}, {1,2,-1}, {2,1,-1}});
+    const auto changed_coefficients = CsrMatrix::from_triplets(3, 3, {
+        {0,0,4}, {1,1,5.5}, {2,2,6},
+        {0,1,-1}, {1,0,-1}, {1,2,-1}, {2,1,-1}});
+    // Same dimensions and nnz as matrix, but a different sparsity pattern.
+    const auto changed_pattern = CsrMatrix::from_triplets(3, 3, {
+        {0,0,4}, {1,1,5}, {2,2,6},
+        {0,2,-1}, {2,0,-1}, {1,2,-1}, {2,1,-1}});
+    const std::array solution_one{1.0, -2.0, 3.0};
+    const std::array solution_two{-4.0, 3.0, 1.0};
+    const auto options = ic_options();
+    CachedConjugateGradient cache;
+
+    const auto first = cache.solve(matrix, matrix.multiply(solution_one), options);
+    NOVA_REQUIRE(first.converged && cache.factor_builds() == 1);
+    const auto second = cache.solve(matrix, matrix.multiply(solution_two), options);
+    NOVA_REQUIRE(second.converged && cache.factor_builds() == 1);
+    for (std::size_t i = 0; i < 3; ++i) {
+        NOVA_REQUIRE_NEAR(first.solution[i], solution_one[i], 1e-11);
+        NOVA_REQUIRE_NEAR(second.solution[i], solution_two[i], 1e-11);
+    }
+
+    const auto third = cache.solve(
+        changed_coefficients, changed_coefficients.multiply(solution_one), options);
+    NOVA_REQUIRE(third.converged && cache.factor_builds() == 2);
+    const auto fourth = cache.solve(
+        changed_pattern, changed_pattern.multiply(solution_two), options);
+    NOVA_REQUIRE(fourth.converged && cache.factor_builds() == 3);
+    for (std::size_t i = 0; i < 3; ++i) {
+        NOVA_REQUIRE_NEAR(third.solution[i], solution_one[i], 1e-11);
+        NOVA_REQUIRE_NEAR(fourth.solution[i], solution_two[i], 1e-11);
+    }
+
+    // A different preconditioner bypasses the IC(0) cache without invalidating it.
+    auto jacobi = options;
+    jacobi.preconditioner = PreconditionerType::Jacobi;
+    NOVA_REQUIRE(cache.solve(changed_pattern, changed_pattern.multiply(solution_one), jacobi).converged);
+    NOVA_REQUIRE(cache.factor_builds() == 3);
+    NOVA_REQUIRE(cache.solve(changed_pattern, changed_pattern.multiply(solution_one), options).converged);
+    NOVA_REQUIRE(cache.factor_builds() == 3);
+
+    // A failed rebuild must leave the last valid matrix/factor pair usable.
+    const auto bad_spd = CsrMatrix::from_triplets(4,4,{
+        {0,0,4}, {1,1,9}, {2,2,9}, {3,3,9}, {0,1,3}, {1,0,3},
+        {1,2,-6}, {2,1,-6}, {2,3,-4}, {3,2,-4}, {0,3,-5}, {3,0,-5}});
+    NOVA_REQUIRE(rejects([&] {
+        (void)cache.solve(bad_spd, std::array{1.0,1.0,1.0,1.0}, options);
+    }));
+    NOVA_REQUIRE(cache.factor_builds() == 3);
+    NOVA_REQUIRE(cache.solve(changed_pattern, changed_pattern.multiply(solution_two), options).converged);
+    NOVA_REQUIRE(cache.factor_builds() == 3);
 }

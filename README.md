@@ -224,11 +224,16 @@ IC(0) is an unshifted natural-order zero-fill factor: it rejects asymmetric
 matrices and unresolved/non-positive pivots rather than silently changing the
 system or falling back. Some SPD matrices do not admit a usable natural-order
 IC(0) factor; use Jacobi or no preconditioner for those cases. IC(0) is CG-only;
-GMRES and BiCGSTAB continue to accept None or Jacobi. The factor is currently
-built once per CG solve; reuse across identical transient time-step matrices
-is a separate optimization.
+GMRES and BiCGSTAB continue to accept None or Jacobi. Use an instance of `nova::linalg::CachedConjugateGradient` when solving
+multiple right-hand sides. It retains one IC(0) factor and reuses it only when
+matrix dimensions, sparsity and every stored coefficient are exactly
+unchanged; any coefficient or pattern change triggers a rebuild. The fixed-step
+2D and 3D transient solvers own one cache per integration. Time-dependent Robin
+coefficients therefore refresh the factor when they change the system matrix.
+Cache instances are stateful and not thread-safe; adaptive step-doubling cache
+sharing across separate trial integrations remains future work.
 
-The 2D P1/P2 stationary solver supports compatible pure-Neumann components with a zero-area-mean gauge; it remains scalar and isotropic. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. Factor reuse across transient steps, multilevel preconditioning, error-driven mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The 2D P1/P2 stationary solver supports compatible pure-Neumann components with a zero-area-mean gauge; it remains scalar and isotropic. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. IC(0) factor sharing across adaptive step-doubling trial integrations, multilevel preconditioning, error-driven mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
