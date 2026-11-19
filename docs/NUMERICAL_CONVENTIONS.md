@@ -27,6 +27,12 @@ with Dirichlet data on \(\Gamma_D\) and prescribed outward physical flux \(q_n=-
 
 For a Robin condition, the outward flux is \(q_n=h(u-u_\infty)\), with non-negative transfer coefficient \(h\). The weak form adds \(\int_{\Gamma_R}h u v\,d\Gamma\) to the left-hand side and \(\int_{\Gamma_R}h u_\infty v\,d\Gamma\) to the right-hand side.
 
+## Stationary scalar nullspaces
+
+A component consists of DOFs connected by element support. A prescribed DOF or positive Robin transfer at a boundary quadrature point anchors that component. Every remaining component has a constant mode. Compatibility requires the component sum of assembled loads to vanish. The test is |sum(b_i)| <= 1e-10 sum(|b_i^q|), using individual volume and boundary quadrature contributions as the scale; there is no absolute floor. A zero-transfer Robin condition contributes no anchor. Disconnected components are checked separately.
+
+The solver temporarily pins the first DOF of each floating component to zero and symmetrically eliminates its column. The linear-solver result retains the raw gauge-fixed CG iterate and true residual, while the returned FE field is shifted to zero integrated component mean. For a triangle of area A, each P1 basis integral is A/3. For P2, the three vertex basis integrals vanish and each edge-midpoint basis integral is A/3. On a P1 tetrahedron each vertex basis integral is V/4. These weights preserve the FE integral on nonuniform meshes. Triangle neighbors across a shared edge must occupy opposite sides, and every mesh vertex must have element support.
+
 ## Reference triangle and P1 basis
 
 The reference triangle has vertices \((r,s)=(0,0),(1,0),(0,1)\). Its linear shape functions are

@@ -2,6 +2,8 @@
 
 #include "nova/fem/h1_space_2d.hpp"
 #include "nova/fem/triangle_p1.hpp"
+#include "diffusion_nullspace.hpp"
+#include "constrained_diffusion.hpp"
 #include "nova/linalg/csr_matrix.hpp"
 
 #include <algorithm>
@@ -80,14 +82,15 @@ ScalarDiffusion2DResult solve_scalar_diffusion_h1_2d(
     const std::size_t vertex_count = problem.mesh.nodes.size();
     const std::size_t n = space.dimension();
     const std::size_t local_n = space.element_dof_count();
+    detail::DiffusionNullspace nullspace(n, problem.mesh.elements.size(),
+        [&](std::size_t e) {
+            const auto& local = dofs.element_dofs(e);
+            return std::span<const std::size_t>(local.dofs.data(), local.count);
+        });
 
     if (!problem.diffusivity || !problem.source) {
         throw std::invalid_argument("Diffusivity and source functions are required.");
     }
-    if (problem.dirichlet_constraints.empty() && problem.dirichlet_edges.empty()) {
-        throw std::invalid_argument("At least one Dirichlet constraint or edge is required.");
-    }
-
     // Explicit nodal constraints retain the original P1 API. For P2, use
     // Dirichlet edges to also constrain their shared midpoint DOFs.
     std::vector<std::optional<double>> prescribed(n);
@@ -190,7 +193,13 @@ ScalarDiffusion2DResult solve_scalar_diffusion_h1_2d(
         const double j10 = p1.y - p0.y;
         const double j11 = p2.y - p0.y;
         const double det = j00 * j11 - j01 * j10;
-        // Mesh validation rejects zero/near-zero Jacobians.
+        // Exact integrals of the P1/P2 basis functions on this triangle.
+        // P2 vertex basis integrals are zero; each edge basis integrates to A/3.
+        const long double one_third_area = std::abs(static_cast<long double>(det)) / 6.0L;
+        const std::size_t first_weighted = order == H1TriangleOrder::P2 ? 3U : 0U;
+        for (std::size_t i = first_weighted; i < local_n; ++i) {
+            nullspace.add_basis_integral(local_dofs[i], one_third_area);
+        }
         std::array<std::array<double, 6>, 6> local_matrix{};
         std::array<double, 6> local_rhs{};
 
@@ -218,7 +227,9 @@ ScalarDiffusion2DResult solve_scalar_diffusion_h1_2d(
                 };
             }
             for (std::size_t i = 0; i < local_n; ++i) {
-                local_rhs[i] += f * basis.values[i] * weight;
+                const double load = f * basis.values[i] * weight;
+                local_rhs[i] += load;
+                nullspace.record_load(local_dofs[i], load);
                 for (std::size_t j = 0; j < local_n; ++j) {
                     const double dot =
                         physical_gradients[i][0] * physical_gradients[j][0] +
@@ -272,7 +283,9 @@ ScalarDiffusion2DResult solve_scalar_diffusion_h1_2d(
             }
             const auto phi = edge_shape(order, q.t);
             for (std::size_t i = 0; i < edge_n; ++i) {
-                rhs[ids[i]] -= flux * phi[i] * length * q.weight;
+                const double load = flux * phi[i] * length * q.weight;
+                rhs[ids[i]] -= load;
+                nullspace.record_load(ids[i], load);
                 if (!std::isfinite(rhs[ids[i]])) {
                     throw std::overflow_error("Neumann load-vector accumulation overflowed.");
                 }
@@ -297,6 +310,9 @@ ScalarDiffusion2DResult solve_scalar_diffusion_h1_2d(
                 throw std::invalid_argument("Robin ambient value must be finite.");
             }
             const auto phi = edge_shape(order, q.t);
+            if (h > 0.0) {
+                nullspace.anchor(ids[0]);
+            }
             const double weight = length * q.weight;
             for (std::size_t i = 0; i < edge_n; ++i) {
                 rhs[ids[i]] += h * ambient * phi[i] * weight;
@@ -310,37 +326,11 @@ ScalarDiffusion2DResult solve_scalar_diffusion_h1_2d(
         }
     }
 
-    // Symmetric strong Dirichlet elimination preserves CG's SPD matrix.
-    std::vector<linalg::Triplet> constrained_entries;
-    if (n > constrained_entries.max_size() - entries.size()) {
-        throw std::length_error("Constrained finite-element matrix is too large.");
-    }
-    constrained_entries.reserve(entries.size() + n);
-    for (const linalg::Triplet& entry : entries) {
-        if (!prescribed[entry.row].has_value()) {
-            if (prescribed[entry.column].has_value()) {
-                rhs[entry.row] -= entry.value * *prescribed[entry.column];
-                if (!std::isfinite(rhs[entry.row])) {
-                    throw std::overflow_error("Dirichlet RHS correction overflowed.");
-                }
-            } else {
-                constrained_entries.push_back(entry);
-            }
-        }
-    }
-    for (std::size_t i = 0; i < n; ++i) {
-        if (prescribed[i].has_value()) {
-            rhs[i] = *prescribed[i];
-            constrained_entries.push_back({i, i, 1.0});
-        }
-    }
+    nullspace.impose_gauges(rhs, prescribed);
 
-    const linalg::CsrMatrix matrix =
-        linalg::CsrMatrix::from_triplets(n, n, constrained_entries);
-    linalg::SolverResult solver = linalg::solve_conjugate_gradient(
-        matrix, std::span<const double>(rhs), solver_options
-    );
-    return {solver.solution, std::move(solver)};
+    auto solver = detail::solve_constrained_diffusion(
+        std::move(entries), std::move(rhs), prescribed, solver_options);
+    return {nullspace.physical_values(solver.solution), std::move(solver)};
 }
 
 } // namespace nova::fem

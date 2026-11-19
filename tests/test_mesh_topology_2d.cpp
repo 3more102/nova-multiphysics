@@ -83,3 +83,17 @@ NOVA_TEST(diffusion_2d_rejects_duplicate_natural_edge_conditions) {
     }
     NOVA_REQUIRE(threw);
 }
+
+NOVA_TEST(mesh2d_requires_opposite_sides_of_a_shared_edge_and_referenced_vertices) {
+    nova::fem::TriangleMesh2D mesh{{{0,0}, {1,0}, {0,1}, {0.2,0.5}}, {{0,1,2}, {1,0,3}}};
+    for (int i = 0; i < 2; ++i) {
+        bool rejected = false;
+        try {
+            mesh.validate();
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        NOVA_REQUIRE(rejected);
+        mesh.elements.resize(1);
+    }
+}
