@@ -97,6 +97,7 @@ The prototype currently contains:
 - A 1D P1 finite-element Poisson benchmark.
 - A validated 2D triangle mesh and structured rectangular mesh generator.
 - Continuous P1 tetrahedral diffusion with mixed boundary conditions, componentwise compatibility checks, cell or spatial conductivities and raw Fourier heat flux.
+- Experimental scalar electrostatic Poisson interface on P1 tetrahedra, reusing scalar/tensor diffusion assembly and returning per-cell E, D and stored field energy.
 - Tagged Gmsh 2.2 input and legacy VTK output through the steady 3D executable.
 - Reusable H1 P1/P2 reference-triangle basis functions and positive degree-four quadrature.
 - A shared H1 P1/P2 isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric sources, strong nodal and boundary-edge Dirichlet constraints, and P1/P2 Neumann/Robin edge terms.
@@ -108,7 +109,7 @@ The prototype currently contains:
 - L2 and H1 error-norm calculations for nodal P1 fields.
 - Automated numerical and input-validation tests.
 
-The 2D and 3D stationary diffusion adapters share a component nullspace implementation. The DOF map defines connectivity; each adapter supplies its exact basis integrals and quadrature load magnitudes. The shared symmetric elimination compacts free triplets in place, and CG initializes identity rows at their prescribed values. P1/P2 triangle pure-Neumann components require compatible loads and return a zero-area-mean physical field. Anisotropic 2D tensors, adaptive meshing and a generalized physics residual/tangent interface remain open. The nonlinear solver is not yet connected to a general material or multiphysics model.
+The 2D and 3D stationary diffusion adapters share a component nullspace implementation. The DOF map defines connectivity; each adapter supplies its exact basis integrals and quadrature load magnitudes. The shared symmetric elimination compacts free triplets in place, and CG initializes identity rows at their prescribed values. P1/P2 triangle pure-Neumann components require compatible loads and return a zero-area-mean physical field. Anisotropic 2D tensors, adaptive meshing and a generalized physics residual/tangent interface remain open. The electrostatic interface is not a Maxwell solver: it does not yet support floating conductors, surface-charge unknowns, AC/transient fields or equilibrated displacement recovery. The nonlinear solver is not yet connected to a general material or multiphysics model.
 
 ## 4. Dependency policy
 

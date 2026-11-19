@@ -131,6 +131,11 @@ Remaining:
 - Rigid-body and patch tests.
 
 ## M5 — Electromagnetics and optics
+Implemented (experimental):
+- Scalar electrostatic Poisson equation on P1 tetrahedra with scalar or SPD tensor permittivity.
+- Spatial and additive per-cell free charge, fixed potentials, prescribed normal displacement, pure-Neumann gauge and stored-field-energy diagnostics.
+
+Remaining:
 - Complex-valued algebra.
 - H(curl) function spaces.
 - Nedelec elements.
