@@ -217,3 +217,46 @@ NOVA_TEST(energy_balance_3d_validates_sources_mesh_boundary_and_constraints) {
     problem.cell_diffusivity.clear();
     NOVA_REQUIRE(rejects([&] { (void)evaluate_diffusion_energy_balance_3d(problem, field); }));
 }
+
+NOVA_TEST(energy_balance_3d_pure_neumann_gauge_does_not_count_as_physical_dirichlet) {
+    ScalarDiffusion3DProblem problem;
+    problem.mesh = {{{0,0,0}, {1,0,0}, {0,1,0}, {0,0,1}}, {{0,1,2,3}}};
+    problem.diffusivity = [](double, double, double) { return 2.0; };
+    problem.source = [](double, double, double) { return 6.0; };
+    problem.neumann_faces.push_back({
+        {0,2,3}, [](double, double, double) { return 2.0; }
+    });
+    const auto solution = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(solution.linear_solver.converged);
+    const auto report = evaluate_diffusion_energy_balance_3d(problem, solution.values);
+    NOVA_REQUIRE(report.constrained_nodes == 0);
+    NOVA_REQUIRE(report.free_nodes == 4);
+    NOVA_REQUIRE_NEAR(report.generated_heat, 1.0, 1e-12);
+    NOVA_REQUIRE_NEAR(report.neumann_outward_heat, 1.0, 1e-12);
+    NOVA_REQUIRE_NEAR(report.constraint_outward_heat, 0.0, 1e-12);
+    NOVA_REQUIRE_NEAR(report.signed_balance_defect, 0.0, 1e-12);
+    NOVA_REQUIRE(report.max_free_equation_residual < 1e-11);
+}
+
+NOVA_TEST(energy_balance_3d_all_fixed_temperatures_preserve_source_reaction) {
+    ScalarDiffusion3DProblem problem;
+    problem.mesh = {{{0,0,0}, {1,0,0}, {0,1,0}, {0,0,1}}, {{0,1,2,3}}};
+    problem.diffusivity = [](double, double, double) { return 2.0; };
+    problem.source = [](double, double, double) { return 20.0; };
+    problem.cell_source = {40.0};
+    for (std::size_t node = 0; node < 4; ++node) {
+        problem.dirichlet_constraints.push_back({node, 300.0});
+    }
+    const auto solution = solve_scalar_diffusion_3d(problem);
+    NOVA_REQUIRE(solution.linear_solver.converged);
+    const auto report = evaluate_diffusion_energy_balance_3d(problem, solution.values);
+    NOVA_REQUIRE(report.constrained_nodes == 4);
+    NOVA_REQUIRE(report.free_nodes == 0);
+    // T_h is uniform, so raw P1 element flux vanishes, but a 10 W
+    // prescribed-node reaction removes the positive volumetric source.
+    NOVA_REQUIRE_NEAR(report.generated_heat, 10.0, 1e-12);
+    NOVA_REQUIRE_NEAR(report.constraint_outward_heat, 10.0, 1e-10);
+    NOVA_REQUIRE_NEAR(report.neumann_outward_heat, 0.0, 1e-14);
+    NOVA_REQUIRE_NEAR(report.robin_outward_heat, 0.0, 1e-14);
+    NOVA_REQUIRE_NEAR(report.signed_balance_defect, 0.0, 1e-10);
+}
