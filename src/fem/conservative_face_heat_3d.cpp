@@ -130,7 +130,8 @@ struct DisjointSet {
             ? 0.0 : problem.cell_source[cell];
         for (const auto& q : tetrahedron_degree_two_quadrature) {
             const auto p = detail::simplex_point(mesh, tetra, q.shape);
-            const double spatial = problem.source(p.x, p.y, p.z);
+            const double spatial = problem.source
+                ? problem.source(p.x, p.y, p.z) : 0.0;
             const double density = spatial + cell_source;
             if (!std::isfinite(density)) {
                 throw std::overflow_error("Reconstruction source density overflowed.");

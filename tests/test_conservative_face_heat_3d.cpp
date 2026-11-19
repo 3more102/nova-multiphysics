@@ -310,3 +310,20 @@ NOVA_TEST(face_heat_3d_pure_neumann_compatibility_ignores_large_internal_flux_sc
         (void)reconcile_p1_face_heat_rates_3d(p, values);
     }));
 }
+
+
+NOVA_TEST(face_heat_3d_cell_source_is_supported_without_spatial_source_callback) {
+    auto p = example_problem();
+    p.source = {};
+    p.cell_source = {6.0, 6.0};
+    fix_all_exterior(p, 0.0);
+    const std::array values{0.0,0.0,0.0,0.0,0.0};
+
+    const auto report = reconcile_p1_face_heat_rates_3d(p, values);
+    NOVA_REQUIRE_NEAR(report.generated_heat_per_cell[0], 1.0, 1e-12);
+    NOVA_REQUIRE_NEAR(report.generated_heat_per_cell[1], 1.0, 1e-12);
+    NOVA_REQUIRE_NEAR(report.total_generated_heat, 2.0, 1e-12);
+    NOVA_REQUIRE_NEAR(report.total_exterior_outward_heat, 2.0, 1e-8);
+    NOVA_REQUIRE(report.max_absolute_cell_defect < 1e-8);
+    NOVA_REQUIRE(report.multiplier_solver.converged);
+}
