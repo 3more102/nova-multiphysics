@@ -4,6 +4,7 @@ import argparse
 import itertools
 import math
 from pathlib import Path
+import shutil
 import statistics
 import subprocess
 import tempfile
@@ -244,7 +245,9 @@ if __name__ == "__main__":
         root = Path(work)
         output = root / "wall.vtk"
         check_wall(args.exe.resolve(), args.fixture, output)
-        check_invalid_cases(args.exe.resolve(), args.fixture, output)
+        private_fixture = root / "input.msh"
+        shutil.copyfile(args.fixture, private_fixture)
+        check_invalid_cases(args.exe.resolve(), private_fixture, output)
         check_refinement(args.exe.resolve(), root)
         if args.benchmark:
             benchmark(args.exe.resolve(), root)
