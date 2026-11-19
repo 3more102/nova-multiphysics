@@ -339,8 +339,6 @@ TransientHeat3DResult solve_transient_heat_3d(
                 throw std::overflow_error("Transient 3D corrected temperature overflowed.");
             }
         }
-        // Publish the physical state rather than the internal correction.
-        solved.solution = next;
         const auto unconstrained_lhs = lhs.multiply(next);
         const auto previous_robin = robin.multiply(state);
         const auto next_robin = robin.multiply(next);
@@ -367,7 +365,18 @@ TransientHeat3DResult solve_transient_heat_3d(
             throw std::overflow_error("Transient 3D energy diagnostic overflowed.");
         }
 
-        state = next;
+        if (options.on_step) {
+            options.on_step(step, next, diag);
+        }
+        // Preserve the full physical state by default for existing consumers.
+        // Streaming users can keep only per-step solver metadata, reducing
+        // long-run history storage from O(steps * nodes) to O(steps).
+        if (options.retain_step_solution_vectors) {
+            solved.solution = next;
+        } else {
+            solved.solution.clear();
+        }
+        state = std::move(next);
         result.diagnostics.push_back(diag);
         result.linear_solvers.push_back(std::move(solved));
     }
