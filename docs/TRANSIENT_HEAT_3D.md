@@ -82,6 +82,23 @@ ctest --test-dir build -C Release --output-on-failure
 
 These checks verify the mathematical discretization but **do not** constitute experimental or industrial validation.
 
+
+## Temporal convergence benchmark
+
+An independent single-tetrahedron semidiscrete benchmark fixes three of the
+four vertices at zero temperature, leaves the last vertex at an initial 10,
+and uses unit thermal capacity and conductivity. The remaining exact
+finite-element ordinary differential equation is:
+
+`(1/60) dT/dt + (1/6) T = 0`, so `T(t) = 10 exp(-10 t)`.
+
+The test evaluates the final time `t = 0.2` with 10, 20, and 40 uniform
+steps. Halving the time step must reduce Backward Euler's error by
+approximately 2 (first-order) and Crank–Nicolson's error by approximately
+4 (second-order). This tests temporal consistency independent of the
+implementation's update formula, although it is not a full spatial-mesh
+convergence or physical validation study.
+
 ## Explicit limits and next milestone
 
 Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Current result history retains every CG solution vector, so a long run can consume memory proportional to steps × node count. Next: a streaming result callback, Gmsh-tagged transient CLI with `.pvd` export, and an independent temporal-convergence benchmark on a spatially varying manufactured solution.
