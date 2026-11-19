@@ -142,6 +142,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_conservative_face_heat_3d.cpp
         tests/test_electrostatics_3d.cpp
         tests/test_transient_heat_3d.cpp
+        tests/test_transient_heat_3d_restart.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_gmsh41_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
