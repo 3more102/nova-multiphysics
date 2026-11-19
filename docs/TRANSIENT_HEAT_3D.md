@@ -86,4 +86,19 @@ These checks verify the mathematical discretization but **do not** constitute ex
 
 ## Explicit limits and next milestone
 
-Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Current result history retains every CG solution vector, so a long run can consume memory proportional to steps × node count. Next: a streaming result callback, Gmsh-tagged transient CLI with `.pvd` export, and an independent temporal-convergence benchmark on a spatially varying manufactured solution.
+Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. By default, `linear_solvers` retains one complete physical nodal solution per step (memory O(steps × nodes)). For a long simulation, set `options.retain_step_solution_vectors = false` to keep per-step solver metadata and energy diagnostics but leave each `linear_solvers[i].solution` empty. The final state always remains available as `result.temperature`.
+
+For streaming visualization or data export, assign `options.on_step` to a callback of signature `(std::size_t step, const std::vector<double>& temperatures, const TransientHeatStepDiagnostics3D& diagnostics)`. It runs after each successfully solved step, with **one-based** step index and the physical nodal solution. The temperature reference is temporary; copy or serialize it inside the callback if you need it later. Exceptions thrown by a callback abort the solve and propagate to the caller.
+
+```cpp
+options.retain_step_solution_vectors = false;
+options.on_step = [](std::size_t step, const std::vector<double>& values,
+                     const TransientHeatStepDiagnostics3D& diagnostic) {
+    // Stream values (and diagnostic.time) to a writer here.
+    (void)step;
+    (void)values;
+    (void)diagnostic;
+};
+```
+
+This removes O(steps × nodes) **result-history storage**, not the O(nodes + sparse-matrix storage) working memory needed by the solve. Next: a Gmsh-tagged transient CLI with `.pvd` export and an independent temporal-convergence benchmark on a spatially varying manufactured solution.
