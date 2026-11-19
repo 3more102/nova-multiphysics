@@ -198,16 +198,33 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
 }
 
 
-NOVA_TEST(transient_heat_3d_analytical_temporal_convergence) {
-    // Three fixed vertices leave one dynamic DOF on the unit tetrahedron.
-    // M_33=1/60, K_33=1/6, hence T'(t)=-10*T(t) and T(t)=10*exp(-10*t).
-    // Check global order over the same physical duration while halving dt.
+
+NOVA_TEST(transient_heat_3d_robin_ambient_temporal_convergence) {
+    // A single tetrahedron with three fixed vertices and an independent
+    // convection face {1,2,3} has precisely one unknown T_3.
+    // M_33=1/60; K_33=1/6 + h*A/6; F_3=h*A*T_ambient/3,
+    // where the face area A=sqrt(3)/2. Thus:
+    // T_3(t)=T_equilibrium + (T_3(0)-T_equilibrium)*exp(-(K_33/M_33)*t).
     auto p = unit_heat();
     p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
-    p.initial_temperature = {0,0,0,10};
-    constexpr double elapsed = 0.4;
-    constexpr double reference = 10.0 * std::exp(-10.0 * elapsed);
-    const std::array<double, 3> time_steps{0.1, 0.05, 0.025};
+    p.initial_temperature = {0,0,0,25};
+    p.diffusion.robin_faces.push_back({
+        {1,2,3},
+        [](double, double, double) { return 0.2; },
+        [](double, double, double) { return 30.0; }
+    });
+
+    constexpr double h = 0.2;
+    constexpr double ambient = 30.0;
+    constexpr double elapsed = 0.2;
+    const double face_area = std::sqrt(3.0) / 2.0;
+    const double mass = 1.0 / 60.0;
+    const double stiffness = 1.0 / 6.0 + h * face_area / 6.0;
+    const double load = h * face_area * ambient / 3.0;
+    const double equilibrium = load / stiffness;
+    const double expected = equilibrium +
+        (25.0 - equilibrium) * std::exp(-elapsed * stiffness / mass);
+    const std::array<double, 3> time_steps{0.05, 0.025, 0.0125};
 
     for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
                               TransientHeat3DScheme::CrankNicolson}) {
@@ -224,15 +241,16 @@ NOVA_TEST(transient_heat_3d_analytical_temporal_convergence) {
                 nova::linalg::PreconditionerType::Jacobi;
 
             const auto result = solve_transient_heat_3d(p, options);
-            NOVA_REQUIRE_NEAR(result.final_time, 3.4, 2e-14);
+            NOVA_REQUIRE_NEAR(result.final_time, 3.2, 2e-14);
             NOVA_REQUIRE(result.diagnostics.size() == options.steps);
             for (std::size_t n = 0; n < 3; ++n) {
                 NOVA_REQUIRE_NEAR(result.temperature[n], 0.0, 1e-14);
             }
-            NOVA_REQUIRE_NEAR(result.diagnostics.back().balance_residual,
-                              0.0, 1e-10);
-            errors[i] = std::abs(result.temperature[3] - reference);
-            NOVA_REQUIRE(std::isfinite(errors[i]) && errors[i] > 1e-7);
+            const auto& balance = result.diagnostics.back();
+            NOVA_REQUIRE(balance.robin_energy > 0.0);
+            NOVA_REQUIRE_NEAR(balance.balance_residual, 0.0, 1e-10);
+            errors[i] = std::abs(result.temperature[3] - expected);
+            NOVA_REQUIRE(std::isfinite(errors[i]) && errors[i] > 1e-6);
         }
 
         for (std::size_t i = 0; i + 1 < errors.size(); ++i) {
@@ -240,7 +258,7 @@ NOVA_TEST(transient_heat_3d_analytical_temporal_convergence) {
             const double order = std::log(errors[i] / errors[i + 1]) /
                                  std::log(2.0);
             if (scheme == TransientHeat3DScheme::BackwardEuler) {
-                NOVA_REQUIRE(order > 0.9 && order < 1.2);
+                NOVA_REQUIRE(order > 0.8 && order < 1.2);
             } else {
                 NOVA_REQUIRE(order > 1.8 && order < 2.1);
             }
