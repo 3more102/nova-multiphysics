@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
                 throw std::invalid_argument("VTK series requires a safe .pvd output filename.");
             }
             // Observe the initial projected state plus each completed step.
-            // The solver runs exactly once and does not retain full field history.
+            // The exporter runs the solver once and creates no extra field-history buffer.
             options.step_observer = [&](double time, const std::vector<double>& values) {
                 std::ostringstream suffix;
                 suffix << std::setfill('0') << std::setw(6) << frames.size();
