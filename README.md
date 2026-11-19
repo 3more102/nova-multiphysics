@@ -41,7 +41,9 @@ on continuous triangular P1 and P2 meshes using:
 Import a conforming first-order tetrahedral Gmsh MSH 2.2 ASCII mesh, assign
 conductivities by volume ID and fixed temperature, outward flux or convection
 by exterior surface ID. The result file contains nodal temperature, volume IDs
-and a heat-flux vector per tetrahedron.
+and a heat-flux vector per tetrahedron. When region-specific heat sources are
+provided, VTK also contains effective per-cell `heat_generation` (W/m³),
+including any uniform `--source` contribution.
 
 ```sh
 ./build/nova_gmsh_diffusion_3d examples/gmsh_diffusion_3d/two_layer_wall.msh --material 11 2 --material 22 6 --temperature 101 400 --convection 102 12 300 --vtk wall.vtk

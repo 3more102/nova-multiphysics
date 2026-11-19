@@ -129,3 +129,37 @@ NOVA_TEST(vtk3d_tagged_conduction_validates_cell_data_before_emitting_geometry) 
     NOVA_REQUIRE(output.str().find("LOOKUP_TABLE default\n12\nVECTORS heat_flux double\n") != std::string::npos);
     NOVA_REQUIRE(output.str().find("e-50") != std::string::npos);
 }
+
+
+NOVA_TEST(vtk3d_heat_generation_field_is_precise_optional_and_prevalidated) {
+    const auto mesh = one_tetrahedron();
+    const std::vector<double> temperature(4, 300.0);
+    const std::array tags{11};
+    const std::array fields{nova::fem::P1TetrahedralFlux3D{}};
+    const std::array sources{120.125};
+    std::ostringstream output;
+    const std::array<double, 2> wrong_size{120.0, 0.0};
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_conduction_3d(
+            output, mesh, temperature, tags, fields, wrong_size);
+    }));
+    NOVA_REQUIRE(output.str().empty());
+    const std::array nonfinite{std::numeric_limits<double>::quiet_NaN()};
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_conduction_3d(
+            output, mesh, temperature, tags, fields, nonfinite);
+    }));
+    NOVA_REQUIRE(output.str().empty());
+    output.precision(4);
+    nova::io::write_legacy_vtk_conduction_3d(
+        output, mesh, temperature, tags, fields, sources);
+    NOVA_REQUIRE(output.precision() == 4);
+    NOVA_REQUIRE(output.str().find(
+        "SCALARS material_id int 1\nLOOKUP_TABLE default\n11\n"
+        "SCALARS heat_generation double 1\nLOOKUP_TABLE default\n"
+        "120.125\nVECTORS heat_flux double\n") != std::string::npos);
+    std::ostringstream legacy;
+    nova::io::write_legacy_vtk_conduction_3d(
+        legacy, mesh, temperature, tags, fields);
+    NOVA_REQUIRE(legacy.str().find("heat_generation") == std::string::npos);
+}

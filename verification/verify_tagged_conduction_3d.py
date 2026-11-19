@@ -43,7 +43,7 @@ def write_wall(path, nx, ny, nz):
         out.write("$EndElements\n")
 
 
-def read_fields(path):
+def read_fields(path, require_heat_generation=False):
     """Read exactly the numerical fields that a downstream VTK consumer receives."""
     lines = path.read_text(encoding="ascii").splitlines()
     if lines[0] != "# vtk DataFile Version 3.0" or lines[2] != "ASCII":
@@ -82,7 +82,15 @@ def read_fields(path):
     temperature = [real() for _ in points]
     expect(f"CELL_DATA {m} SCALARS material_id int 1 LOOKUP_TABLE default")
     tags = [int(next(tokens)) for _ in cells]
-    expect("VECTORS heat_flux double")
+    token = next(tokens)
+    sources = None
+    if token == "SCALARS":
+        expect("heat_generation double 1 LOOKUP_TABLE default")
+        sources = [real() for _ in cells]
+        token = next(tokens)
+    if token != "VECTORS":
+        raise ValueError("Missing VTK heat flux vectors")
+    expect("heat_flux double")
     flux = [tuple(real() for _ in range(3)) for _ in cells]
     if next(tokens, None) is not None:
         raise ValueError("Unexpected trailing VTK data")
@@ -90,6 +98,10 @@ def read_fields(path):
         xs = [points[i][0] for i in cell]
         if not ((tag == 11 and max(xs) <= 0.5) or (tag == 22 and min(xs) >= 0.5)):
             raise ValueError("Exported volume ID does not match its geometric layer")
+    if require_heat_generation:
+        if sources is None:
+            raise ValueError("Expected cell heat_generation field")
+        return points, cells, temperature, flux, sources
     return points, cells, temperature, flux
 
 
@@ -223,7 +235,13 @@ def check_tagged_sources(exe, directory):
         write_wall(mesh, n, n, n)
         run(exe, mesh, vtk, MATERIALS + HOT + ROBIN
             + ["--heat-source", "11", "120", "--heat-source", "22", "360"])
-        points, cells, temperatures, fluxes = read_fields(vtk)
+        points, cells, temperatures, fluxes, sources = read_fields(
+            vtk, require_heat_generation=True)
+        for cell, source in zip(cells, sources):
+            xs = [points[node][0] for node in cell]
+            expected = 120 if max(xs) <= 0.5 else 360
+            if source != expected:
+                raise ValueError("Exported heat generation does not match physical volume")
         te = qe = 0.0
         for cell, (qx, qy, qz) in zip(cells, fluxes):
             xs = [points[i][0] for i in cell]
@@ -249,6 +267,16 @@ def check_tagged_sources(exe, directory):
             if not (orders[0] >= 1.65 and orders[1] >= 0.80):
                 raise ValueError("Insufficient convergence for tagged internal heat generation")
         previous = errors
+        if n == 2:
+            # A uniform spatial source is additive to each physical-region source.
+            run(exe, mesh, vtk, MATERIALS + HOT + ROBIN +
+                ["--source", "5", "--heat-source", "11", "120",
+                 "--heat-source", "22", "360"])
+            _, _, _, _, effective = read_fields(vtk, require_heat_generation=True)
+            for cell, source in zip(cells, effective):
+                expected = 125 if max(points[node][0] for node in cell) <= 0.5 else 365
+                if source != expected:
+                    raise ValueError("VTK heat generation omitted uniform source contribution")
         if n == 8:
             cold = [t for (x, _, _), t in zip(points, temperatures) if x == 1]
             interface = [t for (x, _, _), t in zip(points, temperatures) if x == 0.5]
