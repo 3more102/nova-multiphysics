@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -124,4 +125,27 @@ NOVA_TEST(transient_heat_3d_streaming_callback_exceptions_propagate) {
         (void)solve_transient_heat_3d(p, options);
     } catch (const std::invalid_argument&) {}
     NOVA_REQUIRE(calls == 0U);
+}
+
+
+NOVA_TEST(transient_heat_3d_rejects_time_steps_that_do_not_advance_physical_time) {
+    using namespace nova::fem;
+    auto p = make_streamed_unit_heat();
+    TransientHeat3DOptions options;
+    options.start_time = 1.0;
+    options.time_step = 0.5 * std::numeric_limits<double>::epsilon();
+    options.steps = 2;
+    std::size_t callbacks = 0;
+    options.on_step = [&](std::size_t, double, const std::vector<double>&) {
+        ++callbacks;
+    };
+
+    bool rejected = false;
+    try {
+        (void)solve_transient_heat_3d(p, options);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    NOVA_REQUIRE(rejected);
+    NOVA_REQUIRE(callbacks == 0U);
 }
