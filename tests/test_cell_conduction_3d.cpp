@@ -141,3 +141,99 @@ NOVA_TEST(bonded_oblique_interface_transmits_normal_flux_and_preserves_tangentia
         NOVA_REQUIRE_NEAR(fields[e].flux.z, expected.z, 2e-8);
     }
 }
+
+NOVA_TEST(cell_tensor_conductivity_stiffness_is_symmetric_and_orientation_independent) {
+    auto problem = single_cell();
+    problem.cell_diffusivity.clear();
+    problem.cell_diffusivity_tensors = {{4.0, 3.0, 2.0, 1.0, -0.5, 0.75}};
+    const double k[4][4] = {
+        {11.5,-4.5,-4.75,-2.25},
+        {-4.5,4.0,1.0,-0.5},
+        {-4.75,1.0,3.0,0.75},
+        {-2.25,-0.5,0.75,2.0}
+    };
+    const detail::DiffusionMaterials3D materials(problem);
+    auto& cell = problem.mesh.elements.front();
+    for (int orientation = 0; orientation < 2; ++orientation) {
+        const auto gradients = evaluate_tetrahedron_p1_physical_gradients_3d(problem.mesh, 0);
+        const auto stiffness = detail::integrate_p1_volume_3d(
+            problem.mesh, cell, gradients, materials.on_cell(0), [](auto&&...) {});
+        for (std::size_t i = 0; i < 4; ++i) {
+            double sum = 0;
+            for (std::size_t j = 0; j < 4; ++j) {
+                NOVA_REQUIRE_NEAR(stiffness[i][j], k[cell[i]][cell[j]] / 6.0, 2e-15);
+                NOVA_REQUIRE(stiffness[i][j] == stiffness[j][i]);
+                sum += stiffness[i][j];
+            }
+            NOVA_REQUIRE_NEAR(sum, 0.0, 2e-15);
+        }
+        std::swap(cell[0], cell[2]);
+    }
+}
+
+NOVA_TEST(bonded_mixed_anisotropic_layers_preserve_normal_flux_and_transverse_jump) {
+    const auto box = make_box_mesh_3d(0, 1, 0, 1, 0, 1, 4, 2, 2);
+    ScalarDiffusion3DProblem problem;
+    problem.mesh = box.mesh;
+    const SymmetricTensor3D left{2, 3, 4, 0.4, -0.3, 0.2};
+    const SymmetricTensor3D right{6, 7, 9, -0.7, 0.6, -0.4};
+    for (auto& cell : problem.mesh.elements) {
+        double center_x = 0;
+        for (auto id : cell) center_x += problem.mesh.nodes[id].x / 4.0;
+        problem.cell_diffusivity_tensors.push_back(center_x < 0.5 ? left : right);
+        if (cell[0] % 2 == 0) std::swap(cell[1], cell[3]);
+    }
+    const auto exact = [](double x, double, double) {
+        return 400.0 - 240.0*(std::min(x, 0.5)/2.0 + std::max(x-0.5, 0.0)/6.0);
+    };
+    for (const auto& face : box.boundary_faces) {
+        problem.dirichlet_faces.push_back({face, exact});
+    }
+    problem.source = [](double, double, double) { return 0.0; };
+    nova::linalg::SolverOptions options;
+    options.relative_tolerance = 1e-13;
+    options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    const auto solved = solve_scalar_diffusion_3d(problem, options);
+    NOVA_REQUIRE(solved.linear_solver.converged);
+    for (std::size_t i = 0; i < solved.values.size(); ++i) {
+        const auto& p = problem.mesh.nodes[i];
+        NOVA_REQUIRE_NEAR(solved.values[i], exact(p.x, p.y, p.z), 2e-9);
+    }
+    const auto result = evaluate_p1_tetrahedral_flux_3d(problem, solved.values);
+    for (std::size_t i = 0; i < result.size(); ++i) {
+        const auto& tensor = problem.cell_diffusivity_tensors[i];
+        NOVA_REQUIRE_NEAR(result[i].flux.x, 240.0, 2e-8);
+        NOVA_REQUIRE_NEAR(result[i].flux.y, 240.0*tensor.xy/tensor.xx, 2e-8);
+        NOVA_REQUIRE_NEAR(result[i].flux.z, 240.0*tensor.xz/tensor.xx, 2e-8);
+    }
+}
+
+NOVA_TEST(cell_tensor_rejects_non_spd_wrong_size_and_conflicting_material_data) {
+    auto problem = single_cell();
+    problem.cell_diffusivity.clear();
+    const std::array nodal{0.0, 1.0, 2.0, 3.0};
+    auto rejected_by_solver_and_postprocessor = [&] {
+        NOVA_REQUIRE(rejects([&] { (void)solve_scalar_diffusion_3d(problem); }));
+        NOVA_REQUIRE(rejects([&] { (void)evaluate_p1_tetrahedral_flux_3d(problem, nodal); }));
+    };
+    for (const auto bad : {
+            SymmetricTensor3D{1,1,1,2,0,0},
+            SymmetricTensor3D{1,1,1,1,1,1},
+            SymmetricTensor3D{0,1,1,0,0,0},
+            SymmetricTensor3D{1,1,1,std::numeric_limits<double>::quiet_NaN(),0,0},
+            SymmetricTensor3D{1,1,std::numeric_limits<double>::infinity(),0,0,0}}) {
+        problem.cell_diffusivity_tensors = {bad};
+        rejected_by_solver_and_postprocessor();
+    }
+    problem.cell_diffusivity_tensors = {{1,1,1}, {2,2,2}};
+    rejected_by_solver_and_postprocessor();
+    problem.cell_diffusivity_tensors = {{1,1,1}};
+    problem.cell_diffusivity = {1};
+    rejected_by_solver_and_postprocessor();
+    problem.cell_diffusivity.clear();
+    problem.diffusivity = [](double,double,double) { return 1.0; };
+    rejected_by_solver_and_postprocessor();
+    problem.diffusivity = {};
+    problem.diffusivity_tensor = [](double,double,double) { return SymmetricTensor3D{1,1,1}; };
+    rejected_by_solver_and_postprocessor();
+}
