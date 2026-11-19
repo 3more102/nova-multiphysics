@@ -25,6 +25,39 @@ NOVA_TEST(csr_matrix_combines_duplicate_entries) {
     NOVA_REQUIRE_NEAR(matrix.at(1, 1), 0.0, 1.0e-14);
 }
 
+NOVA_TEST(csr_exact_entry_comparison_checks_values_pattern_and_dimensions) {
+    using nova::linalg::CsrMatrix;
+    const auto a = CsrMatrix::from_triplets(3, 4, {
+        {2,3,2.0}, {0,2,1.0}, {2,1,-3.0}
+    });
+    // Input triplet order and cancelled duplicate entries do not affect
+    // equality of the canonical stored matrix.
+    const auto same = CsrMatrix::from_triplets(3, 4, {
+        {2,1,-3.0}, {0,2,0.5}, {2,3,2.0}, {0,2,0.5},
+        {1,0,1.0}, {1,0,-1.0}
+    });
+    const auto new_value = CsrMatrix::from_triplets(3, 4, {
+        {0,2,1.0}, {2,1,-3.0}, {2,3,3.0}
+    });
+    const auto new_column = CsrMatrix::from_triplets(3, 4, {
+        {0,2,1.0}, {2,1,-3.0}, {2,2,2.0}
+    });
+    const auto new_row = CsrMatrix::from_triplets(3, 4, {
+        {0,2,1.0}, {1,3,2.0}, {2,1,-3.0}
+    });
+    const auto new_shape = CsrMatrix::from_triplets(4, 4, {
+        {0,2,1.0}, {2,1,-3.0}, {2,3,2.0}
+    });
+    NOVA_REQUIRE(a.has_identical_entries(same));
+    NOVA_REQUIRE(same.has_identical_entries(a));
+    NOVA_REQUIRE(!a.has_identical_entries(new_value));
+    NOVA_REQUIRE(!a.has_identical_entries(new_column));
+    NOVA_REQUIRE(!a.has_identical_entries(new_row));
+    NOVA_REQUIRE(!a.has_identical_entries(new_shape));
+    NOVA_REQUIRE(CsrMatrix::from_triplets(0,0,{}).has_identical_entries(
+        CsrMatrix::from_triplets(0,0,{})));
+}
+
 NOVA_TEST(csr_matrix_vector_product_is_correct) {
     const std::vector<nova::linalg::Triplet> entries{
         {0, 0, 4.0}, {0, 1, 1.0},
