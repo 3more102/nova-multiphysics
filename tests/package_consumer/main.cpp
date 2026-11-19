@@ -1,6 +1,7 @@
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
 #include "nova/linalg/csr_matrix.hpp"
+#include "nova/physics/electrostatics_3d.hpp"
 
 #include <cmath>
 #include <vector>
@@ -48,6 +49,30 @@ int main() {
     for (std::size_t i = 0; i < three_d.values.size(); ++i) {
         if (std::abs(three_d.values[i] - problem.mesh.nodes[i].x) > 1.0e-9)
             return 4;
+    }
+    // Exercise the installed experimental electrostatics API and exported symbol.
+    nova::physics::Electrostatics3DProblem electrostatic;
+    electrostatic.mesh = box.mesh;
+    electrostatic.permittivity = [](double, double, double) { return 2.0; };
+    for (const auto& face : box.boundary_faces) {
+        const bool left = electrostatic.mesh.nodes[face[0]].x == 0.0 &&
+            electrostatic.mesh.nodes[face[1]].x == 0.0 &&
+            electrostatic.mesh.nodes[face[2]].x == 0.0;
+        const bool right = electrostatic.mesh.nodes[face[0]].x == 1.0 &&
+            electrostatic.mesh.nodes[face[1]].x == 1.0 &&
+            electrostatic.mesh.nodes[face[2]].x == 1.0;
+        if (left || right) {
+            electrostatic.potential_faces.push_back({face,
+                [](double px, double, double) { return 10.0 * px; }});
+        }
+    }
+    const auto capacitor = nova::physics::solve_electrostatics_3d(electrostatic);
+    if (!capacitor.linear_solver.converged ||
+        capacitor.potential.size() != electrostatic.mesh.nodes.size() ||
+        std::abs(capacitor.stored_energy_joules - 100.0) > 1.0e-8) return 5;
+    for (std::size_t i = 0; i < capacitor.potential.size(); ++i) {
+        if (std::abs(capacitor.potential[i] - 10.0 * electrostatic.mesh.nodes[i].x) > 1.0e-9)
+            return 6;
     }
     return 0;
 }
