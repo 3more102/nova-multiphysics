@@ -17,6 +17,22 @@
 namespace nova::fem {
 namespace {
 
+struct RobinEnergySample {
+    BoundaryFace3D face{};
+    std::array<double, 3> shape{};
+    double transfer{};
+    double ambient{};
+    double weight{};
+};
+
+[[nodiscard]] double finite_energy_rate(const long double rate) {
+    if (!std::isfinite(rate) ||
+        std::abs(rate) > static_cast<long double>(std::numeric_limits<double>::max())) {
+        throw std::overflow_error("3D energy balance is outside finite double range.");
+    }
+    return static_cast<double>(rate);
+}
+
 void prescribe(
     std::vector<std::optional<double>>& prescribed,
     const std::size_t node,
@@ -140,6 +156,9 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
     );
 
     std::vector<double> rhs(node_count, 0.0);
+    long double generated_heat_rate = 0.0L;
+    long double neumann_heat_rate = 0.0L;
+    std::vector<RobinEnergySample> robin_energy_samples;
 
     for (std::size_t element = 0;
          element < problem.mesh.elements.size();
@@ -168,6 +187,9 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
                 const double source = spatial_source + cell_source;
                 if (!std::isfinite(source)) {
                     throw std::overflow_error("Combined 3D source density exceeds the finite range.");
+                }
+                if (problem.compute_energy_balance) {
+                    generated_heat_rate += static_cast<long double>(source) * weight;
                 }
                 for (std::size_t i = 0; i < local_dof_count; ++i) {
                     const double load = source * shape[i] * weight;
@@ -206,6 +228,9 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
                 );
             }
             const double weight = area_scale * quadrature.weight;
+            if (problem.compute_energy_balance) {
+                neumann_heat_rate += static_cast<long double>(flux) * weight;
+            }
             for (std::size_t i = 0; i < 3U; ++i) {
                 const std::size_t global_i = face[i];
                 const double boundary_load =
@@ -256,6 +281,11 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
             }
 
             const double weight = area_scale * quadrature.weight;
+            if (problem.compute_energy_balance) {
+                robin_energy_samples.push_back({
+                    face, quadrature.shape, transfer, ambient, weight
+                });
+            }
             for (std::size_t i = 0; i < 3U; ++i) {
                 const std::size_t global_i = face[i];
                 const double boundary_load =
@@ -294,11 +324,60 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         );
     }
 
+    // Capture only true physical Dirichlet rows before temporary nullspace
+    // gauges and symmetric elimination modify the assembled linear system.
+    // Retaining just constrained rows avoids copying the full triplet matrix.
+    std::vector<linalg::Triplet> dirichlet_rows;
+    long double dirichlet_rhs_sum = 0.0L;
+    if (problem.compute_energy_balance) {
+        for (std::size_t node = 0; node < node_count; ++node) {
+            if (prescribed[node]) dirichlet_rhs_sum += rhs[node];
+        }
+        for (const auto& entry : entries) {
+            if (prescribed[entry.row]) dirichlet_rows.push_back(entry);
+        }
+    }
+
     nullspace.impose_gauges(rhs, prescribed);
 
     auto solver = detail::solve_constrained_diffusion(
         std::move(entries), std::move(rhs), prescribed, solver_options);
-    return {nullspace.physical_values(solver.solution), std::move(solver)};
+    auto values = nullspace.physical_values(solver.solution);
+    std::optional<EnergyBalance3D> balance;
+    if (problem.compute_energy_balance) {
+        long double dirichlet_heat_rate = -dirichlet_rhs_sum;
+        for (const auto& entry : dirichlet_rows) {
+            dirichlet_heat_rate += static_cast<long double>(entry.value) *
+                values[entry.column];
+        }
+        long double robin_heat_rate = 0.0L;
+        for (const auto& sample : robin_energy_samples) {
+            long double temperature = 0.0L;
+            for (std::size_t i = 0; i < 3U; ++i) {
+                temperature += static_cast<long double>(sample.shape[i]) *
+                    values[sample.face[i]];
+            }
+            robin_heat_rate += static_cast<long double>(sample.transfer) *
+                (temperature - sample.ambient) * sample.weight;
+        }
+        const long double net = dirichlet_heat_rate +
+            neumann_heat_rate + robin_heat_rate;
+        const long double error = net - generated_heat_rate;
+        const long double scale = std::max({
+            std::abs(generated_heat_rate), std::abs(dirichlet_heat_rate),
+            std::abs(neumann_heat_rate), std::abs(robin_heat_rate)
+        });
+        balance = EnergyBalance3D{
+            finite_energy_rate(generated_heat_rate),
+            finite_energy_rate(dirichlet_heat_rate),
+            finite_energy_rate(neumann_heat_rate),
+            finite_energy_rate(robin_heat_rate),
+            finite_energy_rate(net),
+            finite_energy_rate(error),
+            finite_energy_rate(scale == 0.0L ? 0.0L : std::abs(error) / scale)
+        };
+    }
+    return {std::move(values), std::move(solver), std::move(balance)};
 }
 
 } // namespace nova::fem
