@@ -10,19 +10,59 @@
 namespace nova::linalg {
 namespace {
 
-[[nodiscard]] double dot(
-    const std::vector<double>& left,
-    const std::vector<double>& right
-) {
-    double result = 0.0;
-    for (std::size_t index = 0; index < left.size(); ++index) {
-        result += left[index] * right[index];
+// A mantissa/exponent inner product prevents tiny Krylov products from
+// underflowing when their ratio (alpha or beta) is representable.
+struct ScaledDot { double mantissa{}; int exponent{}; };
+
+[[nodiscard]] ScaledDot dot(const std::vector<double>& left, const std::vector<double>& right) {
+    double direct = 0.0;
+    for (std::size_t i = 0; i < left.size(); ++i) direct += left[i] * right[i];
+    if (direct != 0.0 && std::isfinite(direct)) {
+        int exponent = 0;
+        return {std::frexp(direct, &exponent), exponent};
     }
-    return result;
+    double left_scale = 0.0, right_scale = 0.0;
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        left_scale = std::max(left_scale, std::abs(left[i]));
+        right_scale = std::max(right_scale, std::abs(right[i]));
+    }
+    if (left_scale == 0.0 || right_scale == 0.0) return {};
+    double normalized = 0.0;
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        normalized += (left[i] / left_scale) * (right[i] / right_scale);
+    }
+    if (normalized == 0.0 || !std::isfinite(normalized)) return {normalized, 0};
+    int left_exp = 0, right_exp = 0, sum_exp = 0;
+    const double lm = std::frexp(left_scale, &left_exp);
+    const double rm = std::frexp(right_scale, &right_exp);
+    const double sm = std::frexp(normalized, &sum_exp);
+    return {lm * rm * sm, left_exp + right_exp + sum_exp};
+}
+
+[[nodiscard]] double dot_ratio(const ScaledDot& numerator, const ScaledDot& denominator) {
+    return std::scalbn(numerator.mantissa / denominator.mantissa,
+                       numerator.exponent - denominator.exponent);
 }
 
 [[nodiscard]] double norm(const std::vector<double>& vector) {
-    return std::sqrt(dot(vector, vector));
+    double squared = 0.0;
+    for (double value : vector) squared += value * value;
+    if (squared > 0.0 && std::isfinite(squared)) return std::sqrt(squared);
+    // Scaled sum of squares (Blue): avoids both squaring underflow and overflow.
+    double scale = 0.0, sum = 1.0;
+    for (double value : vector) {
+        const double magnitude = std::abs(value);
+        if (magnitude == 0.0) continue;
+        if (magnitude > scale) {
+            const double ratio = scale / magnitude;
+            sum = 1.0 + sum * ratio * ratio;
+            scale = magnitude;
+        } else {
+            const double ratio = magnitude / scale;
+            sum += ratio * ratio;
+        }
+    }
+    return scale * std::sqrt(sum);
 }
 
 [[nodiscard]] bool all_finite(const std::span<const double> values) {
@@ -149,9 +189,9 @@ SolverResult solve_conjugate_gradient_impl(
     }
 
     std::vector<double> preconditioned_residual = apply_preconditioner(residual);
-    double rho = dot(residual, preconditioned_residual);
+    ScaledDot rho = dot(residual, preconditioned_residual);
 
-    if (!std::isfinite(rho) || rho <= 0.0) {
+    if (!std::isfinite(rho.mantissa) || rho.mantissa <= 0.0) {
         result.solution = std::move(solution);
         result.message = "CG breakdown: preconditioned residual product is non-positive or non-finite.";
         return result;
@@ -162,16 +202,16 @@ SolverResult solve_conjugate_gradient_impl(
     for (std::size_t iteration = 0; iteration < options.max_iterations; ++iteration) {
         const std::vector<double> matrix_times_direction =
             matrix.multiply(std::span<const double>(direction));
-        const double curvature = dot(direction, matrix_times_direction);
+        const ScaledDot curvature = dot(direction, matrix_times_direction);
 
-        if (!std::isfinite(curvature) || curvature <= 0.0) {
+        if (!std::isfinite(curvature.mantissa) || curvature.mantissa <= 0.0) {
             result.solution = std::move(solution);
             result.iterations = iteration;
             result.message = "CG breakdown: non-positive or non-finite search-direction curvature.";
             return result;
         }
 
-        const double alpha = rho / curvature;
+        const double alpha = dot_ratio(rho, curvature);
         if (!std::isfinite(alpha)) {
             result.solution = std::move(solution);
             result.iterations = iteration;
@@ -244,7 +284,7 @@ SolverResult solve_conjugate_gradient_impl(
             preconditioned_residual = apply_preconditioner(residual);
             rho = dot(residual, preconditioned_residual);
 
-            if (!std::isfinite(rho) || rho <= 0.0) {
+            if (!std::isfinite(rho.mantissa) || rho.mantissa <= 0.0) {
                 result.solution = std::move(solution);
                 result.message = "CG breakdown after true-residual restart.";
                 return result;
@@ -255,15 +295,15 @@ SolverResult solve_conjugate_gradient_impl(
         }
 
         preconditioned_residual = apply_preconditioner(residual);
-        const double next_rho = dot(residual, preconditioned_residual);
+        const ScaledDot next_rho = dot(residual, preconditioned_residual);
 
-        if (!std::isfinite(next_rho) || next_rho <= 0.0) {
+        if (!std::isfinite(next_rho.mantissa) || next_rho.mantissa <= 0.0) {
             result.solution = std::move(solution);
             result.message = "CG breakdown: preconditioned residual product is non-positive or non-finite.";
             return result;
         }
 
-        const double beta = next_rho / rho;
+        const double beta = dot_ratio(next_rho, rho);
         if (!std::isfinite(beta)) {
             result.solution = std::move(solution);
             result.message = "CG breakdown: non-finite direction update.";
