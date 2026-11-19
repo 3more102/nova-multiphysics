@@ -43,6 +43,7 @@ add_library(nova_core
     src/fem/transient_heat_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
+    src/io/vtk_pvd.cpp
     src/fem/mesh_refinement_2d.cpp
     src/fem/poisson_1d.cpp
     src/fem/diffusion_2d.cpp
@@ -126,6 +127,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_transient_heat_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
+        tests/test_vtk_pvd.cpp
         tests/test_diffusion_h1_2d.cpp
         tests/test_transient_heat_3d.cpp
         tests/test_transient_heat_2d.cpp
