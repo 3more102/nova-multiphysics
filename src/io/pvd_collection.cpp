@@ -7,6 +7,7 @@
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace nova::io {
 namespace {
@@ -33,9 +34,11 @@ void write_paraview_collection(
         throw std::invalid_argument("ParaView collection requires at least one frame.");
     }
     double previous = -std::numeric_limits<double>::infinity();
+    std::unordered_set<std::string> used_filenames;
     for (const auto& frame : frames) {
         if (!std::isfinite(frame.time) || frame.time <= previous ||
-            !valid_local_filename(frame.filename)) {
+            !valid_local_filename(frame.filename) ||
+            !used_filenames.insert(frame.filename).second) {
             throw std::invalid_argument("Invalid ParaView frame time or basename.");
         }
         previous = frame.time;
