@@ -304,3 +304,46 @@ NOVA_TEST(transient_heat_3d_temporal_convergence_matches_exact_decay) {
     NOVA_REQUIRE(cn_coarse / cn_fine < 4.5);
     NOVA_REQUIRE(cn_fine < be_fine);
 }
+
+
+NOVA_TEST(transient_heat_3d_time_integration_exhibits_first_and_second_order) {
+    // A single tetra with three vertices held at zero leaves one discrete
+    // degree of freedom. Consistent P1 mass gives M_33 = 1/60, while
+    // conductivity gives K_33 = 1/6, hence dT_3/dt = -10 T_3.
+    // At t = 0.2 s the exact semidiscrete value is exp(-2).
+    auto problem = unit_heat();
+    problem.initial_temperature = {0.0, 0.0, 0.0, 1.0};
+    problem.diffusion.dirichlet_constraints = {{0, 0.0}, {1, 0.0}, {2, 0.0}};
+    const double exact = std::exp(-2.0);
+
+    const auto error_at = [&](TransientHeat3DScheme scheme, double dt,
+                              std::size_t steps) {
+        TransientHeat3DOptions options;
+        options.scheme = scheme;
+        options.time_step = dt;
+        options.steps = steps;
+        options.solver_options.relative_tolerance = 1e-13;
+        options.solver_options.preconditioner =
+            nova::linalg::PreconditionerType::Jacobi;
+        const auto result = solve_transient_heat_3d(problem, options);
+        NOVA_REQUIRE_NEAR(result.final_time, 0.2, 1e-14);
+        NOVA_REQUIRE_NEAR(result.diagnostics.back().balance_residual,
+                          0.0, 1e-11);
+        return std::abs(result.temperature[3] - exact);
+    };
+
+    const double be_coarse = error_at(TransientHeat3DScheme::BackwardEuler,
+                                      0.05, 4);
+    const double be_fine = error_at(TransientHeat3DScheme::BackwardEuler,
+                                    0.025, 8);
+    const double cn_coarse = error_at(TransientHeat3DScheme::CrankNicolson,
+                                      0.05, 4);
+    const double cn_fine = error_at(TransientHeat3DScheme::CrankNicolson,
+                                    0.025, 8);
+
+    // Halving dt should reduce BE error by approximately 2x and CN by 4x.
+    // Conservative gates tolerate floating-point solver perturbations.
+    NOVA_REQUIRE(be_coarse > 1.8 * be_fine);
+    NOVA_REQUIRE(cn_coarse > 3.5 * cn_fine);
+    NOVA_REQUIRE(cn_fine < be_fine);
+}
