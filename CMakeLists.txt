@@ -34,6 +34,7 @@ add_library(nova_core
     src/fem/diffusion_nullspace.cpp
     src/fem/diffusion_3d.cpp
     src/fem/p1_flux_3d.cpp
+    src/fem/tagged_boundary_flux_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
     src/fem/mesh_refinement_2d.cpp
@@ -109,6 +110,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_diffusion_3d.cpp
         tests/test_cell_conduction_3d.cpp
         tests/test_p1_flux_3d.cpp
+        tests/test_tagged_boundary_flux_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
         tests/test_diffusion_h1_2d.cpp
