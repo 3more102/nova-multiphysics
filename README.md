@@ -68,14 +68,18 @@ legacy VTK `UNSTRUCTURED_GRID` with `VTK_TETRA` (cell type 10).
 It preserves node connectivity and full double precision, rejects invalid
 fields/meshes, and streams output without buffering the whole mesh.
 
-To visualize the final cooling-cube temperature, build the examples and run:
+To visualize a stationary diffusion field or the final cooling-cube temperature,
+build the examples and run:
 
 ~~~bash
+./build/nova_diffusion_3d --vtk diffusion_cube.vtk
 ./build/nova_transient_heat_3d 4 10 --vtk cooling_cube.vtk
 ~~~
 
-Open `cooling_cube.vtk` in ParaView and select the `temperature` scalar.
-The existing `--csv` machine-readable mode is unchanged. This exporter
+Open either `.vtk` file in ParaView. Select `solution` for stationary
+diffusion or `temperature` for transient heat. Both commands use the **same**
+mesh-based P1 tetrahedral writer, avoiding duplicate 3D VTK implementations.
+The existing transient `--csv` machine-readable mode is unchanged. This exporter
 writes only the final scalar state; time-series, vector/tensor fields,
 P2 tetrahedra, and curved geometries remain future work.
 
