@@ -56,9 +56,6 @@ DiffusionEnergyBalance3D evaluate_diffusion_energy_balance_3d(
             throw std::invalid_argument("Energy balance nodal temperatures must be finite.");
         }
     }
-    if (!problem.source) {
-        throw std::invalid_argument("Energy balance requires a spatial source callback.");
-    }
     if (!problem.cell_source.empty()) {
         if (problem.cell_source.size() != mesh.elements.size()) {
             throw std::invalid_argument("Energy balance cell source must cover every tetrahedron.");
@@ -129,7 +126,8 @@ DiffusionEnergyBalance3D evaluate_diffusion_energy_balance_3d(
         const auto local_matrix = detail::integrate_p1_volume_3d(
             mesh, tetra, physical, materials.on_cell(element),
             [&](const Point3D& point, const auto& shape, double weight) {
-                const double spatial = problem.source(point.x, point.y, point.z);
+                const double spatial = problem.source
+                    ? problem.source(point.x, point.y, point.z) : 0.0;
                 if (!std::isfinite(spatial)) {
                     throw std::invalid_argument("Energy balance source callback is nonfinite.");
                 }

@@ -74,9 +74,11 @@ reference temperature.
 The same physical-tag table can now supply different volumetric heat-generation
 densities. For example, `--heat-source 11 120 --heat-source 22 360` heats the
 two layers at 120 and 360 W/m³ respectively. Negative values represent cooling.
-The optional `ScalarDiffusion3DProblem::cell_source` is additive to the
-spatial source callback and follows exactly the tetrahedron element order.
-Nonfinite source densities and incomplete per-cell source vectors are rejected.
+For the C++ API, an empty `ScalarDiffusion3DProblem::source` callback means
+zero spatial generation. This permits `cell_source` to be used by itself;
+when a spatial callback is present, the per-cell density is additive to it and
+follows exactly the tetrahedron element order. Nonfinite source densities and
+incomplete per-cell source vectors are rejected.
 Per-volume sources are applied at volume quadrature points, including in the
 pure-Neumann compatibility test.
 
