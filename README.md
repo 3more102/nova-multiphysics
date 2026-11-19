@@ -36,6 +36,22 @@ on continuous triangular P1 and P2 meshes using:
 - L2 and H1 error norms with Duffy-transformed Gaussian quadrature.
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
+### Triangle mesh quality and uniform refinement
+
+The mesh kernel now evaluates each triangle's signed area, minimum interior
+angle, longest edge and mean-ratio shape quality (0 to 1; equilateral is 1).
+It supports conforming uniform 1-to-4 refinement on a validated 2D mesh:
+- Unique global edge midpoints shared between neighboring triangles.
+- Four child triangles per parent, preserving orientation and domain area.
+- Optional exterior-boundary-edge splitting that preserves edge direction.
+- Parent-element indices and midpoint-parent edge records for mesh transfer.
+- P1 nodal prolongation (coarse vertices copied; edge midpoint averages).
+- Geometry and topology regression tests, including mixed element orientation.
+
+API: `nova/fem/mesh_refinement_2d.hpp`. This is **uniform** refinement,
+not error-driven adaptive mesh refinement. It does not yet preserve arbitrary
+physical boundary groups or transfer P2 solution DOFs automatically.
+
 ### Transient 2D heat diffusion
 The continuous P1/P2 H1 kernel solves
 
@@ -86,7 +102,7 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 
 Jacobi preconditioning is diagonal scaling. It is not a substitute for incomplete-factorization or multilevel preconditioners on difficult large-scale systems.
 
-The current prototype does not yet support incomplete Cholesky, stationary pure-Neumann nullspace handling, anisotropic diffusion tensors, adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The current prototype does not yet support incomplete Cholesky, stationary pure-Neumann nullspace handling, anisotropic diffusion tensors, error-driven adaptive meshing, or a general multiphysics field registry. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
