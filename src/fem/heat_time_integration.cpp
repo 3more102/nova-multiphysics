@@ -87,7 +87,8 @@ TransientHeatResult integrate_heat(
     const ScalarH1Operators& operators, const TransientHeatTimeOptions& options,
     std::vector<double> state, const std::vector<bool>& constrained,
     const std::function<std::vector<double>(double)>& dirichlet_at,
-    const std::function<HeatLoads(double)>& loads_at
+    const std::function<HeatLoads(double)>& loads_at,
+    linalg::CachedConjugateGradient* solver_cache
 ) {
     const double dt = options.time_step;
     if (state.size() != constrained.size() ||
@@ -107,7 +108,8 @@ TransientHeatResult integrate_heat(
     const auto base = linalg::CsrMatrix::linear_combination(
         operators.mass, 1.0, operators.stiffness, implicit_dt);
     std::optional<ConstrainedSystem> base_constrained;
-    linalg::CachedConjugateGradient cached_cg;
+    linalg::CachedConjugateGradient local_cg;
+    auto& cached_cg = solver_cache != nullptr ? *solver_cache : local_cg;
     HeatRate previous;
     if (trapezoidal) {
         previous = evaluate_rate(operators.stiffness, loads_at(options.start_time), state);
