@@ -34,6 +34,7 @@ add_library(nova_core
     src/fem/diffusion_nullspace.cpp
     src/fem/diffusion_3d.cpp
     src/fem/p1_flux_3d.cpp
+    src/fem/tagged_boundary_flux_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
     src/fem/mesh_refinement_2d.cpp
@@ -109,6 +110,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_diffusion_3d.cpp
         tests/test_cell_conduction_3d.cpp
         tests/test_p1_flux_3d.cpp
+        tests/test_tagged_boundary_flux_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
         tests/test_diffusion_h1_2d.cpp
@@ -136,6 +138,12 @@ if(NOVA_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
             --material 11 2 --material 22 6 --temperature 101 400
             --convection 102 12 300 --heat-source 11 120 --heat-source 22 360)
+        add_test(NAME nova_tagged_flux_report_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
+            --material 11 2 --material 22 6 --temperature 101 400
+            --convection 102 12 300 --flux-report)
+        set_tests_properties(nova_tagged_flux_report_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "Net outward conductive heat rate")
         find_package(Python3 COMPONENTS Interpreter QUIET)
         if(Python3_Interpreter_FOUND)
             add_test(NAME nova_tagged_wall_verification COMMAND "${Python3_EXECUTABLE}"

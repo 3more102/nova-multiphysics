@@ -127,7 +127,31 @@ def run(exe, mesh, vtk, args, check=True):
 
 
 def check_wall(exe, mesh, vtk):
-    run(exe, mesh, vtk, MATERIALS + HOT + ROBIN)
+    execution = run(exe, mesh, vtk, MATERIALS + HOT + ROBIN + ["--flux-report"])
+    reported = {}
+    for line in execution.stdout.splitlines():
+        if line.startswith("  physical tag "):
+            label, rest = line.strip().split(": faces=", 1)
+            count, rest = rest.split(" area_m2=", 1)
+            area, rate = rest.split(" outward_W=", 1)
+            tag = int(label.removeprefix("physical tag "))
+            if tag in reported:
+                raise ValueError("Duplicate boundary-report tag")
+            reported[tag] = (int(count), float(area), float(rate))
+    if set(reported) != {0, 101, 102}:
+        raise ValueError(f"Missing or unexpected boundary tags: {reported}")
+    if reported[101][0] != 2 or reported[102][0] != 2:
+        raise ValueError("Unexpected number of tagged wall boundary faces")
+    measure("tagged hot face area [m2]", reported[101][1], 1, 1e-12)
+    measure("tagged cold face area [m2]", reported[102][1], 1, 1e-12)
+    measure("tagged hot outward rate [W]", reported[101][2], -240, 2e-7)
+    measure("tagged cold outward rate [W]", reported[102][2], 240, 2e-7)
+    measure("untagged insulated sides [W]", reported[0][2], 0, 2e-7)
+    net_line = next((line for line in execution.stdout.splitlines()
+                     if line.startswith("Net outward conductive heat rate [W]: ")), None)
+    if net_line is None:
+        raise ValueError("No net conductive heat-rate report")
+    measure("reported net outward rate [W]", float(net_line.split(": ", 1)[1]), 0, 2e-7)
     points, cells, temperatures, fluxes = read_fields(vtk)
     # q = (400 - 300)/(0.5/2 + 0.5/6 + 1/12); both layers have unit area.
     measure("maximum nodal temperature error [K]", max(

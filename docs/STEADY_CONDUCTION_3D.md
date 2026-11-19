@@ -32,6 +32,7 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--source Q` | Uniform volumetric heating in W/m³. Default zero. |
 | `--heat-source volume_id Q` | Signed volumetric source density in W/m³ for a selected volume ID. Can repeat for different IDs; unlisted IDs add zero. This density adds to `--source`. |
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
+| `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
 
 Use meters for mesh coordinates. Supply conforming four-node tetrahedra with shared
 interface vertices. Surface triangle records identify *exterior* faces. An interior
@@ -79,6 +80,31 @@ same material on each tetrahedron. Continuous P1 interpolation enforces temperat
 continuity across a bonded interface. The recovered flux is the cell average of
 `−K grad(T_h)`. Its tangential components can jump across materials. General raw
 P1 face fluxes need a separate equilibration procedure for local conservation.
+
+## Tagged exterior boundary heat-flow diagnostic
+
+Append `--flux-report` to the Gmsh example command to print signed outward
+conductive heat rates for every surface physical ID. The report uses the *owner*
+tetrahedron's cell-averaged raw P1 flux and the geometric outward face-area
+vector. Face winding and tetrahedral node ordering do not affect the result.
+The API `evaluate_tagged_boundary_flux_3d` also checks for duplicate faces,
+incorrect vector lengths, nonfinite fluxes, and interior triangles passed
+as exterior surfaces.
+
+On the two-layer analytical wall, physical ID 101 (hot surface) has outward
+rate **−240 W** and ID 102 (convection surface) has **+240 W**, each over
+1 m². Untagged insulated faces have zero axial conduction; the net is zero
+within numerical tolerance. Positive reported values mean heat exits the solid.
+
+**Numerical limitation:** this diagnostic integrates the raw cell-average flux,
+not the prescribed Neumann/convection load or the FEM Dirichlet reaction.
+It is exact for constant conductivity and affine temperatures on each cell,
+as in the analytical wall. With spatially varying conductivity, a nonzero
+source, or general finite-element errors, raw P1 fluxes are not locally
+equilibrated. Reported surface rates therefore are estimates and their sum
+is **not** an enforced conservation identity. The volume-integrated source
+and FEM reaction require a separate consistent balance computation before
+the output can be used as a strict energy-conservation certificate.
 
 ## Analytical verification
 
