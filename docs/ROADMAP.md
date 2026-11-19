@@ -18,26 +18,24 @@ A milestone is complete only when its acceptance tests, verification evidence, a
 Implemented:
 - Triangle mesh data model with scale-aware geometric validation.
 - Structured rectangular mesh generator with two P1 triangles per cell.
-- Linear P1 reference-triangle basis functions.
+- Linear P1 and quadratic P2 reference-triangle H1 basis functions.
 - Positive six-point degree-four triangle quadrature.
 - Jacobian-based physical basis gradients.
-- 2D scalar isotropic diffusion assembly.
+- Shared continuous H1 P1/P2 2D scalar isotropic diffusion assembly with orientation-independent physical gradients.
 - Spatially varying positive scalar diffusivity and volumetric source.
-- Strong nodal Dirichlet elimination.
-- Neumann outward-flux integration on validated exterior edges.
-- Robin transfer integration on validated exterior edges.
+- Strong symmetric Dirichlet elimination for vertex DOFs and P2 boundary-edge midpoint DOFs.
+- Three-point Gauss Neumann outward-flux integration on validated exterior edges for P1/P2.
+- Three-point Gauss Robin transfer integration on validated exterior edges for P1/P2.
 - Mixed Dirichlet-Neumann and Dirichlet-Robin boundary benchmarks.
 - Triangle orientation-independent integration.
-- Harmonic patch and manufactured quartic-solution benchmarks.
+- Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
 - Nonlinear 1D P1 diffusion residual and consistent Jacobian assembly.
 - Manufactured nonlinear diffusion benchmark with Newton solution and mesh-refinement regression tests.
 
 Remaining:
 - Reusable element and integration interfaces shared across physics.
-- Explicit general H1 function-space abstraction and DOF manager.
 - Pure-Neumann nullspace handling.
-- P2 triangle elements.
 - Mesh refinement and element-quality metrics.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.

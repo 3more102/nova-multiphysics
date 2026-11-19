@@ -44,7 +44,7 @@ Responsibilities:
 
 External CAD and mesh libraries may be used after commercial license review. NOVA must own its internal mesh representation and the contracts that connect mesh data to the numerical core.
 
-The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, and boundary-edge topology for structured rectangles. It does not yet include general CAD geometry, unstructured meshing, general physical groups, or adaptive mesh refinement.
+The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, boundary-edge topology for structured rectangles, and a reusable continuous H1 function-space/DOF layer supporting P1 and P2 triangular Lagrange fields. It does not yet include general CAD geometry, unstructured meshing, general physical groups, or adaptive mesh refinement.
 
 ### Numerical core
 
@@ -65,7 +65,7 @@ The numerical core is a proprietary engineering focus. Its algorithms require do
 
 Each physics interface declares its fields, variables, constitutive data, constraints, and contributions to residual and Jacobian assembly. Physics modules must not bypass shared DOF, units, material, or solver services.
 
-Initial scalar modules use nodal P1 H1-like fields. The current 2D diffusion implementation is a focused triangle-P1 path with Dirichlet, Neumann, and Robin boundary contributions, not yet a general function-space framework. The nonlinear 1D diffusion example demonstrates a temperature/field-dependent scalar constitutive coefficient through caller-defined residual and tangent assembly. It is a verification case, not a general material framework.
+Initial scalar modules use nodal H1 Lagrange fields. The 2D scalar diffusion implementation now assembles P1 and P2 elements through the shared H1 function space and DOF manager. Both orders support strong Dirichlet elimination and weak Neumann/Robin boundary contributions; P2 boundary traces constrain edge midpoint DOFs. The nonlinear 1D diffusion example demonstrates a temperature/field-dependent scalar constitutive coefficient through caller-defined residual and tangent assembly. It is a verification case, not a general material framework.
 
 Electromagnetics will require compatible vector spaces such as Nedelec elements; mixed formulations must be supported explicitly rather than forced into a scalar interface.
 
@@ -96,14 +96,14 @@ The prototype currently contains:
 - A Newton nonlinear solver with GMRES or BiCGSTAB linear subsolves and Armijo backtracking.
 - A 1D P1 finite-element Poisson benchmark.
 - A validated 2D triangle mesh and structured rectangular mesh generator.
-- P1 reference-triangle basis functions and positive degree-four quadrature.
-- A 2D isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric sources, strong nodal Dirichlet constraints, and Neumann/Robin edge terms.
+- Reusable H1 P1/P2 reference-triangle basis functions and positive degree-four quadrature.
+- A shared H1 P1/P2 isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric sources, strong nodal and boundary-edge Dirichlet constraints, and P1/P2 Neumann/Robin edge terms.
 - A 1D nonlinear P1 diffusion benchmark with a consistent tangent/Jacobian for (k(u)=1+u^2).
 - Harmonic patch, mixed-boundary, manufactured-solution, and nonlinear diffusion benchmarks.
 - L2 and H1 error-norm calculations for nodal P1 fields.
 - Automated numerical and input-validation tests.
 
-The 2D diffusion path currently lacks pure Neumann nullspace handling, anisotropic tensors, P2 elements, a general DOF manager, and adaptive meshing. The nonlinear solver is not yet connected to a general material or multiphysics model.
+The 2D diffusion path currently lacks pure Neumann nullspace handling, anisotropic tensors, adaptive meshing, and a generalized physics residual/tangent interface. The nonlinear solver is not yet connected to a general material or multiphysics model.
 
 ## 4. Dependency policy
 
