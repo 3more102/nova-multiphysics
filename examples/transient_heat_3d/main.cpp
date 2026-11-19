@@ -1,5 +1,6 @@
 #include "nova/fem/transient_heat_3d.hpp"
 #include "nova/io/vtk_legacy_3d.hpp"
+#include "nova/io/pvd_collection.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -7,11 +8,14 @@
 #include <cmath>
 #include <iomanip>
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <numbers>
 #include <stdexcept>
+#include <sstream>
 #include <string_view>
+#include <vector>
 #include <utility>
 
 namespace {
@@ -36,8 +40,10 @@ int main(int argc, char** argv) {
     try {
         const bool csv = argc == 4 && std::string_view(argv[3]) == "--csv";
         const bool vtk = argc == 5 && std::string_view(argv[3]) == "--vtk";
-        if (argc > 5 || (argc > 3 && !csv && !vtk)) {
-            throw std::invalid_argument("Usage: nova_transient_heat_3d [subdivisions [steps [--csv | --vtk output.vtk]]]");
+        const bool series = argc == 5 && std::string_view(argv[3]) == "--vtk-series";
+        if (argc > 5 || (argc > 3 && !csv && !vtk && !series)) {
+            throw std::invalid_argument(
+                "Usage: nova_transient_heat_3d [subdivisions [steps [--csv | --vtk output.vtk | --vtk-series output.pvd]]]");
         }
         const std::size_t n = argc > 1 ? positive_count(argv[1]) : 4;
         if (n < 2) throw std::invalid_argument("The cooling cube needs at least two subdivisions.");
@@ -60,6 +66,37 @@ int main(int argc, char** argv) {
         options.solver_options.absolute_tolerance = 1.0e-15;
         options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
 
+        std::filesystem::path collection_path;
+        std::vector<nova::io::ParaviewTimeFrame> frames;
+        if (series) {
+            collection_path = std::filesystem::path(argv[4]);
+            const std::string stem = collection_path.stem().string();
+            const auto valid_stem = [](const std::string& name) {
+                if (name.empty() || name == "." || name == "..") return false;
+                return std::all_of(name.begin(), name.end(), [](char c) {
+                    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                           (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.';
+                });
+            };
+            if (collection_path.extension() != ".pvd" || !valid_stem(stem)) {
+                throw std::invalid_argument("VTK series requires a safe .pvd output filename.");
+            }
+            // Observe the initial projected state plus each completed step.
+            // The solver runs exactly once and does not retain full field history.
+            options.step_observer = [&](double time, const std::vector<double>& values) {
+                std::ostringstream suffix;
+                suffix << std::setfill('0') << std::setw(6) << frames.size();
+                const auto frame_path = collection_path.parent_path() /
+                    (stem + "_" + suffix.str() + ".vtk");
+                std::ofstream output(frame_path);
+                if (!output) throw std::runtime_error("Cannot open VTK series frame.");
+                nova::io::write_legacy_vtk_scalar_3d(output, problem.mesh, values);
+                output.close();
+                if (!output) throw std::runtime_error("Failed to close VTK series frame.");
+                frames.push_back({time, frame_path.filename().string()});
+            };
+        }
+
         const auto start = std::chrono::steady_clock::now();
         const auto result = solve_transient_heat_3d(problem, options);
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -79,6 +116,13 @@ int main(int argc, char** argv) {
             nova::io::write_legacy_vtk_scalar_3d(output, problem.mesh, result.temperature);
             output.close();
             if (!output) throw std::runtime_error("Failed to close VTK output file.");
+        }
+        if (series) {
+            std::ofstream collection(collection_path);
+            if (!collection) throw std::runtime_error("Cannot open PVD collection file.");
+            nova::io::write_paraview_collection(collection, frames);
+            collection.close();
+            if (!collection) throw std::runtime_error("Failed to close PVD collection file.");
         }
 
         const double decay = std::exp(-3.0 * std::numbers::pi * std::numbers::pi * result.final_time);
