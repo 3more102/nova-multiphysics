@@ -22,7 +22,9 @@ Dirichlet-projected initial field at time zero and every successfully solved
 time step. Each VTK frame includes nodal `temperature`, per-cell `material_id`,
 effective `heat_generation` and element-averaged `heat_flux`. The exporter
 uses one FEM assembly and one transient solve sequence; it does not replay or
-re-solve the simulation to produce frames.
+re-solve the simulation to produce frames. The CLI disables retention of
+intermediate nodal solution vectors in every output mode; PVD frames are
+written synchronously by the solver observer.
 
 For a single final result, use `--vtk heated_wall_final.vtk` instead of
 `--vtk-series heated_wall.pvd`.

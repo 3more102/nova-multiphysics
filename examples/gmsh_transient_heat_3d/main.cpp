@@ -269,11 +269,16 @@ void export_vtk(const fs::path& target, const TransientHeat3DProblem& problem,
         generation.push_back(value);
     }
     fs::path temporary;
-    for (std::size_t attempt = 0; ; ++attempt) {
+    bool created = false;
+    for (std::size_t attempt = 0; attempt < 1000U; ++attempt) {
         temporary = target;
         temporary += ".tmp." + std::to_string(attempt);
-        if (fs::create_directory(temporary)) break;
+        if (fs::create_directory(temporary)) {
+            created = true;
+            break;
+        }
     }
+    if (!created) throw std::runtime_error("Cannot create a temporary VTK result directory.");
     const auto frame = temporary / "frame.vtk";
     struct Cleanup {
         const fs::path& frame;
@@ -434,11 +439,18 @@ int main(int argc, char** argv) {
         if (!file) throw std::runtime_error("Cannot open Gmsh mesh: " + std::string(argv[1]));
         auto imported = nova::io::read_gmsh22_tetrahedra(file);
         const auto settings = read_settings(argc, argv, imported);
-        if (settings.vtk && fs::exists(*settings.vtk)) {
-            if (fs::equivalent(*settings.vtk, fs::path(argv[1]))) {
-                throw std::invalid_argument("VTK path must not overwrite the input Gmsh mesh.");
+        if (settings.vtk) {
+            const fs::path parent = settings.vtk->parent_path().empty()
+                ? fs::path(".") : settings.vtk->parent_path();
+            if (!fs::is_directory(parent)) {
+                throw std::invalid_argument("VTK output directory does not exist.");
             }
-            throw std::invalid_argument("Refusing to overwrite an existing VTK result.");
+            if (fs::exists(*settings.vtk)) {
+                if (fs::equivalent(*settings.vtk, fs::path(argv[1]))) {
+                    throw std::invalid_argument("VTK path must not overwrite the input Gmsh mesh.");
+                }
+                throw std::invalid_argument("Refusing to overwrite an existing VTK result.");
+            }
         }
         std::string prefix;
         if (settings.vtk_series) {
@@ -454,10 +466,10 @@ int main(int argc, char** argv) {
         options.solver_options.relative_tolerance = 1e-11;
         options.solver_options.absolute_tolerance = 0.0;
         options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+        options.retain_step_solutions = false; // The CLI only needs the final field and diagnostics.
         std::vector<nova::io::VtkTimeSeriesEntry> frames;
         if (settings.vtk_series) {
             frames.reserve(*settings.steps + 1U);
-            options.retain_step_solutions = false;
             options.on_step = [&](std::size_t step, double time,
                                   const std::vector<double>& temperature) {
                 const auto name = series_frame_name(prefix, step);
