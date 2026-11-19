@@ -4,7 +4,7 @@
 
 NOVA is intended to become a commercial, general-purpose multiphysics CAE application. The architecture must support independent evolution of the desktop application, model representation, geometry and mesh services, numerical engine, physics modules, and results system.
 
-The current implementation is an early numerical prototype. Its 1D and 2D scalar FEM cases and nonlinear diffusion benchmark are verification steps, not evidence of production readiness or broad multiphysics capability.
+The current prototype includes 1D and 2D scalar FEM, a nonlinear 1D diffusion benchmark, and a steady 3D conduction path from a tagged mesh to a temperature and heat-flux dataset.
 
 ## 2. Target subsystem boundaries
 
@@ -44,7 +44,7 @@ Responsibilities:
 
 External CAD and mesh libraries may be used after commercial license review. NOVA must own its internal mesh representation and the contracts that connect mesh data to the numerical core.
 
-The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, boundary-edge topology for structured rectangles, and a reusable continuous H1 function-space/DOF layer supporting P1 and P2 triangular Lagrange fields. It does not yet include general CAD geometry, unstructured meshing, general physical groups, or adaptive mesh refinement.
+The current prototype includes a validated 2D triangle mesh, a structured rectangular-grid generator, boundary-edge topology for structured rectangles, and a reusable continuous H1 function-space/DOF layer supporting P1 and P2 triangular Lagrange fields. The 3D mesh layer validates tetrahedral connectivity and extracts oriented exterior faces. The Gmsh adapter maps volume and exterior physical IDs onto that topology. General CAD modeling and automatic tetrahedral mesh generation remain separate work.
 
 ### Numerical core
 
@@ -96,6 +96,8 @@ The prototype currently contains:
 - A Newton nonlinear solver with GMRES or BiCGSTAB linear subsolves and Armijo backtracking.
 - A 1D P1 finite-element Poisson benchmark.
 - A validated 2D triangle mesh and structured rectangular mesh generator.
+- Continuous P1 tetrahedral diffusion with mixed boundary conditions, componentwise compatibility checks, cell or spatial conductivities and raw Fourier heat flux.
+- Tagged Gmsh 2.2 input and legacy VTK output through the steady 3D executable.
 - Reusable H1 P1/P2 reference-triangle basis functions and positive degree-four quadrature.
 - A shared H1 P1/P2 isotropic scalar diffusion assembler with spatially varying scalar diffusivity, volumetric sources, strong nodal and boundary-edge Dirichlet constraints, and P1/P2 Neumann/Robin edge terms.
 - Reusable consistent capacity/mass and stiffness operators for P1/P2 triangular H1 elements.

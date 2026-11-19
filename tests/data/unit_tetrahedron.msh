@@ -1,0 +1,20 @@
+$MeshFormat
+2.2 0 8
+$EndMeshFormat
+$PhysicalNames
+2
+2 7 "fixed-temperature"
+3 42 "solid"
+$EndPhysicalNames
+$Nodes
+4
+90 0 0 1
+10 0 0 0
+30 1 0 0
+50 0 1 0
+$EndNodes
+$Elements
+2
+101 2 2 7 1 10 30 50
+200 4 2 42 1 10 30 50 90
+$EndElements

@@ -29,4 +29,4 @@ For a reproducible compile/link/runtime test, configure and run `tests/package_c
 
 ## Compatibility and release status
 
-The package version is `0.8.0`, using same-minor package version compatibility while pre-1.0. There is no stable ABI guarantee. Follow the actual installed library's release criteria and license review before any commercial use. The current SDK installs the components available on its chosen Git branch; unmerged 3D features are **not** included in the main-branch package.
+The package version is `0.8.0`, using same-minor package version compatibility while pre-1.0. There is no stable ABI guarantee. Follow the actual installed library's release criteria and license review before any commercial use. The main-branch SDK includes the verified steady 3D tetrahedral diffusion solver, Gmsh 2.2 importer, conduction flux postprocessing and VTK writer, together with the 1D and 2D APIs. Transient 3D heat studies are still developed separately and are not part of this package.
