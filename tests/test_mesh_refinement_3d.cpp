@@ -71,7 +71,7 @@ NOVA_TEST(tetra_uniform_refinement_is_conforming_and_preserves_volume) {
     for (const auto& tet : coarse.mesh.elements) {
         for (std::size_t a = 0; a < 4U; ++a) {
             for (std::size_t b = a + 1U; b < 4U; ++b) {
-                edges.insert(std::minmax(tet[a], tet[b]));
+                edges.insert({std::min(tet[a], tet[b]), std::max(tet[a], tet[b])});
             }
         }
     }
