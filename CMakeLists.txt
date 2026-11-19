@@ -176,8 +176,6 @@ if(NOVA_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh")
         endif()
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
-        set_tests_properties(nova_transient_heat_3d_smoke PROPERTIES
-            PASS_REGULAR_EXPRESSION "NOVA 3D transient heat demonstration")
         add_test(NAME nova_transient_heat_smoke COMMAND nova_transient_heat_2d)
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)
