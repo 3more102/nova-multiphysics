@@ -28,8 +28,8 @@ struct DiffusionEnergyBalance3D {
 // It is not an individually resolved physical flux on each Dirichlet face.
 // An arbitrary trial field may have a nonzero signed defect and large free
 // residuals; no convergence claim is made by this function.
-// Validates material/source callbacks, face assignments and prescribed data,
-// finite nodal values and consistency of the prescribed field at fixed nodes.
+// Validates any supplied material/source callbacks, face assignments,
+// prescribed data, finite nodal values, and fixed-node field consistency.
 // Does not modify the input, invoke a solver, or claim local conservation.
 [[nodiscard]] DiffusionEnergyBalance3D evaluate_diffusion_energy_balance_3d(
     const ScalarDiffusion3DProblem& problem,

@@ -53,7 +53,6 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         [&](std::size_t e) -> std::span<const std::size_t> { return problem.mesh.elements[e]; });
 
     const detail::DiffusionMaterials3D materials(problem);
-    if (!problem.source) throw std::invalid_argument("3D diffusion requires a source field.");
     if (!problem.cell_source.empty()) {
         if (problem.cell_source.size() != problem.mesh.elements.size()) {
             throw std::invalid_argument("Cell source requires one value per tetrahedron.");
@@ -161,7 +160,8 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         const auto local_matrix = detail::integrate_p1_volume_3d(
             problem.mesh, cell, physical, materials.on_cell(element),
             [&](const Point3D& point, const auto& shape, double weight) {
-                const double spatial_source = problem.source(point.x, point.y, point.z);
+                const double spatial_source = problem.source
+                    ? problem.source(point.x, point.y, point.z) : 0.0;
                 if (!std::isfinite(spatial_source)) {
                     throw std::invalid_argument("3D source must be finite.");
                 }

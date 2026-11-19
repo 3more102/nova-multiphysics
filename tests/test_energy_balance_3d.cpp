@@ -70,7 +70,8 @@ NOVA_TEST(energy_balance_3d_exact_layered_wall_has_opposite_boundary_reactions) 
 }
 
 NOVA_TEST(energy_balance_3d_regional_volumetric_heating_closes_global_budget) {
-    const auto problem = wall(true);
+    auto problem = wall(true);
+    problem.source = {}; // Cellwise source is sufficient on its own.
     const auto solution = solve_scalar_diffusion_3d(problem);
     NOVA_REQUIRE(solution.linear_solver.converged);
     const auto b = evaluate_diffusion_energy_balance_3d(problem, solution.values);
@@ -131,7 +132,7 @@ NOVA_TEST(energy_balance_3d_pure_neumann_zero_mean_gauge_is_not_a_reaction) {
     ScalarDiffusion3DProblem problem;
     problem.mesh = std::move(box.mesh);
     problem.diffusivity = [](double, double, double) { return 1.0; };
-    problem.source = [](double, double, double) { return 0.0; };
+    // No spatial or cellwise source: the unanchored component is balanced.
     const auto solution = solve_scalar_diffusion_3d(problem);
     NOVA_REQUIRE(solution.linear_solver.converged);
     const auto b = evaluate_diffusion_energy_balance_3d(problem, solution.values);
@@ -196,7 +197,9 @@ NOVA_TEST(energy_balance_3d_validates_sources_mesh_boundary_and_constraints) {
     modified[0] = std::numeric_limits<double>::quiet_NaN();
     NOVA_REQUIRE(rejects([&] { (void)evaluate_diffusion_energy_balance_3d(problem, modified); }));
     problem.source = {};
-    NOVA_REQUIRE(rejects([&] { (void)evaluate_diffusion_energy_balance_3d(problem, field); }));
+    const auto absent_source = evaluate_diffusion_energy_balance_3d(problem, field);
+    NOVA_REQUIRE_NEAR(absent_source.generated_heat, 0.0, 1e-12);
+    NOVA_REQUIRE_NEAR(absent_source.signed_balance_defect, 0.0, 2e-8);
     problem.source = [](double, double, double) { return 0.0; };
     problem.cell_source = {1.0};
     NOVA_REQUIRE(rejects([&] { (void)evaluate_diffusion_energy_balance_3d(problem, field); }));
