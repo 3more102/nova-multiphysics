@@ -90,6 +90,13 @@ Remaining:
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.
 
+### 3D time-dependent conduction (experimental C++ API)
+
+- P1 tetrahedral Backward Euler and Crank–Nicolson, consistent mass, steady 3D tensor materials and mixed boundaries.
+- Cell-only source input and zero source allowed; no dummy spatial lambda.
+- Regression checks for heterogeneous SPD tensors and exactly balanced energy budgets.
+- Remaining: adaptive 3D time steps, time-varying loads, tagged Gmsh transient studies and independent convergence benchmarks.
+
 ## M4 — Structural mechanics
 - Vector-valued H1 spaces.
 - Linear elasticity.
