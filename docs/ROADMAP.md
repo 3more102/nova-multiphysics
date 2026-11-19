@@ -108,6 +108,19 @@ Remaining:
 - Gmsh-tagged transient studies, time-varying loads/materials, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
+### 3D steady conduction flux recovery (experimental)
+
+Implemented:
+- Element-averaged P1 conductive flux recovery for scalar and SPD tensor materials.
+- Optional cellwise-conservative integrated heat rates on shared tetrahedral faces.
+- Equal-and-opposite interior face rates, prescribed Neumann/Robin rates, and Dirichlet reaction outlets.
+- Area-weighted minimum-change reconciliation with component-scaled sparse solves and local per-cell energy-budget checks.
+
+Remaining:
+- H(div)-conforming vector flux spaces and pointwise normal-flux continuity.
+- Independent distorted-mesh and multi-material flux-convergence benchmarks.
+- Export of recovered face rates to result files and visualization.
+
 ## M4 — Structural mechanics
 - Vector-valued H1 spaces.
 - Linear elasticity.
