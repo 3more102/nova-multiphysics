@@ -47,6 +47,10 @@ struct ScalarDiffusion3DProblem {
     // or one positive isotropic coefficient per tetrahedron in mesh.elements order.
     SymmetricTensorField3D diffusivity_tensor{};
     std::vector<double> cell_diffusivity{};
+    // Alternatively, one symmetric positive-definite tensor per tetrahedron.
+    // Mutually exclusive with scalar, spatial tensor and cell scalar fields.
+    // Tensor components use global Cartesian coordinates in mesh.elements order.
+    std::vector<SymmetricTensor3D> cell_diffusivity_tensors{};
 };
 
 struct ScalarDiffusion3DResult {
