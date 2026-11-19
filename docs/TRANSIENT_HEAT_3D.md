@@ -82,6 +82,38 @@ ctest --test-dir build -C Release --output-on-failure
 
 These checks verify the mathematical discretization but **do not** constitute experimental or industrial validation.
 
+## Streaming snapshots and ParaView export
+
+The `TransientHeat3DOptions::on_step` observer receives
+`(step_index, physical_time, nodal_temperatures)` after initial Dirichlet
+projection at step **0**, then after each converged step. Its field reference
+is valid only during the callback. Observer exceptions propagate without
+silently restarting or skipping a step.
+
+By default, `result.linear_solvers[i].solution` still contains each full
+nodal state for backward compatibility. Setting
+`options.retain_step_solutions = false` keeps CG convergence diagnostics
+but clears those stored vectors; the final `result.temperature` is still
+returned. This avoids an O(number of steps × number of nodes) full-field
+result history, although on-disk VTK frames themselves consume storage.
+
+```sh
+./build/nova_transient_heat_3d --vtk-series thermal_case.pvd
+```
+
+This writes `thermal_case.pvd` and `thermal_case_000000.vtk` through
+`thermal_case_000005.vtk`, with times 0, 20, 40, 60, 80 and 100 seconds.
+No extra solve is run per frame. The PVD writer requires unique, safe ASCII
+`.vtk` basenames and strictly increasing finite physical times; invalid
+collections are rejected before XML output. The collection file is
+written only after every VTK frame and step has completed successfully,
+but previously written frames are not removed if later export fails.
+
+`nova_transient_heat_3d_pvd_verify` parses all generated XML and VTK frames
+with Python's standard library and compares the final field range to a
+separate monolithic solve. Unit tests cover the observer's initial and final
+fields, Dirichlet projection, error propagation and optional history elision.
+
 ## Explicit limits and next milestone
 
-Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or ParaView time-series driver is included in this PR. Current result history retains every CG solution vector, so a long run can consume memory proportional to steps × node count. Next: a streaming result callback, Gmsh-tagged transient CLI with `.pvd` export, and an independent temporal-convergence benchmark on a spatially varying manufactured solution.
+Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. No 3D adaptive stepping, temperature-dependent properties, latent heat, radiation, moving meshes, transient Gmsh CLI or a Gmsh-tagged transient CLI is included in this prototype. The default result history retains every CG solution vector for API compatibility; the optional streaming mode elides them. Next: a Gmsh-tagged transient CLI, mesh/time adaptivity, and an independent temporal-convergence benchmark on a spatially varying manufactured solution.
