@@ -1,7 +1,7 @@
 # Gmsh transient 3D heat study (experimental)
 
-NOVA's tagged 3D transient CLI combines the Gmsh MSH 2.2 ASCII tetrahedral
-importer, the implicit P1 thermal solver, the per-cell anisotropic flux
+NOVA's tagged 3D transient CLI combines the shared Gmsh MSH 2.2/4.1 ASCII
+tetrahedral importer, the implicit P1 thermal solver, the per-cell anisotropic flux
 postprocessor and the legacy VTK/PVD writers. Physical volume and exterior
 surface groups can be selected by numeric ID or matching physical name. This is a reproducible
 command-line study, not a GUI or an engineering certification.
@@ -57,7 +57,9 @@ For a single final result, use `--vtk heated_wall_final.vtk` instead of
   completed steps as timestamped VTK frames plus a PVD collection.
 
 The importer accepts first-order four-node tetrahedra and triangular exterior
-facets from Gmsh **MSH 2.2 ASCII**. Unassigned exterior faces are insulated.
+facets from Gmsh **MSH 2.2 or 4.1 ASCII**. MSH 4.1 physical groups are mapped
+from geometric entities, including named groups, sparse identifiers and
+multiple node/element blocks. Unassigned exterior faces are insulated.
 Duplicate or conflicting boundary assignments, missing material/capacity
 coverage, unknown physical tags, invalid tensor conductivity, nonpositive
 capacity, non-finite values and output-path collisions are rejected.
@@ -89,5 +91,8 @@ This is a fixed-step, time-independent-coefficient P1 prototype. It does not
 yet provide adaptive 3D time stepping, time-varying material/boundary data,
 temperature-dependent conductivity, phase change, radiation, moving meshes,
 restart checkpoints, higher-order tetrahedral elements or certified
-engineering validation. Gmsh MSH 4.x and binary input are not supported by
-this importer.
+engineering validation. MSH 4.1 binary files, partitioned/periodic metadata,
+unsupported sections, high-order elements and entities with multiple physical
+groups are rejected. The current MSH 4.1 adapter buffers and normalizes the
+input before topology validation, so its peak memory is higher than a future
+streaming native reader.
