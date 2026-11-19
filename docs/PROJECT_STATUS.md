@@ -1,5 +1,16 @@
 # NOVA development checkpoint
 
+## 19 November 2026 · P1 tetrahedral ParaView export (pending CI)
+
+A standalone legacy VTK UNSTRUCTURED_GRID writer exports validated P1
+four-node tetrahedral meshes and finite nodal scalar results with preserved
+connectivity and 17-digit floating-point precision. The transient 3D cooling
+cube example exposes `--vtk output.vtk`, retaining its existing `--csv` mode.
+Regression coverage includes one/two-cell connectivity, precision, invalid
+field length and values, name injection, malformed mesh and failed streams.
+Full branch CI and physical result inspection are required before release.
+
+
 ## Active numerical checkpoint
 
 | Checkpoint | Tested scope | Evidence |

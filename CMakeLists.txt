@@ -48,6 +48,7 @@ add_library(nova_core
     src/fem/error_indicators_2d.cpp
     src/fem/nonlinear_diffusion_1d.cpp
     src/fem/h1_space_2d.cpp
+    src/io/vtk_legacy_3d.cpp
 )
 
 add_library(NOVA::Core ALIAS nova_core)
@@ -131,6 +132,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_error_indicators_2d.cpp
         tests/test_nonlinear_diffusion_1d.cpp
         tests/test_h1_space_2d.cpp
+        tests/test_vtk_legacy_3d.cpp
     )
     target_include_directories(nova_tests PRIVATE tests)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)
@@ -143,6 +145,8 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_adaptive_heat_3d_smoke COMMAND nova_adaptive_heat_3d)
         add_test(NAME nova_adaptive_spatial_heat_smoke COMMAND nova_adaptive_spatial_heat_2d)
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
+        add_test(NAME nova_transient_heat_3d_vtk_smoke
+            COMMAND nova_transient_heat_3d 3 3 --vtk ${CMAKE_CURRENT_BINARY_DIR}/nova_thermal_3d.vtk)
         add_test(NAME nova_diffusion_3d_smoke COMMAND nova_diffusion_3d)
     endif()
 endif()

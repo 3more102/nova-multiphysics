@@ -1,10 +1,12 @@
 #include "nova/fem/transient_heat_3d.hpp"
+#include "nova/io/vtk_legacy_3d.hpp"
 
 #include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cmath>
 #include <iomanip>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <numbers>
@@ -32,8 +34,10 @@ double spatial_mode(double x, double y, double z) {
 int main(int argc, char** argv) {
     using namespace nova::fem;
     try {
-        if (argc > 4 || (argc == 4 && std::string_view(argv[3]) != "--csv")) {
-            throw std::invalid_argument("Usage: nova_transient_heat_3d [subdivisions [steps [--csv]]]");
+        const bool csv = argc == 4 && std::string_view(argv[3]) == "--csv";
+        const bool vtk = argc == 5 && std::string_view(argv[3]) == "--vtk";
+        if (argc > 5 || (argc > 3 && !csv && !vtk)) {
+            throw std::invalid_argument("Usage: nova_transient_heat_3d [subdivisions [steps [--csv | --vtk output.vtk]]]");
         }
         const std::size_t n = argc > 1 ? positive_count(argv[1]) : 4;
         if (n < 2) throw std::invalid_argument("The cooling cube needs at least two subdivisions.");
@@ -67,6 +71,14 @@ int main(int argc, char** argv) {
                 std::cout << point.x << ',' << point.y << ',' << point.z << ',' << result.temperature[i] << '\n';
             }
             return 0;
+        }
+
+        if (vtk) {
+            std::ofstream output(argv[4]);
+            if (!output) throw std::runtime_error("Cannot open VTK output file.");
+            nova::io::write_legacy_vtk_scalar_3d(output, problem.mesh, result.temperature);
+            output.close();
+            if (!output) throw std::runtime_error("Failed to close VTK output file.");
         }
 
         const double decay = std::exp(-3.0 * std::numbers::pi * std::numbers::pi * result.final_time);

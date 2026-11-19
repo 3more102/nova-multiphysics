@@ -60,6 +60,25 @@ on validated four-node tetrahedral meshes using:
 
 Example: `examples/diffusion_3d/main.cpp`.
 
+### ParaView visualization for P1 tetrahedral fields
+
+The 3D result writer in `nova/io/vtk_legacy_3d.hpp` exports a validated
+four-node tetrahedral mesh and one finite nodal scalar field as an ASCII
+legacy VTK `UNSTRUCTURED_GRID` with `VTK_TETRA` (cell type 10).
+It preserves node connectivity and full double precision, rejects invalid
+fields/meshes, and streams output without buffering the whole mesh.
+
+To visualize the final cooling-cube temperature, build the examples and run:
+
+~~~bash
+./build/nova_transient_heat_3d 4 10 --vtk cooling_cube.vtk
+~~~
+
+Open `cooling_cube.vtk` in ParaView and select the `temperature` scalar.
+The existing `--csv` machine-readable mode is unchanged. This exporter
+writes only the final scalar state; time-series, vector/tensor fields,
+P2 tetrahedra, and curved geometries remain future work.
+
 Pure-Neumann compatibility is checked separately on each connected component without Dirichlet or positive Robin anchoring. The returned field on each such component is normalized to zero volume-weighted mean.
 
 The stationary tetrahedral solver supports P1 isotropic diffusion. P2 tetrahedra, anisotropic tensors and 3D adaptive refinement are open.
