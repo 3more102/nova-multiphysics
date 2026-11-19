@@ -4,6 +4,8 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <span>
+#include <string>
 #include <stdexcept>
 
 namespace {
@@ -236,4 +238,83 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         options.steps = 0;
         (void)solve_transient_heat_3d(p, options);
     }));
+}
+
+
+NOVA_TEST(transient_heat_3d_streaming_mode_matches_full_history_for_both_schemes) {
+    auto p = unit_heat();
+    p.cell_volumetric_capacity = {4.0};
+    p.diffusion.source = [](double, double, double) { return 8.0; };
+    p.initial_temperature = {300.0, 300.0, 300.0, 300.0};
+
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        TransientHeat3DOptions options;
+        options.scheme = scheme;
+        options.start_time = 2.0;
+        options.time_step = 0.125;
+        options.steps = 10;
+        options.store_step_history = false;
+        options.solver_options.relative_tolerance = 1e-13;
+        options.solver_options.preconditioner =
+            nova::linalg::PreconditionerType::Jacobi;
+        std::size_t callback_count = 0;
+        std::vector<double> last_callback_field;
+
+        options.on_step = [&](std::size_t step, double time,
+                              std::span<const double> temperatures,
+                              const TransientHeatStepDiagnostics3D& diag) {
+            ++callback_count;
+            NOVA_REQUIRE(step == callback_count);
+            NOVA_REQUIRE_NEAR(time, 2.0 + step * 0.125, 1e-14);
+            NOVA_REQUIRE_NEAR(diag.time, time, 1e-14);
+            NOVA_REQUIRE_NEAR(diag.source_energy, 1.0 / 6.0, 1e-13);
+            NOVA_REQUIRE_NEAR(diag.balance_residual, 0.0, 1e-10);
+            NOVA_REQUIRE(temperatures.size() == 4U);
+            for (double value : temperatures) {
+                NOVA_REQUIRE_NEAR(value, 300.0 + 2.0 * step * 0.125, 2e-9);
+            }
+            last_callback_field.assign(temperatures.begin(), temperatures.end());
+        };
+
+        const auto streamed = solve_transient_heat_3d(p, options);
+        NOVA_REQUIRE(callback_count == options.steps);
+        NOVA_REQUIRE(streamed.linear_solvers.empty());
+        NOVA_REQUIRE(streamed.diagnostics.empty());
+        NOVA_REQUIRE_NEAR(streamed.final_time, 3.25, 1e-14);
+        NOVA_REQUIRE(streamed.temperature == last_callback_field);
+
+        options.store_step_history = true;
+        options.on_step = {};
+        const auto retained = solve_transient_heat_3d(p, options);
+        NOVA_REQUIRE(retained.linear_solvers.size() == options.steps);
+        NOVA_REQUIRE(retained.diagnostics.size() == options.steps);
+        for (std::size_t i = 0; i < streamed.temperature.size(); ++i) {
+            NOVA_REQUIRE_NEAR(streamed.temperature[i], retained.temperature[i], 1e-13);
+            NOVA_REQUIRE_NEAR(retained.linear_solvers.back().solution[i],
+                              retained.temperature[i], 1e-13);
+        }
+    }
+}
+
+NOVA_TEST(transient_heat_3d_stream_callback_exception_aborts_the_solve) {
+    auto p = unit_heat();
+    std::size_t callback_count = 0;
+    TransientHeat3DOptions options;
+    options.steps = 4;
+    options.store_step_history = false;
+    options.on_step = [&](std::size_t step, double,
+                          std::span<const double>,
+                          const TransientHeatStepDiagnostics3D&) {
+        ++callback_count;
+        if (step == 2U) throw std::runtime_error("stop streaming");
+    };
+    bool caught = false;
+    try {
+        (void)solve_transient_heat_3d(p, options);
+    } catch (const std::runtime_error& error) {
+        caught = std::string(error.what()) == "stop streaming";
+    }
+    NOVA_REQUIRE(caught);
+    NOVA_REQUIRE(callback_count == 2U);
 }
