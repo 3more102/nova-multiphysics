@@ -196,3 +196,75 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_heat_capacity_bcs_and_time) {
         (void)solve_transient_heat_3d(p, options);
     }));
 }
+
+NOVA_TEST(transient_heat_3d_streams_initial_and_each_step_without_history) {
+    auto p = unit_heat();
+    p.initial_temperature = {500.0, 0.0, 0.0, 10.0};
+    p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
+
+    TransientHeat3DOptions options;
+    options.time_step = 0.05;
+    options.steps = 3;
+    options.retain_step_solutions = false;
+    options.solver_options.relative_tolerance = 1e-13;
+    options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    std::size_t observed = 0;
+    std::vector<double> last;
+    options.on_state = [&](std::size_t step, double time,
+                           const std::vector<double>& field) {
+        NOVA_REQUIRE(step == observed);
+        NOVA_REQUIRE_NEAR(time, static_cast<double>(step) * options.time_step, 1e-14);
+        NOVA_REQUIRE(field.size() == 4);
+        for (std::size_t i = 0; i < 3; ++i) {
+            NOVA_REQUIRE_NEAR(field[i], 0.0, 1e-14);
+        }
+        if (step == 0) {
+            NOVA_REQUIRE_NEAR(field[3], 10.0, 1e-14);
+        }
+        last = field;
+        ++observed;
+    };
+    const auto result = solve_transient_heat_3d(p, options);
+    NOVA_REQUIRE(observed == options.steps + 1U);
+    NOVA_REQUIRE(result.linear_solvers.size() == options.steps);
+    NOVA_REQUIRE(result.diagnostics.size() == options.steps);
+    for (const auto& solver : result.linear_solvers) {
+        NOVA_REQUIRE(solver.converged);
+        NOVA_REQUIRE(solver.solution.empty());
+    }
+    NOVA_REQUIRE_NEAR(result.temperature[3], last[3], 1e-14);
+    NOVA_REQUIRE_NEAR(result.temperature[3],
+                      10.0 / std::pow(1.0 + 0.5, 3), 1e-12);
+}
+
+NOVA_TEST(transient_heat_3d_be_and_cn_show_expected_temporal_convergence) {
+    auto p = unit_heat();
+    p.initial_temperature = {0.0, 0.0, 0.0, 10.0};
+    p.diffusion.dirichlet_constraints = {{0,0}, {1,0}, {2,0}};
+    // On this unit tetrahedron, M_33=1/60 and K_33=1/6. Therefore the
+    // exact SEMIDISCRETE free-DOF temperature is 10*exp(-10*t).
+    const double exact = 10.0 * std::exp(-2.0);
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        std::array<double, 3> errors{};
+        for (std::size_t i = 0; i < errors.size(); ++i) {
+            TransientHeat3DOptions options;
+            options.scheme = scheme;
+            options.steps = std::size_t{5} << i;
+            options.time_step = 0.2 / static_cast<double>(options.steps);
+            options.retain_step_solutions = false;
+            options.solver_options.relative_tolerance = 1e-13;
+            options.solver_options.preconditioner =
+                nova::linalg::PreconditionerType::Jacobi;
+            const auto result = solve_transient_heat_3d(p, options);
+            NOVA_REQUIRE_NEAR(result.final_time, 0.2, 1e-14);
+            errors[i] = std::abs(result.temperature[3] - exact);
+            NOVA_REQUIRE(errors[i] > 1e-5);
+            NOVA_REQUIRE_NEAR(result.diagnostics.back().balance_residual, 0.0, 1e-12);
+        }
+        const double minimum_refinement_ratio =
+            scheme == TransientHeat3DScheme::BackwardEuler ? 1.8 : 3.8;
+        NOVA_REQUIRE(errors[0] > minimum_refinement_ratio * errors[1]);
+        NOVA_REQUIRE(errors[1] > minimum_refinement_ratio * errors[2]);
+    }
+}
