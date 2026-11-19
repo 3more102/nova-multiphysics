@@ -37,23 +37,26 @@ on continuous triangular P1 and P2 meshes using:
 - Orientation-independent triangle handling and scale-aware degenerate-element rejection.
 
 ### Transient 2D heat diffusion
-The P1/P2 H1 kernel now also solves
+The continuous P1/P2 H1 kernel solves
 
 \[
-\rho c\,\frac{\partial T}{\partial t} - \nabla\cdot(k\nabla T)=Q(x,y,t)
+\rho c\frac{\partial T}{\partial t}-\nabla\cdot(k\nabla T)=Q(x,y,t)
 \]
 
 using:
-- Consistent (non-lumped) capacity/mass and conductivity/stiffness CSR matrices.
+- Consistent mass/capacity and stiffness matrices in sparse CSR format.
 - Positive spatially varying, time-independent volumetric heat capacity and conductivity.
-- Fully implicit Backward Euler time integration: \((M+\Delta t K)T^{n+1}=MT^n+\Delta t F^{n+1}\).
-- Time-dependent Dirichlet temperature functions on exterior edges, including P2 edge midpoint DOFs.
-- Homogeneous natural (zero-flux) conditions on other edges.
-- Conjugate Gradient, solver diagnostics for each step, and explicit failure reporting.
-- Manufactured exact solution and first-order temporal convergence regressions.
-- Cooling-plate example at \`examples/transient_heat_2d/main.cpp\`.
+- Backward Euler (first-order) or Crank–Nicolson (second-order for sufficiently smooth solutions) time integration.
+- Time-dependent volume sources and prescribed Dirichlet temperature traces, including P2 edge midpoint DOFs.
+- Time-dependent Neumann outward heat flux and Robin convection with ambient temperature.
+- Homogeneous natural (zero-flux) conditions on unassigned edges.
+- Integrated energy diagnostics: heat content, volumetric energy, Neumann/Robin exchange, and constrained Dirichlet reaction.
+- Conjugate Gradient and per-step residual/convergence reports.
+- Manufactured-solution convergence and energy-budget regression tests.
 
-This first transient implementation does not yet cover time-dependent material coefficients, prescribed nonzero Neumann/Robin fluxes, adaptivity, or higher-order time integration.
+Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate with Backward Euler) and examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson with Neumann/Robin boundary exchange).
+
+Limitations: no temperature-dependent coefficients, adaptive time stepping, higher-order time integrators, or independently reconstructed Dirichlet normal heat flux. This prototype is not validated for engineering design use.
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
@@ -108,6 +111,7 @@ Run the examples:
 ./build/nova_poisson_1d
 ./build/nova_diffusion_2d
 ./build/nova_transient_heat_2d
+./build/nova_transient_flux_2d
 ./build/nova_nonlinear_diffusion_1d
 ~~~
 

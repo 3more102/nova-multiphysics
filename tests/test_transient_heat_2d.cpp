@@ -267,3 +267,295 @@ NOVA_TEST(transient_heat_rejects_conflicting_corner_temperatures) {
     }
     NOVA_REQUIRE(caught);
 }
+
+
+namespace {
+
+double crank_nicolson_cubic_time_error(std::size_t steps) {
+    auto problem = make_problem(3U);
+    // Spatial P2 exact: u=t^3*x*(1-x); time derivative is quadratic.
+    problem.source = [](double x, double, double t) {
+        return 3.0 * t * t * x * (1.0 - x) + 2.0 * t * t * t;
+    };
+    set_all_dirichlet(problem, [](double x, double, double t) {
+        return t * t * t * x * (1.0 - x);
+    });
+    TransientHeat2DOptions options;
+    options.order = H1TriangleOrder::P2;
+    options.scheme = nova::fem::TransientTimeScheme::CrankNicolson;
+    options.steps = steps;
+    options.time_step = 1.0 / static_cast<double>(steps);
+    const auto result = nova::fem::solve_transient_heat_2d(problem, options);
+    for (const auto& item : result.diagnostics) {
+        NOVA_REQUIRE(std::abs(item.balance_residual) < 2.0e-9);
+    }
+    return exact_error(problem, result, H1TriangleOrder::P2,
+        [](double x, double) { return x * (1.0 - x); });
+}
+
+std::vector<nova::fem::BoundaryEdge2D> right_boundary_edges(
+    const TransientHeat2DProblem& problem
+) {
+    std::map<std::pair<std::size_t, std::size_t>, std::size_t> incidence;
+    for (const auto& element : problem.mesh.elements) {
+        ++incidence[std::minmax(element[0], element[1])];
+        ++incidence[std::minmax(element[1], element[2])];
+        ++incidence[std::minmax(element[2], element[0])];
+    }
+    std::vector<nova::fem::BoundaryEdge2D> result;
+    for (const auto& [edge, count] : incidence) {
+        const auto& a = problem.mesh.nodes[edge.first];
+        const auto& b = problem.mesh.nodes[edge.second];
+        if (count == 1U && a.x == 1.0 && b.x == 1.0) {
+            result.push_back({edge.first, edge.second});
+        }
+    }
+    return result;
+}
+
+} // namespace
+
+NOVA_TEST(transient_heat_crank_nicolson_second_order_temporal_convergence) {
+    const double coarse = crank_nicolson_cubic_time_error(4U);
+    const double medium = crank_nicolson_cubic_time_error(8U);
+    const double fine = crank_nicolson_cubic_time_error(16U);
+    NOVA_REQUIRE(coarse > medium);
+    NOVA_REQUIRE(medium > fine);
+    NOVA_REQUIRE(coarse / medium > 3.0);
+    NOVA_REQUIRE(medium / fine > 3.0);
+}
+
+NOVA_TEST(transient_heat_crank_nicolson_exact_linear_spacetime_solution) {
+    auto problem = make_problem();
+    problem.source = [](double, double, double) { return 1.0; };
+    problem.initial_temperature = [](double x, double y) { return x + y; };
+    set_all_dirichlet(problem,
+        [](double x, double y, double t) { return x + y + t; });
+    for (const H1TriangleOrder order : {H1TriangleOrder::P1, H1TriangleOrder::P2}) {
+        TransientHeat2DOptions options;
+        options.order = order;
+        options.scheme = nova::fem::TransientTimeScheme::CrankNicolson;
+        options.steps = 5U;
+        options.time_step = 0.2;
+        const auto result = nova::fem::solve_transient_heat_2d(problem, options);
+        NOVA_REQUIRE(exact_error(problem, result, order,
+            [](double x, double y) { return x + y + 1.0; }) < 2.0e-9);
+    }
+}
+
+NOVA_TEST(transient_heat_source_only_satisfies_global_energy_budget) {
+    for (const auto scheme : {
+        nova::fem::TransientTimeScheme::BackwardEuler,
+        nova::fem::TransientTimeScheme::CrankNicolson
+    }) {
+        auto problem = make_problem(2U);
+        problem.volumetric_capacity = [](double, double) { return 2.0; };
+        problem.source = [](double, double, double) { return 2.0; };
+        problem.initial_temperature = [](double, double) { return 0.5; };
+        TransientHeat2DOptions options;
+        options.order = H1TriangleOrder::P2;
+        options.scheme = scheme;
+        options.steps = 4U;
+        options.time_step = 0.1;
+        const auto result = nova::fem::solve_transient_heat_2d(problem, options);
+        NOVA_REQUIRE(result.diagnostics.size() == options.steps);
+        for (const double temperature : result.temperature) {
+            NOVA_REQUIRE_NEAR(temperature, 0.9, 1.0e-9);
+        }
+        for (std::size_t step = 0; step < options.steps; ++step) {
+            const auto& d = result.diagnostics[step];
+            NOVA_REQUIRE_NEAR(d.heat_content, 1.2 + 0.2 * static_cast<double>(step), 1.0e-9);
+            NOVA_REQUIRE_NEAR(d.source_energy, 0.2, 1.0e-10);
+            NOVA_REQUIRE_NEAR(d.neumann_energy, 0.0, 1.0e-12);
+            NOVA_REQUIRE_NEAR(d.robin_energy, 0.0, 1.0e-12);
+            NOVA_REQUIRE_NEAR(d.dirichlet_energy, 0.0, 1.0e-12);
+            NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 1.0e-9);
+        }
+    }
+}
+
+NOVA_TEST(transient_heat_time_dependent_neumann_flux_energy_budget) {
+    for (const auto scheme : {
+        nova::fem::TransientTimeScheme::BackwardEuler,
+        nova::fem::TransientTimeScheme::CrankNicolson
+    }) {
+        auto problem = make_problem(2U);
+        const auto edges = right_boundary_edges(problem);
+        NOVA_REQUIRE(edges.size() == 2U);
+        for (const auto& edge : edges) {
+            problem.neumann_edges.push_back({
+                edge, [](double, double, double t) { return 1.0 + t; }
+            });
+        }
+        TransientHeat2DOptions options;
+        options.order = H1TriangleOrder::P2;
+        options.scheme = scheme;
+        options.steps = 4U;
+        options.time_step = 0.25;
+        const auto result = nova::fem::solve_transient_heat_2d(problem, options);
+        double integrated_flux = 0.0;
+        for (std::size_t step = 0; step < options.steps; ++step) {
+            const auto& d = result.diagnostics[step];
+            const double old_time = 0.25 * static_cast<double>(step);
+            const double new_time = old_time + 0.25;
+            const double flux_average = scheme == nova::fem::TransientTimeScheme::BackwardEuler
+                ? (1.0 + new_time)
+                : (1.0 + 0.5 * (old_time + new_time));
+            integrated_flux -= options.time_step * flux_average;
+            NOVA_REQUIRE_NEAR(d.neumann_energy, -options.time_step * flux_average, 1.0e-10);
+            NOVA_REQUIRE_NEAR(d.heat_content, integrated_flux, 1.0e-9);
+            NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 1.0e-9);
+        }
+    }
+}
+
+NOVA_TEST(transient_heat_time_dependent_robin_flux_energy_budget) {
+    auto problem = make_problem(2U);
+    for (const auto& edge : right_boundary_edges(problem)) {
+        problem.robin_edges.push_back({
+            edge,
+            [](double, double, double t) { return 2.0 + t; },
+            [](double, double, double t) { return 1.0 + t; }
+        });
+    }
+    TransientHeat2DOptions options;
+    options.order = H1TriangleOrder::P2;
+    options.scheme = nova::fem::TransientTimeScheme::CrankNicolson;
+    options.steps = 3U;
+    options.time_step = 0.1;
+    const auto result = nova::fem::solve_transient_heat_2d(problem, options);
+    double accumulated = 0.0;
+    for (const auto& d : result.diagnostics) {
+        NOVA_REQUIRE(d.robin_energy > 0.0);
+        NOVA_REQUIRE_NEAR(d.neumann_energy, 0.0, 1.0e-12);
+        accumulated += d.robin_energy;
+        NOVA_REQUIRE_NEAR(d.heat_content, accumulated, 2.0e-9);
+        NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 2.0e-9);
+    }
+}
+
+NOVA_TEST(transient_heat_dirichlet_reaction_closes_energy_budget) {
+    auto problem = make_problem(2U);
+    set_all_dirichlet(problem, [](double, double, double t) { return t; });
+    TransientHeat2DOptions options;
+    options.scheme = nova::fem::TransientTimeScheme::CrankNicolson;
+    options.time_step = 0.1;
+    options.steps = 3U;
+    const auto result = nova::fem::solve_transient_heat_2d(problem, options);
+    for (const auto& d : result.diagnostics) {
+        NOVA_REQUIRE(d.dirichlet_energy > 0.0);
+        NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 2.0e-9);
+    }
+}
+
+NOVA_TEST(transient_heat_rejects_dirichlet_neumann_overlap) {
+    auto problem = make_problem(1U);
+    const auto edge = right_boundary_edges(problem).front();
+    problem.dirichlet_edges.push_back({
+        edge, [](double, double, double) { return 0.0; }
+    });
+    problem.neumann_edges.push_back({
+        edge, [](double, double, double) { return 1.0; }
+    });
+    bool caught = false;
+    try {
+        static_cast<void>(nova::fem::solve_transient_heat_2d(problem));
+    } catch (const std::invalid_argument&) {
+        caught = true;
+    }
+    NOVA_REQUIRE(caught);
+}
+
+NOVA_TEST(transient_heat_rejects_neumann_robin_overlap) {
+    auto problem = make_problem(1U);
+    const auto edge = right_boundary_edges(problem).front();
+    problem.neumann_edges.push_back({
+        edge, [](double, double, double) { return 1.0; }
+    });
+    problem.robin_edges.push_back({
+        edge,
+        [](double, double, double) { return 2.0; },
+        [](double, double, double) { return 1.0; }
+    });
+    bool caught = false;
+    try {
+        static_cast<void>(nova::fem::solve_transient_heat_2d(problem));
+    } catch (const std::invalid_argument&) {
+        caught = true;
+    }
+    NOVA_REQUIRE(caught);
+}
+
+NOVA_TEST(transient_heat_rejects_negative_robin_coefficient) {
+    auto problem = make_problem(1U);
+    const auto edge = right_boundary_edges(problem).front();
+    problem.robin_edges.push_back({
+        edge,
+        [](double, double, double) { return -1.0; },
+        [](double, double, double) { return 0.0; }
+    });
+    bool caught = false;
+    try {
+        static_cast<void>(nova::fem::solve_transient_heat_2d(problem));
+    } catch (const std::invalid_argument&) {
+        caught = true;
+    }
+    NOVA_REQUIRE(caught);
+}
+
+NOVA_TEST(transient_heat_rejects_unsupported_time_scheme) {
+    auto problem = make_problem(1U);
+    TransientHeat2DOptions options;
+    options.scheme = static_cast<nova::fem::TransientTimeScheme>(999);
+    bool caught = false;
+    try {
+        static_cast<void>(nova::fem::solve_transient_heat_2d(problem, options));
+    } catch (const std::invalid_argument&) {
+        caught = true;
+    }
+    NOVA_REQUIRE(caught);
+}
+
+
+NOVA_TEST(transient_heat_p1_mixed_neumann_robin_energy_budget) {
+    auto problem = make_problem(2U);
+    std::map<std::pair<std::size_t, std::size_t>, std::size_t> incidence;
+    for (const auto& tri : problem.mesh.elements) {
+        ++incidence[std::minmax(tri[0], tri[1])];
+        ++incidence[std::minmax(tri[1], tri[2])];
+        ++incidence[std::minmax(tri[2], tri[0])];
+    }
+    for (const auto& [edge, count] : incidence) {
+        if (count != 1U) {
+            continue;
+        }
+        const auto& a = problem.mesh.nodes[edge.first];
+        const auto& b = problem.mesh.nodes[edge.second];
+        if (a.x == 1.0 && b.x == 1.0) {
+            problem.neumann_edges.push_back({
+                {edge.first, edge.second},
+                [](double, double, double) { return -0.5; }
+            });
+        } else if (a.x == 0.0 && b.x == 0.0) {
+            problem.robin_edges.push_back({
+                {edge.first, edge.second},
+                [](double, double, double) { return 2.0; },
+                [](double, double, double) { return 1.0; }
+            });
+        }
+    }
+    TransientHeat2DOptions options;
+    options.order = H1TriangleOrder::P1;
+    options.scheme = nova::fem::TransientTimeScheme::CrankNicolson;
+    options.time_step = 0.1;
+    options.steps = 2U;
+    const auto result = nova::fem::solve_transient_heat_2d(problem, options);
+    double accumulated = 0.0;
+    for (const auto& diagnostic : result.diagnostics) {
+        NOVA_REQUIRE(diagnostic.neumann_energy > 0.0);
+        NOVA_REQUIRE(diagnostic.robin_energy > 0.0);
+        accumulated += diagnostic.neumann_energy + diagnostic.robin_energy;
+        NOVA_REQUIRE_NEAR(diagnostic.heat_content, accumulated, 1.0e-9);
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 1.0e-9);
+    }
+}

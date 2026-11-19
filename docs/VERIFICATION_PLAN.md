@@ -78,6 +78,13 @@ Implemented transient thermal regression cases:
 - P2 mass symmetry, constant-field integration, and stiffness nullspace.
 - Exact linear space-time temperature field with P1 and P2 Backward Euler.
 - First-order temporal convergence of a quadratic-in-time manufactured P2 field.
+- Second-order Crank–Nicolson temporal convergence of a cubic-in-time manufactured P2 field.
+- Crank–Nicolson exact linear space-time P1/P2 solution.
+- Global heat-content budgets under constant volumetric heating.
+- Time-dependent Neumann flux integrated energy budget for Backward Euler and Crank–Nicolson.
+- Time-dependent Robin convection integrated heat budget.
+- Prescribed-temperature boundary reactions and discrete energy closure.
+- Rejection of overlapping Dirichlet/Neumann/Robin edges, invalid Robin coefficients, and unsupported time schemes.
 - Constant field with homogeneous natural heat fluxes.
 - Rejection of invalid time step, negative volumetric capacity, non-finite heat source,
   interior Dirichlet edges, and conflicting corner temperature values.
@@ -85,7 +92,8 @@ Implemented transient thermal regression cases:
 Required next verification:
 - Quantify discrete energy decay and time step sensitivity for a cooling plate.
 - Cross-check transient thermal benchmarks against an independent reference solver.
-- Add transient nonzero Neumann/Robin flux and energy balance tests.
+- Cross-check independent physical fluxes, Dirichlet boundary reactions, and energy changes.
+- Add distorted-mesh verification for transient Neumann/Robin conditions.
 
 ## Legacy gate 5 cases
 
