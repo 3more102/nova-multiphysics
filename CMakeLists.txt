@@ -38,8 +38,10 @@ add_library(nova_core
     src/fem/diffusion_3d.cpp
     src/fem/p1_flux_3d.cpp
     src/fem/tagged_boundary_flux_3d.cpp
+    src/fem/transient_heat_3d.cpp
     src/fem/energy_balance_3d.cpp
     src/fem/conservative_face_flux_3d.cpp
+    src/fem/transient_heat_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
     src/fem/mesh_refinement_2d.cpp
@@ -83,6 +85,10 @@ if(NOVA_BUILD_EXAMPLES)
     target_link_libraries(nova_gmsh_diffusion_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_gmsh_diffusion_3d)
 
+    add_executable(nova_transient_heat_3d examples/transient_heat_3d/main.cpp)
+    target_link_libraries(nova_transient_heat_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_transient_heat_3d)
+
     add_executable(nova_transient_heat_2d examples/transient_heat_2d/main.cpp)
     target_link_libraries(nova_transient_heat_2d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_transient_heat_2d)
@@ -119,9 +125,11 @@ if(NOVA_BUILD_TESTS)
         tests/test_tagged_boundary_flux_3d.cpp
         tests/test_energy_balance_3d.cpp
         tests/test_conservative_face_flux_3d.cpp
+        tests/test_transient_heat_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
         tests/test_diffusion_h1_2d.cpp
+        tests/test_transient_heat_3d.cpp
         tests/test_transient_heat_2d.cpp
         tests/test_adaptive_heat_2d.cpp
         tests/test_error_norms_2d.cpp
@@ -171,6 +179,9 @@ if(NOVA_BUILD_TESTS)
                 "$<TARGET_FILE:nova_gmsh_diffusion_3d>"
                 "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh")
         endif()
+        add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
+        set_tests_properties(nova_transient_heat_3d_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "NOVA 3D transient heat demonstration")
         add_test(NAME nova_transient_heat_smoke COMMAND nova_transient_heat_2d)
         add_test(NAME nova_transient_flux_smoke COMMAND nova_transient_flux_2d)
         add_test(NAME nova_adaptive_heat_smoke COMMAND nova_adaptive_heat_2d)
