@@ -296,6 +296,9 @@ TransientHeat3DResult solve_transient_heat_3d(
     result.final_time = final_time;
     result.linear_solvers.reserve(options.steps);
     result.diagnostics.reserve(options.steps);
+    if (options.on_state) {
+        options.on_state(0U, options.start_time, state);
+    }
 
     for (std::size_t step = 1; step <= options.steps; ++step) {
         std::vector<double> rhs = rhs_operator.multiply(state);
@@ -339,8 +342,6 @@ TransientHeat3DResult solve_transient_heat_3d(
                 throw std::overflow_error("Transient 3D corrected temperature overflowed.");
             }
         }
-        // Publish the physical state rather than the internal correction.
-        solved.solution = next;
         const auto unconstrained_lhs = lhs.multiply(next);
         const auto previous_robin = robin.multiply(state);
         const auto next_robin = robin.multiply(next);
@@ -367,7 +368,19 @@ TransientHeat3DResult solve_transient_heat_3d(
             throw std::overflow_error("Transient 3D energy diagnostic overflowed.");
         }
 
-        state = next;
+        // Emit the completed physical field before it is moved into the
+        // next-step state. A streaming client can write each snapshot to disk.
+        if (options.on_state) {
+            options.on_state(step, diag.time, next);
+        }
+        if (options.retain_step_solutions) {
+            solved.solution = next;
+        } else {
+            // clear() retains capacity; swap releases the per-step vector so
+            // long simulations do not keep O(steps * nodes) state history.
+            std::vector<double>().swap(solved.solution);
+        }
+        state = std::move(next);
         result.diagnostics.push_back(diag);
         result.linear_solvers.push_back(std::move(solved));
     }
