@@ -140,6 +140,15 @@ The prototype also includes a nonlinear P1 finite-element benchmark:
 - Manufactured solution \(u(x)=\sin(\pi x)\).
 - Mesh-refinement checks at 8, 16, and 32 elements.
 
+### Verified 3D L2 and H1 spatial-error measurement
+
+The P1 tetrahedral verification utility integrates exact-solution L2 and H1
+errors with 125-point Duffy-mapped Gaussian quadrature. Automated analytical
+patch, orientation, quadratic interpolation and manufactured Poisson tests
+check the expected spatial convergence rates.
+
+See [3D error-norm formulation and verification](docs/VERIFICATION_3D_ERROR_NORMS.md).
+
 ### Linear and nonlinear solver capabilities
 - CSR sparse matrix-vector products.
 - Conjugate Gradient for symmetric positive-definite systems.
