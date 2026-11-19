@@ -40,10 +40,10 @@ add_library(nova_core
     src/fem/tagged_boundary_flux_3d.cpp
     src/fem/transient_heat_3d.cpp
     src/fem/energy_balance_3d.cpp
-    src/fem/transient_heat_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
     src/fem/mesh_refinement_2d.cpp
+    src/fem/mesh_refinement_3d.cpp
     src/fem/poisson_1d.cpp
     src/fem/diffusion_2d.cpp
     src/fem/diffusion_h1_2d.cpp
@@ -127,12 +127,12 @@ if(NOVA_BUILD_TESTS)
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
         tests/test_diffusion_h1_2d.cpp
-        tests/test_transient_heat_3d.cpp
         tests/test_transient_heat_2d.cpp
         tests/test_adaptive_heat_2d.cpp
         tests/test_error_norms_2d.cpp
         tests/test_mesh_topology_2d.cpp
         tests/test_mesh_refinement_2d.cpp
+        tests/test_mesh_refinement_3d.cpp
         tests/test_nonlinear_diffusion_1d.cpp
         tests/test_h1_space_2d.cpp
     )
