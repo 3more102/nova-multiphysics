@@ -232,3 +232,60 @@ NOVA_TEST(transient_heat_3d_cellwise_tensor_capacity_source_patch) {
         NOVA_REQUIRE_NEAR(solved.diagnostics[0].balance_residual, 0.0, 1e-8);
     }
 }
+
+
+NOVA_TEST(transient_heat_3d_temporal_refinement_convergence) {
+    // After fixing three vertices of a unit tetrahedron, its only free
+    // temperature obeys M_33*T' + K_33*T = 0 with K_33/M_33 = 10.
+    // Compare both integrators against the exact SEMIDISCRETE decay, not
+    // the unrelated continuum pointwise heat equation.
+    auto p = unit_heat();
+    p.initial_temperature = {0.0, 0.0, 0.0, 10.0};
+    p.diffusion.dirichlet_constraints = {{0,0.0}, {1,0.0}, {2,0.0}};
+    const double exact = 10.0 * std::exp(-2.0); // time = 0.2
+
+    const auto error = [&](TransientHeat3DScheme scheme,
+                           double step_size, std::size_t steps) {
+        TransientHeat3DOptions options;
+        options.scheme = scheme;
+        options.time_step = step_size;
+        options.steps = steps;
+        options.solver_options.relative_tolerance = 1e-13;
+        options.solver_options.preconditioner =
+            nova::linalg::PreconditionerType::Jacobi;
+        const auto result = solve_transient_heat_3d(p, options);
+        NOVA_REQUIRE_NEAR(result.final_time, 0.2, 1e-14);
+        NOVA_REQUIRE_NEAR(result.diagnostics.back().balance_residual, 0.0, 1e-11);
+        return std::abs(result.temperature[3] - exact);
+    };
+
+    const double be_coarse = error(TransientHeat3DScheme::BackwardEuler, 0.1, 2);
+    const double be_fine   = error(TransientHeat3DScheme::BackwardEuler, 0.05, 4);
+    const double cn_coarse = error(TransientHeat3DScheme::CrankNicolson, 0.1, 2);
+    const double cn_fine   = error(TransientHeat3DScheme::CrankNicolson, 0.05, 4);
+    NOVA_REQUIRE(be_fine > 0.0 && cn_fine > 0.0);
+    NOVA_REQUIRE(be_coarse / be_fine > 1.7);  // first-order step refinement
+    NOVA_REQUIRE(cn_coarse / cn_fine > 3.5);  // second-order step refinement
+}
+
+NOVA_TEST(transient_heat_3d_long_time_matches_independently_assembled_steady_fem) {
+    // A source-driven transient P1 solution must approach the independent
+    // stationary 3D FEM assembly at long times, including its Dirichlet load.
+    auto p = unit_heat();
+    p.diffusion.source = [](double, double, double) { return 1.0; };
+    p.diffusion.dirichlet_constraints = {{0,0.0}, {1,0.0}, {2,0.0}};
+    const auto steady = solve_scalar_diffusion_3d(p.diffusion);
+    NOVA_REQUIRE(steady.linear_solver.converged);
+    NOVA_REQUIRE_NEAR(steady.values[3], 0.25, 1e-12);
+
+    TransientHeat3DOptions options;
+    options.scheme = TransientHeat3DScheme::BackwardEuler;
+    options.time_step = 1.0;
+    options.steps = 10;
+    options.solver_options.relative_tolerance = 1e-13;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+    const auto transient = solve_transient_heat_3d(p, options);
+    NOVA_REQUIRE_NEAR(transient.temperature[3], steady.values[3], 2e-10);
+    NOVA_REQUIRE_NEAR(transient.diagnostics.back().balance_residual, 0.0, 1e-10);
+}
