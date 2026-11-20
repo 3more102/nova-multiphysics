@@ -98,6 +98,7 @@ Remaining:
 
 Implemented:
 - P1 tetrahedral Backward Euler and Crank–Nicolson with a consistent thermal mass matrix.
+- Optional additive time-dependent volumetric heating, with Backward Euler endpoint sampling and Crank–Nicolson trapezoidal load integration in fixed and adaptive studies.
 - Fixed-mesh adaptive step doubling for both schemes, with full-step/two-half-step error control, accepted/rejected attempt history and an accepted-state observer.
 - Versioned, mesh-validated text checkpoints for exact 3D transient nodal-state restart; physics model reconstruction remains caller-owned.
 - Once-per-study static FEM preparation plus separate full-step and half-step dt-dependent operator caches; exact CSR IC(0) factor reuse is observable through result counters.
@@ -112,7 +113,7 @@ Implemented:
 
 Remaining:
 - Time-varying 3D loads/materials and broader adaptive temporal-error estimators.
-- Gmsh binary and higher-order element import, time-varying loads/materials, and independent cross-solver thermal benchmarks.
+- Gmsh binary and higher-order element import, time-varying material/boundary data, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
 ### 3D steady conduction flux recovery (experimental)

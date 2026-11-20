@@ -72,6 +72,43 @@ NOVA_TEST(adaptive_heat_3d_exact_uniform_source_and_energy) {
     }
 }
 
+
+NOVA_TEST(adaptive_heat_3d_time_dependent_uniform_source_uses_cn_quadrature) {
+    auto problem = tetra_problem();
+    problem.diffusion.dirichlet_constraints.clear();
+    problem.diffusion.source = {};
+    problem.diffusion.cell_source.clear();
+    problem.cell_volumetric_capacity = {2.0};
+    problem.initial_temperature.assign(4U, 300.0);
+    problem.time_dependent_source =
+        [](double, double, double, double time) { return time; };
+
+    AdaptiveHeat3DOptions options;
+    options.scheme = TransientHeat3DScheme::CrankNicolson;
+    options.start_time = 0.0;
+    options.end_time = 1.0;
+    options.initial_step = 0.1;
+    options.min_step = 0.1;
+    options.max_step = 0.1;
+    options.absolute_tolerance = 1.0e-6;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-12;
+
+    const auto result = solve_adaptive_heat_3d(problem, options);
+    NOVA_REQUIRE(result.accepted_steps == 10U);
+    NOVA_REQUIRE(result.rejected_steps == 0U);
+    NOVA_REQUIRE_NEAR(result.final_time, 1.0, 1.0e-14);
+    for (const double temperature : result.temperature) {
+        NOVA_REQUIRE_NEAR(temperature, 300.25, 2.0e-9);
+    }
+    double total_source_energy = 0.0;
+    for (const auto& diagnostic : result.diagnostics) {
+        total_source_energy += diagnostic.source_energy;
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2.0e-9);
+    }
+    NOVA_REQUIRE_NEAR(total_source_energy, 1.0 / 12.0, 2.0e-11);
+}
+
 NOVA_TEST(adaptive_heat_3d_tolerance_controls_decay_error) {
     const auto p = tetra_problem();
     AdaptiveHeat3DOptions loose;

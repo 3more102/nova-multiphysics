@@ -128,6 +128,11 @@ PreparedTransientHeat3D prepare_transient_heat_3d(
 
     const DiffusionMaterials3D materials(diffusion);
     PreparedTransientHeat3D prepared;
+    prepared.mesh = problem.time_dependent_source ? &mesh : nullptr;
+    prepared.time_dependent_source = problem.time_dependent_source;
+    if (prepared.time_dependent_source) {
+        prepared.element_jacobians.reserve(mesh.elements.size());
+    }
     prepared.prescribed.resize(n);
     std::set<std::size_t> explicit_nodes;
     for (const auto& boundary : diffusion.dirichlet_constraints) {
@@ -192,6 +197,13 @@ PreparedTransientHeat3D prepare_transient_heat_3d(
     for (std::size_t element = 0; element < mesh.elements.size(); ++element) {
         const auto& cell = mesh.elements[element];
         const auto basis = evaluate_tetrahedron_p1_physical_gradients_3d(mesh, element);
+        if (prepared.time_dependent_source) {
+            const double volume_jacobian = std::abs(basis.signed_jacobian_determinant);
+            if (!std::isfinite(volume_jacobian) || !(volume_jacobian > 0.0)) {
+                throw std::overflow_error("Transient 3D element volume is not representable.");
+            }
+            prepared.element_jacobians.push_back(volume_jacobian);
+        }
         std::array<std::array<double, 4>, 4> local_mass{};
         std::array<double, 4> local_source{};
         const double extra_source =
@@ -368,6 +380,45 @@ void prepare_step_operators(
     ++cache.operator_builds;
 }
 
+
+std::vector<double> evaluate_time_dependent_source_load(
+    const PreparedTransientHeat3D& prepared,
+    double time
+) {
+    if (!prepared.time_dependent_source) return {};
+    if (!std::isfinite(time) || prepared.mesh == nullptr ||
+        prepared.element_jacobians.size() != prepared.mesh->elements.size()) {
+        throw std::logic_error("Transient 3D time-dependent source preparation is inconsistent.");
+    }
+
+    const auto& mesh = *prepared.mesh;
+    std::vector<double> load(prepared.initial_state.size(), 0.0);
+    for (std::size_t element = 0; element < mesh.elements.size(); ++element) {
+        const auto& cell = mesh.elements[element];
+        const double jacobian = prepared.element_jacobians[element];
+        for (const auto& quadrature : tetrahedron_degree_two_quadrature) {
+            const auto point = simplex_point(mesh, cell, quadrature.shape);
+            const double source = prepared.time_dependent_source(
+                point.x, point.y, point.z, time);
+            if (!std::isfinite(source)) {
+                throw std::invalid_argument("Transient 3D time-dependent source must be finite.");
+            }
+            const double weight = jacobian * quadrature.weight;
+            for (std::size_t i = 0; i < 4; ++i) {
+                const double contribution = source * quadrature.shape[i] * weight;
+                if (!std::isfinite(contribution)) {
+                    throw std::overflow_error("Transient 3D time-dependent source load overflowed.");
+                }
+                load[cell[i]] += contribution;
+                if (!std::isfinite(load[cell[i]])) {
+                    throw std::overflow_error("Transient 3D time-dependent source accumulation overflowed.");
+                }
+            }
+        }
+    }
+    return load;
+}
+
 } // namespace
 
 TransientHeat3DResult solve_prepared_transient_heat_3d(
@@ -395,6 +446,11 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
     const double dt = options.time_step;
     const double theta =
         options.scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
+    std::vector<double> previous_time_source;
+    if (prepared.time_dependent_source && theta < 1.0) {
+        previous_time_source = evaluate_time_dependent_source_load(
+            prepared, options.start_time);
+    }
 
     TransientHeat3DResult result;
     result.final_time = options.start_time +
@@ -408,9 +464,28 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
     }
 
     for (std::size_t step = 1; step <= options.steps; ++step) {
+        const double step_time = options.start_time + dt * static_cast<double>(step);
+        const auto next_time_source = prepared.time_dependent_source
+            ? evaluate_time_dependent_source_load(prepared, step_time)
+            : std::vector<double>{};
+        std::vector<double> weighted_time_source;
+        if (prepared.time_dependent_source) {
+            weighted_time_source.resize(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                weighted_time_source[i] = theta * next_time_source[i];
+                if (theta < 1.0) {
+                    weighted_time_source[i] += (1.0 - theta) * previous_time_source[i];
+                }
+                if (!std::isfinite(weighted_time_source[i])) {
+                    throw std::overflow_error("Transient 3D weighted source load overflowed.");
+                }
+            }
+        }
         std::vector<double> rhs = operators.rhs_operator.multiply(state);
         for (std::size_t i = 0; i < n; ++i) {
-            rhs[i] += dt * prepared.total_load[i];
+            const double load = prepared.total_load[i] +
+                (prepared.time_dependent_source ? weighted_time_source[i] : 0.0);
+            rhs[i] += dt * load;
             if (!std::isfinite(rhs[i])) {
                 throw std::overflow_error("Transient 3D RHS overflowed.");
             }
@@ -468,13 +543,16 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
         const auto next_robin = prepared.robin.multiply(next);
 
         TransientHeatStepDiagnostics3D diagnostic;
-        diagnostic.time = options.start_time +
-            dt * static_cast<double>(step);
+        diagnostic.time = step_time;
         if (!std::isfinite(diagnostic.time)) {
             throw std::overflow_error("Transient 3D time overflowed.");
         }
         diagnostic.heat_content = dot(prepared.capacity_weights, next);
-        diagnostic.source_energy = dt * sum(prepared.volume_load);
+        diagnostic.source_energy = dt * (
+            sum(prepared.volume_load) + sum(weighted_time_source));
+        if (!std::isfinite(diagnostic.source_energy)) {
+            throw std::overflow_error("Transient 3D source energy overflowed.");
+        }
         diagnostic.neumann_energy = dt * sum(prepared.neumann_load);
         diagnostic.robin_energy = dt * (
             sum(prepared.ambient_load) - theta * sum(next_robin) -
@@ -494,6 +572,9 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
             throw std::overflow_error("Transient 3D energy diagnostic overflowed.");
         }
 
+        if (theta < 1.0 && prepared.time_dependent_source) {
+            previous_time_source = next_time_source;
+        }
         state = std::move(next);
         result.diagnostics.push_back(diagnostic);
         result.linear_solvers.push_back(std::move(solved));

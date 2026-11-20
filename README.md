@@ -75,8 +75,9 @@ NOVA now solves `C(x) ∂T/∂t − div(K(x) grad T) = Q(x)` using a
 conductivity integration kernel. Backward Euler and Crank–Nicolson time
 stepping support scalar or SPD tensor conductivity, positive spatial or
 per-cell heat capacity, volumetric heating, fixed temperature boundaries,
-imposed outward flux and Robin convection. For now, coefficients and
-boundary functions are **time-independent**.
+imposed outward flux and Robin convection. An optional additive time-dependent volumetric source is sampled at the new
+step time for Backward Euler and averaged at both endpoints for Crank–Nicolson.
+Conductivity, capacity and boundary functions remain **time-independent**.
 
 The constant time-step CSR system is reused between steps; the solver
 computes temperature corrections to avoid loss of precision for small
