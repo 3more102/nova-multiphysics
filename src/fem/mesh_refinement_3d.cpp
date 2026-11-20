@@ -56,12 +56,14 @@ using FaceKey = std::array<std::size_t, 3>;
         } else if (tetrahedron[i] == edge[1]) {
             position_b = i;
         } else {
-            other_positions[other_count] = i;
-            other_nodes[other_count] = tetrahedron[i];
+            if (other_count < other_nodes.size()) {
+                other_positions[other_count] = i;
+                other_nodes[other_count] = tetrahedron[i];
+            }
             ++other_count;
         }
     }
-    if (position_a == 4U || position_b == 4U) {
+    if (position_a == 4U || position_b == 4U || other_count != 2U) {
         return false;
     }
 
