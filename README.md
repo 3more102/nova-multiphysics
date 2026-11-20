@@ -96,6 +96,12 @@ animate temperature over physical time. A validated PVD writer and an optional
 per-step solver observer avoid repeated assembly/solves and avoid retaining
 all intermediate nodal fields when `retain_step_solutions=false`.
 See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
+
+Experimental **adaptive 3D timestep control** now compares one full step
+with two half steps for Backward Euler or Crank–Nicolson. The accepted
+half-step solutions preserve energy diagnostics and support restart.
+This initial fixed-mesh implementation reassembles FE operators per trial;
+see [adaptive 3D API and limitations](docs/ADAPTIVE_HEAT_3D.md).
 The structured-box example is complemented by an imported-mesh CLI. It
 reads Gmsh MSH 2.2 or 4.1 ASCII tetrahedra, maps conductivity, heat capacity, heat sources
 and thermal boundary conditions from physical groups, and streams all solved
