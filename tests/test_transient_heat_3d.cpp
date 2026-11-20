@@ -873,3 +873,138 @@ NOVA_TEST(transient_heat_3d_time_dependent_natural_fluxes_are_exact_on_skewed_te
             neumann_result.temperature[3], expected_neumann_temperature, 3.0e-10);
     }
 }
+
+
+NOVA_TEST(transient_heat_3d_time_dependent_materials_preserve_energy_and_temporal_order) {
+    const auto make_problem = []() {
+        auto problem = unit_heat();
+        problem.diffusion.cell_diffusivity.clear();
+        problem.diffusion.cell_diffusivity_tensors.clear();
+        problem.diffusion.diffusivity = {};
+        problem.diffusion.diffusivity_tensor = {};
+        problem.diffusion.source = {};
+        problem.diffusion.cell_source.clear();
+        problem.diffusion.dirichlet_constraints = {
+            {0U,0.0}, {1U,0.0}, {2U,0.0}
+        };
+        problem.volumetric_capacity = {};
+        problem.cell_volumetric_capacity.clear();
+        problem.time_dependent_diffusivity =
+            [](double, double, double, double time) { return 2.0 + time; };
+        problem.time_dependent_volumetric_capacity =
+            [](double, double, double, double time) { return 2.0 + time; };
+        problem.initial_temperature = {0.0, 0.0, 0.0, 10.0};
+        return problem;
+    };
+    const auto solve = [&](TransientHeat3DScheme scheme, double dt,
+                           std::size_t steps, bool tensor_conductivity = false) {
+        auto problem = make_problem();
+        if (tensor_conductivity) {
+            problem.time_dependent_diffusivity = {};
+            problem.time_dependent_diffusivity_tensor =
+                [](double, double, double, double time) {
+                    const double k = 2.0 + time;
+                    return SymmetricTensor3D{k, k, k, 0.0, 0.0, 0.0};
+                };
+        }
+        TransientHeat3DOptions options;
+        options.scheme = scheme;
+        options.start_time = 0.3;
+        options.time_step = dt;
+        options.steps = steps;
+        options.solver_options.relative_tolerance = 1.0e-13;
+        options.solver_options.preconditioner =
+            nova::linalg::PreconditionerType::Jacobi;
+        const auto result = solve_transient_heat_3d(problem, options);
+        NOVA_REQUIRE_NEAR(result.final_time, 0.5, 2.0e-14);
+        for (const auto& diagnostic : result.diagnostics) {
+            NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 3.0e-10);
+        }
+        NOVA_REQUIRE_NEAR(
+            result.diagnostics.back().heat_content,
+            2.5 * result.temperature[3] / 24.0, 3.0e-10);
+        return result;
+    };
+
+    // With C(t)=k(t)=2+t, the free-DOF equation reduces to
+    // d(C*T)/dt = -10*(C*T). Thus T(0.5)=23*exp(-2)/2.5.
+    const double exact = 23.0 * std::exp(-2.0) / 2.5;
+    const auto be_coarse = solve(TransientHeat3DScheme::BackwardEuler, 0.1, 2U);
+    const auto be_fine = solve(TransientHeat3DScheme::BackwardEuler, 0.05, 4U);
+    const auto cn_coarse = solve(TransientHeat3DScheme::CrankNicolson, 0.1, 2U);
+    const auto cn_fine = solve(TransientHeat3DScheme::CrankNicolson, 0.05, 4U);
+    const double be_coarse_error = std::abs(be_coarse.temperature[3] - exact);
+    const double be_fine_error = std::abs(be_fine.temperature[3] - exact);
+    const double cn_coarse_error = std::abs(cn_coarse.temperature[3] - exact);
+    const double cn_fine_error = std::abs(cn_fine.temperature[3] - exact);
+    NOVA_REQUIRE(be_fine_error > 0.0);
+    NOVA_REQUIRE(cn_fine_error > 0.0);
+    NOVA_REQUIRE(be_coarse_error / be_fine_error > 1.7);
+    NOVA_REQUIRE(be_coarse_error / be_fine_error < 2.2);
+    NOVA_REQUIRE(cn_coarse_error / cn_fine_error > 3.5);
+    NOVA_REQUIRE(cn_coarse_error / cn_fine_error < 4.5);
+    NOVA_REQUIRE(cn_fine_error < be_fine_error);
+
+    const auto tensor = solve(
+        TransientHeat3DScheme::CrankNicolson, 0.05, 4U, true);
+    NOVA_REQUIRE_NEAR(
+        tensor.temperature[3], cn_fine.temperature[3], 2.0e-11);
+}
+
+NOVA_TEST(transient_heat_3d_rejects_invalid_time_dependent_materials) {
+    const auto make_problem = []() {
+        auto problem = unit_heat();
+        problem.diffusion.cell_diffusivity.clear();
+        problem.diffusion.cell_diffusivity_tensors.clear();
+        problem.diffusion.diffusivity = {};
+        problem.diffusion.diffusivity_tensor = {};
+        problem.diffusion.source = {};
+        problem.diffusion.cell_source.clear();
+        problem.volumetric_capacity = {};
+        problem.cell_volumetric_capacity.clear();
+        problem.time_dependent_diffusivity =
+            [](double, double, double, double) { return 1.0; };
+        problem.time_dependent_volumetric_capacity =
+            [](double, double, double, double) { return 1.0; };
+        return problem;
+    };
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = make_problem();
+        bad.time_dependent_volumetric_capacity =
+            [](double, double, double, double) { return 0.0; };
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = make_problem();
+        bad.time_dependent_diffusivity =
+            [](double, double, double, double) { return -1.0; };
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = make_problem();
+        bad.time_dependent_diffusivity = {};
+        bad.time_dependent_diffusivity_tensor =
+            [](double, double, double, double) {
+                return SymmetricTensor3D{-1.0, 1.0, 1.0, 0.0, 0.0, 0.0};
+            };
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = make_problem();
+        bad.diffusion.cell_diffusivity = {1.0};
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = make_problem();
+        bad.cell_volumetric_capacity = {1.0};
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = make_problem();
+        bad.time_dependent_diffusivity_tensor =
+            [](double, double, double, double) {
+                return SymmetricTensor3D{1.0, 1.0, 1.0, 0.0, 0.0, 0.0};
+            };
+        (void)solve_transient_heat_3d(bad);
+    }));
+}

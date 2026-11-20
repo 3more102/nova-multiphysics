@@ -5,7 +5,8 @@
 NOVA now has a time-dependent 3D **P1 conforming tetrahedral** heat solver:
 
 ```text
-C(x) dT/dt - div(K(x) grad T) = Q_static(x) + Q_time(x,t)
+C(x) dT/dt - div(K(x) grad T) = Q(x,t)   [static capacity]
+d(C(x,t) T)/dt - div(K(x,y,z,t) grad T) = Q(x,t)   [dynamic capacity]
 ```
 
 - `C = rho * c_p > 0`: volumetric heat capacity, J/(m³ K).
@@ -15,27 +16,27 @@ C(x) dT/dt - div(K(x) grad T) = Q_static(x) + Q_time(x,t)
 - Outward Neumann heat flux is positive for energy leaving the solid.
 - Robin: outward flux = `h * (T - T_ambient)`.
 
-The spatial operators are **consistent** P1 mass and conductivity stiffness matrices. Both are assembled with the existing positive degree-two tetrahedral quadrature; exterior Neumann/Robin face terms use the existing degree-two triangular quadrature. The code reuses `DiffusionMaterials3D`, `integrate_p1_volume_3d`, mesh validation and exclusive exterior-face assignment from stationary conduction.
+The spatial operators are **consistent** P1 mass and conductivity stiffness matrices. Volume terms use the existing positive degree-two tetrahedral quadrature; exterior Neumann/Robin face terms use degree-two triangular quadrature. Static scalar/tensor material validation shares `DiffusionMaterials3D`; dynamic conductivity callbacks are evaluated at every material quadrature point and time level. Mesh validation and exclusive exterior-face assignment are shared with stationary conduction.
 
 ## Time discretization
 
 Given the assembled heat-capacity matrix `M`, the time-level thermal operator `K(t)` (conductivity plus static and time-dependent Robin convection), and total load `F(t) = F_static + F_time(t)`:
 
 ```text
-[M + theta * dt * K(t_(n+1))] T_(n+1) =
-  [M - (1-theta) * dt * K(t_n)] T_n
+[M(t_(n+1)) + theta * dt * K(t_(n+1))] T_(n+1) =
+  M(t_n) T_n - (1-theta) * dt * K(t_n) T_n
   + dt * [(1-theta) * F(t_n) + theta * F(t_(n+1))]
 
 theta = 1   Backward Euler
 theta = 1/2 Crank–Nicolson
 ```
 
-`F` includes volume heating, **negative** outward Neumann flux, and Robin ambient loads. The optional `problem.time_dependent_source(x,y,z,t)` adds a time-varying volumetric source to the existing static spatial and cell sources. Backward Euler samples it at the new step time; Crank–Nicolson uses the trapezoidal average of the two endpoint load vectors. Conductivity and capacity remain time-independent. Initial nodal values are projected to the fixed Dirichlet constraints. Each step uses symmetric elimination with identity rows on constrained nodes. Unchanged previous/next Robin matrices reuse the prepared step operators; a changed transfer matrix rebuilds the affected operator. The cached CG solver independently compares the constrained CSR system and rebuilds IC(0) only if that system changes. Positive `C` makes the time-step system nonsingular even for a completely insulated mesh.
+`F` includes volume heating, **negative** outward Neumann flux, and Robin ambient loads. The optional `problem.time_dependent_source(x,y,z,t)` adds a time-varying volumetric source to static spatial and cell sources. Backward Euler samples loads at the new endpoint; Crank–Nicolson averages endpoint loads. Time-dependent scalar/tensor conductivity and volumetric-capacity callbacks are also sampled at both material time levels. When capacity varies, the solver uses conservative enthalpy storage `d(C*T)/dt`, so the discrete heat content is `1^T M(t) T(t)`; it does not silently reinterpret the callback as `C(t) dT/dt`. Initial nodal values are projected to the fixed Dirichlet constraints. Each step uses symmetric elimination with identity rows on constrained nodes. Exact endpoint-matrix comparison controls operator and IC(0) reuse. Positive capacity makes the time-step system nonsingular even for a completely insulated mesh.
 
 The per-step discrete energy budget uses `M * ones` as the heat-content integration weights. Dirichlet input is calculated from the unconstrained system residual on prescribed nodes, **not** from raw P1 face flux. For constant coefficients and loads,
 
 ```text
-Delta(Integral C*T dV) =
+Delta(Integral C(t)*T dV) =
     source_energy + neumann_energy + robin_energy + dirichlet_energy
     + iterative_balance_residual
 ```
@@ -64,7 +65,7 @@ options.solver_options.preconditioner =
 const auto output = solve_transient_heat_3d(problem, options);
 ```
 
-The `diffusion` member also accepts the existing steady 3D `dirichlet_constraints`, `dirichlet_faces`, `neumann_faces`, `robin_faces`, `cell_source`, scalar and tensor conductivity representations. Heat capacity must be provided **either** as `volumetric_capacity` **or** a `cell_volumetric_capacity` vector; both simultaneously are invalid.
+The `diffusion` member also accepts the existing steady 3D `dirichlet_constraints`, `dirichlet_faces`, `neumann_faces`, `robin_faces`, `cell_source`, scalar and tensor conductivity representations. Static heat capacity must be provided **either** as `volumetric_capacity` **or** a `cell_volumetric_capacity` vector. Alternatively, use `time_dependent_volumetric_capacity(x,y,z,t)`; it is mutually exclusive with both static forms.
 
 
 ### Zero and cell-only source terms
@@ -105,11 +106,36 @@ problem.time_dependent_robin_faces.push_back({
 Time-dependent Dirichlet values change the prescribed vector but not the
 constrained matrix pattern. Time-dependent Neumann data and Robin ambient
 temperature change only the right-hand side. A changed Robin transfer
-coefficient changes the time-level matrix: exact constrained-CSR comparison
-controls operator and IC(0) reuse, so the factor is rebuilt only when the
-matrix actually changes. The same endpoint evaluation is used by the
-fixed-mesh adaptive full-step and half-step trials. Conductivity and heat
-capacity remain time-independent.
+coefficient changes the time-level matrix. Time-dependent scalar/tensor
+conductivity and volumetric capacity callbacks are evaluated at both endpoints:
+Backward Euler uses the old capacity matrix on the old state and the new
+capacity/conductivity operators implicitly; Crank–Nicolson uses both endpoint
+material matrices. A capacity callback represents conservative
+`d(C*T)/dt) storage. Exact constrained-CSR comparison controls operator and
+IC(0) reuse. The same endpoint evaluation is used by adaptive full-step and
+half-step trials.
+
+### Time-dependent material callbacks
+
+Choose one dynamic conductivity representation:
+`time_dependent_diffusivity(x,y,z,t)` for a positive scalar field, or
+`time_dependent_diffusivity_tensor(x,y,z,t)` for an SPD tensor. Each is
+mutually exclusive with all static scalar, tensor and cellwise conductivity
+fields. Dynamic capacity is supplied separately:
+
+```cpp
+problem.time_dependent_diffusivity =
+    [](double, double, double, double time) { return 10.0 * (1.0 + 0.01 * time); };
+problem.time_dependent_volumetric_capacity =
+    [](double, double, double, double time) { return 3.0e6 * (1.0 + 0.005 * time); };
+```
+
+The capacity callback is mutually exclusive with both static capacity forms.
+For a changing capacity, NOVA discretizes the conservative storage term
+`d(C(x,t)T)/dt); this makes the reported heat-content change consistent with
+the discrete source and boundary energy budget. Temperature-dependent
+constitutive laws (callbacks depending on the unknown temperature) are not
+implemented.
 
 ## Reproduce and tests
 
@@ -131,7 +157,8 @@ ctest --test-dir build -C Release --output-on-failure
 - Heterogeneous cellwise SPD tensor conductivity with cellwise capacity and cell-only source, plus zero-source insulated equilibrium.
 - Multi-tetrahedron heterogeneous cellwise SPD tensors with uniform heating, exact heat-content growth, and invalid tensor/cell-array rejection.
 - Analytical temporal refinement verifies first-order Backward Euler and second-order Crank–Nicolson at a nonzero physical start time.
-- Rejection of nonpositive capacities, bad source/initial fields, duplicate boundary conditions and invalid time-step options.
+- Time-dependent scalar and SPD-tensor conductivity plus time-dependent capacity, with conservative heat-content diagnostics and BE/CN convergence-order checks.
+- Rejection of nonpositive static/dynamic capacities, invalid scalar/tensor dynamic conductivity, mixed static/dynamic material representations, bad source/initial fields and invalid time-step options.
 
 These checks verify the mathematical discretization but **do not** constitute experimental or industrial validation.
 
@@ -169,4 +196,4 @@ fields, Dirichlet projection, error propagation and optional history elision.
 
 ## Explicit limits and next milestone
 
-Initial 3D support uses time-independent conductivity and heat capacity, with optional additive time-dependent volumetric sources, Dirichlet constraints/faces, Neumann face fluxes and Robin transfer/ambient functions; a constant fixed-step size; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. An experimental, separate fixed-mesh 3D adaptive timestep driver is documented in [Adaptive transient 3D heat](ADAPTIVE_HEAT_3D.md). Temperature-dependent material properties, latent heat, radiation and moving meshes remain unsupported. The default result history retains every CG solution vector for API compatibility; the optional streaming mode elides them. Next: time-varying material properties, spatial error-driven refinement, and independent temporal-convergence benchmarks on spatially varying manufactured solutions.
+Initial 3D support includes static or prescribed time-varying scalar/tensor conductivity and volumetric capacity, additive time-dependent volumetric sources, Dirichlet constraints/faces, Neumann face fluxes and Robin transfer/ambient functions; fixed-step and experimental fixed-mesh adaptive time integration; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. Dynamic capacity uses conservative enthalpy storage. Temperature-dependent constitutive laws, latent heat, radiation, moving meshes and spatial error-driven tetrahedral refinement remain unsupported. The default result history retains every CG solution vector for API compatibility; optional streaming elides them. Next: spatial error-driven refinement and independent temporal-convergence benchmarks on spatially varying manufactured solutions.
