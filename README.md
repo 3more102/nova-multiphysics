@@ -96,6 +96,11 @@ animate temperature over physical time. A validated PVD writer and an optional
 per-step solver observer avoid repeated assembly/solves and avoid retaining
 all intermediate nodal fields when `retain_step_solutions=false`.
 See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
+
+Experimental C++ users can also serialize and restore the exact nodal state at a
+nonzero physical time with a [versioned, mesh-validated 3D thermal checkpoint](docs/THERMAL_CHECKPOINT_3D.md).
+This is a state-only checkpoint; the same material model, boundary conditions
+and numerical settings must be reconstructed before continuation.
 The structured-box example is complemented by an imported-mesh CLI. It
 reads Gmsh MSH 2.2 or 4.1 ASCII tetrahedra, maps conductivity, heat capacity, heat sources
 and thermal boundary conditions from physical groups, and streams all solved
