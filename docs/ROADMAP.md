@@ -89,7 +89,7 @@ Implemented:
 
 Remaining:
 - Nonlinear temperature-dependent constitutive properties and time-dependent materials.
-- Equivalent prepared-operator and IC(0) cache reuse for 2D adaptive step-doubling, plus broader global temporal error estimation.
+- Broader global temporal error estimators and independent temporal-convergence verification across coupled and heterogeneous transient models.
 - Independently recovered normal heat fluxes and physical energy-balance cross-checks.
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.
