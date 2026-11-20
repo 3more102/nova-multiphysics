@@ -71,7 +71,7 @@ The regression suite includes:
 5. A pure-Neumann affine field driven by prescribed D dot n, verifying outward-displacement sign, zero-volume-mean gauge and stored energy.
 6. Rejection of negative permittivity, conflicting material representations and non-finite charge.
 
-The installed SDK consumer also solves the capacitor benchmark, so the public header and exported link symbol are checked outside the source tree.
+The installed SDK consumer also solves the capacitor benchmark and verifies the fixed-electrode charge API, checking the public headers and exported link symbols outside the source tree.
 
 ## Scope and limitations
 
