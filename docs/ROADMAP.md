@@ -105,9 +105,11 @@ Implemented:
 - Instance-owned IC(0) factor reuse across identical fixed-step 2D and 3D transient matrices; exact coefficient or sparsity changes trigger factor rebuilds.
 - Analytical single-mode time-step refinement verifies first-order Backward Euler and second-order Crank–Nicolson with nonzero start time and per-step energy closure.
 - Gmsh MSH 2.2 and 4.1 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
+- Adaptive fixed-mesh 3D Backward Euler and Crank–Nicolson stepping on mainline with full-vs-two-half-step error control, attempt/rejection diagnostics and accepted-step discrete energy budgets (experimental; integration of draft PR #20).
 
 Remaining:
-- Adaptive 3D time steps and time-varying loads/materials.
+- Share prepared mass/stiffness operators and cross-trial IC(0) factors with the adaptive 3D solver; current mainline integration reassembles on each full/half-step trial.
+- Time-varying loads/materials and independently verified adaptive large-mesh studies.
 - Gmsh binary and higher-order element import, time-varying loads/materials, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
