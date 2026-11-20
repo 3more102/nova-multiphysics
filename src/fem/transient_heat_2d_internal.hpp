@@ -7,15 +7,22 @@
 
 namespace nova::fem::detail {
 
-struct BoundaryData {
+struct BoundaryData2D {
     std::vector<Point2D> coordinates;
     std::vector<std::vector<TransientScalarField2D>> functions;
     std::vector<bool> constrained;
 };
 
 struct PreparedTransientHeat2D {
+    PreparedTransientHeat2D(
+        const TriangleMesh2D& mesh,
+        H1TriangleOrder order
+    ) : space(mesh, order) {}
+
+    H1FunctionSpace2D space;
     ScalarH1Operators2D operators;
-    BoundaryData boundary;
+    BoundaryData2D boundary;
+    std::vector<double> initial_state;
     std::vector<double> capacity_weights;
 };
 
@@ -33,12 +40,12 @@ struct TransientHeat2DStepCache {
 
 [[nodiscard]] PreparedTransientHeat2D prepare_transient_heat_2d(
     const TransientHeat2DProblem& problem,
-    const H1FunctionSpace2D& space
+    H1TriangleOrder order,
+    double start_time
 );
 
 [[nodiscard]] TransientHeat2DResult solve_prepared_transient_heat_2d(
     const TransientHeat2DProblem& problem,
-    const H1FunctionSpace2D& space,
     const PreparedTransientHeat2D& prepared,
     const TransientHeat2DOptions& options,
     std::vector<double> initial_state,
