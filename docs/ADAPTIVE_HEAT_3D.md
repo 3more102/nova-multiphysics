@@ -2,9 +2,9 @@
 
 `nova/fem/adaptive_heat_3d.hpp` adds **fixed-mesh temporal adaptivity** to
 NOVA's existing consistent-mass P1 tetrahedral transient solver. Conductivity,
-heat capacity and Dirichlet/Neumann/Robin boundary data remain
-**time-independent**. An optional additive time-dependent volumetric source is
-supported and sampled consistently by both full-step and half-step trials.
+heat capacity and Robin boundary data remain **time-independent**. Additive
+time-dependent volumetric sources, Dirichlet nodal/face values and Neumann
+face fluxes are sampled consistently by both full-step and half-step trials.
 
 ## API
 
@@ -33,6 +33,15 @@ static spatial and cell sources. Backward Euler evaluates the source at each
 substep's new time; Crank–Nicolson averages the source vectors at both endpoints.
 The full-step estimate and the two half-step estimate therefore sample the
 same physical source history at their respective time grids.
+
+Time-dependent Dirichlet constraints and faces are evaluated at the study's
+physical start time and at each substep endpoint. Time-dependent Neumann face
+fluxes are evaluated at the new endpoint for Backward Euler and at both
+endpoints for Crank–Nicolson, using trapezoidal load integration. Their
+time-varying values affect the prescribed vector or right-hand side only, so
+the prepared constrained matrix and its IC(0) factor remain reusable. Robin
+transfer/ambient data and material coefficients are still static.
+
 
 For each attempted interval `dt`, the integrator runs one full step and
 two half steps **from the same previously accepted nodal state**. The order

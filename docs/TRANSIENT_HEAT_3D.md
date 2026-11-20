@@ -77,6 +77,22 @@ unforced conduction. Finite-value checks still apply at every quadrature point.
 
 A unit tetrahedron with three fixed vertices leaves one free temperature DOF. For the reference P1 basis, the free-node entries are M33 = 1/60 and K33 = 1/6, so the semidiscrete equation is dT/dt = -10 T. Starting from T(3) = 10, the exact value at t = 3.2 is 10 exp(-2). The regression compares time steps of 0.05 and 0.025: Backward Euler's global error ratio approaches 2, while Crank–Nicolson's approaches 4. It checks every accepted step's discrete energy residual and confirms the second-order result is more accurate.
 
+### Time-dependent Dirichlet and Neumann data
+
+The transient API accepts time callbacks `f(x,y,z,t)` for nodal
+Dirichlet constraints, exterior Dirichlet faces and exterior Neumann face
+fluxes. Dirichlet values are imposed at the initial physical time and at each
+step endpoint. Neumann loads are integrated over the triangular face using
+the existing degree-two face quadrature.
+
+Backward Euler samples time-dependent Neumann flux at the new endpoint.
+Crank–Nicolson evaluates both endpoints and uses their trapezoidal average.
+Time-dependent Dirichlet values change the prescribed vector but not the
+constrained matrix pattern, so the fixed-step system and its IC(0) factor
+remain reusable. Time-dependent Neumann data change only the right-hand side.
+Robin transfer and ambient functions, conductivity and heat capacity remain
+time-independent in this increment.
+
 ## Reproduce and tests
 
 ```sh
@@ -132,4 +148,4 @@ fields, Dirichlet projection, error propagation and optional history elision.
 
 ## Explicit limits and next milestone
 
-Initial 3D support uses **time-independent** conductivity, capacity, static source fields and boundary functions, with an optional additive time-dependent volumetric source; a constant fixed-step size; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. An experimental, separate fixed-mesh 3D adaptive timestep driver is documented in [Adaptive transient 3D heat](ADAPTIVE_HEAT_3D.md), but temperature-dependent properties, latent heat, radiation and moving meshes remain unsupported. The default result history retains every CG solution vector for API compatibility; the optional streaming mode elides them. Next: time-varying material properties and boundary functions, spatial error-driven refinement, and independent temporal-convergence benchmarks on spatially varying manufactured solutions.
+Initial 3D support uses **time-independent** conductivity, capacity and Robin functions, with optional additive time-dependent volumetric sources, Dirichlet constraints/faces and Neumann face fluxes; a constant fixed-step size; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. An experimental, separate fixed-mesh 3D adaptive timestep driver is documented in [Adaptive transient 3D heat](ADAPTIVE_HEAT_3D.md), but temperature-dependent properties, latent heat, radiation and moving meshes remain unsupported. The default result history retains every CG solution vector for API compatibility; the optional streaming mode elides them. Next: time-dependent Robin transfer/ambient functions, time-varying material properties, spatial error-driven refinement, and independent temporal-convergence benchmarks on spatially varying manufactured solutions.

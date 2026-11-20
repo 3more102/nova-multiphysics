@@ -419,3 +419,89 @@ NOVA_TEST(adaptive_heat_3d_evaluates_static_material_and_load_fields_once_per_st
     NOVA_REQUIRE(capacity_samples == 4U);
     NOVA_REQUIRE(source_samples == 4U);
 }
+
+
+NOVA_TEST(adaptive_heat_3d_time_dependent_dirichlet_face_and_node_use_study_time) {
+    auto problem = tetra_problem();
+    problem.diffusion.dirichlet_constraints.clear();
+    problem.initial_temperature.assign(4U, 0.0);
+    problem.time_dependent_dirichlet_faces.push_back({
+        {0U, 1U, 2U},
+        [](double, double, double, double time) { return 2.0 * time; }
+    });
+    problem.time_dependent_dirichlet_constraints.push_back({
+        3U, [](double, double, double, double time) { return 2.0 * time; }
+    });
+
+    AdaptiveHeat3DOptions options;
+    options.start_time = 2.0;
+    options.end_time = 2.5;
+    options.initial_step = 0.125;
+    options.min_step = 0.125;
+    options.max_step = 0.125;
+    options.absolute_tolerance = 1.0e-7;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-13;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        const auto result = solve_adaptive_heat_3d(problem, options);
+        NOVA_REQUIRE(result.accepted_steps == 4U);
+        NOVA_REQUIRE(result.rejected_steps == 0U);
+        NOVA_REQUIRE_NEAR(result.final_time, 2.5, 1.0e-14);
+        for (const double temperature : result.temperature) {
+            NOVA_REQUIRE_NEAR(temperature, 5.0, 1.0e-11);
+        }
+        NOVA_REQUIRE_NEAR(result.diagnostics.back().heat_content,
+                          5.0 / 6.0, 1.0e-10);
+        double dirichlet_energy = 0.0;
+        for (const auto& diagnostic : result.diagnostics) {
+            dirichlet_energy += diagnostic.dirichlet_energy;
+            NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2.0e-9);
+        }
+        NOVA_REQUIRE_NEAR(dirichlet_energy, 1.0 / 6.0, 2.0e-10);
+    }
+}
+
+NOVA_TEST(adaptive_heat_3d_time_dependent_neumann_uses_full_and_half_time_grids) {
+    auto problem = tetra_problem();
+    problem.diffusion.dirichlet_constraints.clear();
+    problem.initial_temperature.assign(4U, 0.0);
+    problem.time_dependent_neumann_faces.push_back({
+        {0U, 1U, 2U},
+        [](double, double, double, double time) { return time; }
+    });
+
+    AdaptiveHeat3DOptions options;
+    options.start_time = 0.0;
+    options.end_time = 1.0;
+    options.initial_step = 0.25;
+    options.min_step = 0.25;
+    options.max_step = 0.25;
+    options.absolute_tolerance = 1.0e6;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-13;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        const auto result = solve_adaptive_heat_3d(problem, options);
+        NOVA_REQUIRE(result.accepted_steps == 4U);
+        NOVA_REQUIRE(result.rejected_steps == 0U);
+        const double expected_energy =
+            scheme == TransientHeat3DScheme::BackwardEuler ? -0.28125 : -0.25;
+        double neumann_energy = 0.0;
+        for (const auto& diagnostic : result.diagnostics) {
+            neumann_energy += diagnostic.neumann_energy;
+            NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2.0e-9);
+        }
+        NOVA_REQUIRE_NEAR(neumann_energy, expected_energy, 2.0e-11);
+        NOVA_REQUIRE_NEAR(result.diagnostics.back().heat_content,
+                          expected_energy, 2.0e-9);
+    }
+}

@@ -9,7 +9,8 @@
 namespace nova::fem {
 
 // Experimental fixed-mesh temporal adaptivity for the existing P1 tetrahedral
-// solver. All coefficients and boundary data remain time-independent.
+// solver. Time-dependent sources and Dirichlet/Neumann data are supported;
+// material coefficients and Robin boundary data remain time-independent.
 struct AdaptiveHeat3DOptions {
     TransientHeat3DScheme scheme{TransientHeat3DScheme::CrankNicolson};
     double start_time{0.0};
