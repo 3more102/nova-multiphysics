@@ -46,8 +46,9 @@ struct PreparedTransientHeat3D {
 
 struct TransientHeat3DMaterialState {
     linalg::CsrMatrix mass;
-    // Conductivity stiffness only; static and time-dependent Robin matrices
-    // are combined separately when preparing the time-step operators.
+    // Static material path: conductivity plus static Robin. Dynamic
+    // conductivity path: conductivity only; static Robin is combined by the
+    // step-operator builder after evaluating the time-level material matrix.
     linalg::CsrMatrix stiffness;
     std::vector<double> capacity_weights;
 };
