@@ -1,9 +1,10 @@
 # Adaptive transient 3D heat (experimental)
 
 `nova/fem/adaptive_heat_3d.hpp` adds **fixed-mesh temporal adaptivity** to
-NOVA's existing consistent-mass P1 tetrahedral transient solver. Conductivity, heat capacity and Dirichlet/Neumann/Robin boundary data remain
+NOVA's existing consistent-mass P1 tetrahedral transient solver. Conductivity,
+heat capacity and Dirichlet/Neumann/Robin boundary data remain
 **time-independent**. An optional additive time-dependent volumetric source is
-supported and is sampled consistently by both full-step and half-step trials.
+supported and sampled consistently by both full-step and half-step trials.
 
 ## API
 

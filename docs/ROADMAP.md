@@ -112,7 +112,7 @@ Implemented:
 - Gmsh MSH 2.2 and 4.1 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
 
 Remaining:
-- Time-varying 3D loads/materials and broader adaptive temporal-error estimators.
+- Time-varying 3D material properties and Dirichlet/Neumann/Robin boundary data, plus broader adaptive temporal-error estimators.
 - Gmsh binary and higher-order element import, time-varying material/boundary data, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
