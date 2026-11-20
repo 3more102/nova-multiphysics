@@ -197,9 +197,9 @@ using:
 - Conjugate Gradient and per-step residual/convergence reports.
 - Manufactured-solution convergence and energy-budget regression tests.
 
-Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), and examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating).
+Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), and examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating). See [adaptive 2D API, caching behavior and limitations](docs/ADAPTIVE_HEAT_2D.md).
 
-Limitations: no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
+Limitations: no temperature-dependent material coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive stepping reuses the spatial operators and dt-dependent base systems, but time-dependent Robin matrices and constrained systems are still assembled at their required time levels. This prototype is not validated for engineering design use.
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:
@@ -247,11 +247,12 @@ matrix dimensions, sparsity and every stored coefficient are exactly
 unchanged; any coefficient or pattern change triggers a rebuild. The fixed-step
 2D and 3D transient solvers own one cache per integration. Time-dependent Robin
 coefficients therefore refresh the factor when they change the system matrix.
-Cache instances are stateful and not thread-safe. Adaptive 3D step doubling
-uses separate full-step and half-step cache instances across trials; each slot
-retains its most recent time step and uses exact CSR identity before reusing IC(0).
+Cache instances are stateful and not thread-safe. Adaptive 2D and 3D step
+doubling use separate full-step and half-step cache instances across trials.
+The 2D solver also reevaluates time-dependent loads and Robin matrices at each
+time level; exact constrained-CSR identity decides whether IC(0) can be reused.
 
-The 2D P1/P2 stationary solver supports compatible pure-Neumann components with a zero-area-mean gauge; it remains scalar and isotropic. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. IC(0) sharing across 2D adaptive step-doubling trials, multilevel preconditioning, error-driven 3D mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The 2D P1/P2 stationary solver supports compatible pure-Neumann components with a zero-area-mean gauge; it remains scalar and isotropic. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. Multilevel preconditioning, error-driven 3D mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
