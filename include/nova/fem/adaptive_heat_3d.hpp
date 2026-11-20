@@ -53,8 +53,10 @@ struct AdaptiveHeat3DResult {
 // Accept the two-half-step field, not an extrapolation. Rejected attempts
 // never modify the accepted field or its energy diagnostics.
 // p=1 for backward Euler, p=2 for Crank-Nicolson.
-// Uses the existing fully validated transient solver for each trial;
-// reassembly/factorization across trials is not yet optimized.
+// Time-independent FEM operators are assembled once per integration. Two
+// bounded dt-specific caches retain the full- and half-step systems; a changed
+// step size or scheme rebuilds the affected system. IC(0) factors are reused
+// only while the exact constrained CSR matrix remains unchanged.
 // Throws on invalid options, solver failure, unreachable tolerance at
 // min_step, non-advancing floating-point time, or max_attempts exhaustion.
 [[nodiscard]] AdaptiveHeat3DResult solve_adaptive_heat_3d(
