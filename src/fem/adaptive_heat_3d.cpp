@@ -100,7 +100,7 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
 
     // Static mesh/material/boundary integration is performed once for the
     // complete adaptive study, including all rejected trials.
-    const auto prepared = detail::prepare_transient_heat_3d(problem);
+    const auto prepared = detail::prepare_transient_heat_3d(problem, options.start_time);
     std::vector<double> state = prepared.initial_state;
 
     // Full and half steps have different dt-dependent matrices. Separate

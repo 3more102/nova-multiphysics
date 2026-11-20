@@ -11,11 +11,27 @@ namespace nova::fem {
 
 using ScalarField3DTime = std::function<double(double, double, double, double)>;
 
-// Experimental P1 tetrahedral transient heat model with time-independent
-// material coefficients and boundary functions:
+struct TimeDependentDirichletConstraint3D {
+    std::size_t node{};
+    ScalarField3DTime value;
+};
+
+struct TimeDependentDirichletBoundaryFace3D {
+    BoundaryFace3D face{};
+    ScalarField3DTime value;
+};
+
+struct TimeDependentNeumannBoundaryFace3D {
+    BoundaryFace3D face{};
+    // Positive values denote outward heat flux, matching NeumannBoundaryFace3D.
+    ScalarField3DTime outward_flux;
+};
+
+// Experimental P1 tetrahedral transient heat model:
 //   C(x) dT/dt - div(K(x) grad(T)) = Q(x) + Q_time(x,t).
 // The optional time_dependent_source is additive to the existing static
-// spatial and cell sources. Other loads and boundary data remain time-independent.
+// spatial and cell sources. Dirichlet and Neumann boundary data may also vary
+// with time; material coefficients and Robin data remain time-independent.
 struct TransientHeat3DProblem {
     ScalarDiffusion3DProblem diffusion;
     // Exactly one representation: positive spatial C(x) or one positive C per
@@ -25,8 +41,15 @@ struct TransientHeat3DProblem {
     // Exact initial nodal field; Dirichlet values are imposed at t=start_time.
     std::vector<double> initial_temperature;
     // Optional additive Q_time(x,y,z,t); BE samples t_(n+1), CN averages both endpoints.
-    // Kept last so existing positional aggregate initialization remains compatible.
+    // Kept last among the original fields so positional aggregate initialization remains compatible.
     ScalarField3DTime time_dependent_source;
+    // Optional time-varying nodal and face Dirichlet data. Face values are
+    // sampled at the face's P1 vertices at each required physical time.
+    std::vector<TimeDependentDirichletConstraint3D> time_dependent_dirichlet_constraints;
+    std::vector<TimeDependentDirichletBoundaryFace3D> time_dependent_dirichlet_faces;
+    // Optional outward Neumann flux q_n(x,y,z,t); BE samples t_(n+1), CN
+    // averages both endpoints. These faces cannot overlap other face BCs.
+    std::vector<TimeDependentNeumannBoundaryFace3D> time_dependent_neumann_faces;
 };
 
 enum class TransientHeat3DScheme {

@@ -14,6 +14,14 @@ struct PreparedTransientHeat3D {
     const TetrahedralMesh3D* mesh{};
     ScalarField3DTime time_dependent_source;
     std::vector<double> element_jacobians;
+    std::vector<bool> constrained;
+    std::vector<std::vector<ScalarField3DTime>> time_dependent_prescribed;
+    struct TimeDependentNeumannFace {
+        BoundaryFace3D face{};
+        ScalarField3DTime outward_flux;
+        double area_scale{};
+    };
+    std::vector<TimeDependentNeumannFace> time_dependent_neumann_faces;
     linalg::CsrMatrix mass;
     linalg::CsrMatrix stiffness;
     linalg::CsrMatrix robin;
@@ -30,7 +38,7 @@ struct TransientHeat3DStepOperators {
     linalg::CsrMatrix lhs;
     linalg::CsrMatrix rhs_operator;
     linalg::CsrMatrix system;
-    std::vector<double> boundary_shift;
+    std::vector<linalg::Triplet> boundary_couplings;
 };
 
 // One cache is used for full-step trials and another for half-step trials.
@@ -46,7 +54,8 @@ struct TransientHeat3DStepCache {
 };
 
 [[nodiscard]] PreparedTransientHeat3D prepare_transient_heat_3d(
-    const TransientHeat3DProblem& problem
+    const TransientHeat3DProblem& problem,
+    double start_time
 );
 
 [[nodiscard]] TransientHeat3DResult solve_prepared_transient_heat_3d(

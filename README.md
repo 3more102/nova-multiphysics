@@ -81,7 +81,11 @@ stepping support scalar or SPD tensor conductivity, positive spatial or
 per-cell heat capacity, volumetric heating, fixed temperature boundaries,
 imposed outward flux and Robin convection. An optional additive time-dependent volumetric source is sampled at the new
 step time for Backward Euler and averaged at both endpoints for Crank–Nicolson.
-Conductivity, capacity and boundary functions remain **time-independent**.
+Time-dependent Dirichlet nodal/face values and Neumann face fluxes are also
+supported: Dirichlet values are imposed at each endpoint, while Neumann loads
+use endpoint sampling for Backward Euler and trapezoidal integration for
+Crank–Nicolson. Conductivity, capacity and Robin functions remain
+**time-independent**.
 
 The constant time-step CSR system is reused between steps; the solver
 computes temperature corrections to avoid loss of precision for small
