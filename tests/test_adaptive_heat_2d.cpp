@@ -346,10 +346,12 @@ NOVA_TEST(adaptive_heat_2d_reuses_base_operator_but_rebuilds_time_varying_robin_
 
     AdaptiveHeat2DOptions options;
     options.scheme = TransientTimeScheme::BackwardEuler;
-    options.end_time = 0.4;
-    options.initial_step = 0.1;
-    options.min_step = 0.1;
-    options.max_step = 0.1;
+    // Binary-exact increments avoid a rounded final remainder that would
+    // legitimately select a distinct dt-dependent base operator.
+    options.end_time = 0.5;
+    options.initial_step = 0.125;
+    options.min_step = 0.125;
+    options.max_step = 0.125;
     options.absolute_tolerance = 10.0;
     options.relative_tolerance = 0.0;
     options.solver_options.relative_tolerance = 1.0e-12;
