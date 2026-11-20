@@ -505,3 +505,55 @@ NOVA_TEST(adaptive_heat_3d_time_dependent_neumann_uses_full_and_half_time_grids)
                           expected_energy, 2.0e-9);
     }
 }
+
+
+NOVA_TEST(adaptive_heat_3d_time_dependent_robin_matches_fixed_half_steps_and_rebuilds_factor) {
+    auto problem = tetra_problem();
+    problem.diffusion.dirichlet_constraints = {
+        {0U, 300.0}, {1U, 300.0}, {2U, 300.0}
+    };
+    problem.initial_temperature = {300.0, 300.0, 300.0, 300.0};
+    problem.time_dependent_robin_faces.push_back({
+        {0U, 1U, 3U},
+        [](double, double, double, double time) { return 1.0 + time; },
+        [](double, double, double, double time) { return 290.0 + time; }
+    });
+
+    AdaptiveHeat3DOptions adaptive_options;
+    adaptive_options.scheme = TransientHeat3DScheme::CrankNicolson;
+    adaptive_options.start_time = 0.0;
+    adaptive_options.end_time = 0.25;
+    adaptive_options.initial_step = 0.125;
+    adaptive_options.min_step = 0.125;
+    adaptive_options.max_step = 0.125;
+    adaptive_options.absolute_tolerance = 100.0;
+    adaptive_options.relative_tolerance = 0.0;
+    adaptive_options.solver_options.relative_tolerance = 1.0e-13;
+    adaptive_options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+
+    const auto adaptive = solve_adaptive_heat_3d(problem, adaptive_options);
+    NOVA_REQUIRE(adaptive.accepted_steps == 2U);
+    NOVA_REQUIRE(adaptive.rejected_steps == 0U);
+    NOVA_REQUIRE(adaptive.full_step_operator_builds == 1U);
+    NOVA_REQUIRE(adaptive.half_step_operator_builds == 1U);
+    // The dt-dependent base operators are reused, but h(t) changes the exact
+    // constrained matrix at each endpoint and must invalidate IC(0).
+    NOVA_REQUIRE(adaptive.full_step_ic0_factor_builds == 2U);
+    NOVA_REQUIRE(adaptive.half_step_ic0_factor_builds == 4U);
+
+    TransientHeat3DOptions fixed_options;
+    fixed_options.scheme = TransientHeat3DScheme::CrankNicolson;
+    fixed_options.start_time = 0.0;
+    fixed_options.time_step = 0.0625;
+    fixed_options.steps = 4U;
+    fixed_options.solver_options = adaptive_options.solver_options;
+    const auto fixed = solve_transient_heat_3d(problem, fixed_options);
+    NOVA_REQUIRE_NEAR(adaptive.final_time, fixed.final_time, 1.0e-14);
+    for (std::size_t i = 0; i < fixed.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(adaptive.temperature[i], fixed.temperature[i], 2.0e-10);
+    }
+    for (const auto& diagnostic : adaptive.diagnostics) {
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2.0e-9);
+    }
+}
