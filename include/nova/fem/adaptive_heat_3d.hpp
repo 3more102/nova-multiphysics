@@ -41,6 +41,13 @@ struct AdaptiveHeat3DResult {
     double final_time{};
     std::size_t accepted_steps{};
     std::size_t rejected_steps{};
+    std::vector<AdaptiveHeatAttempt3D> attempts;
+    // Each entry combines the two accepted half-step energy budgets.
+    std::vector<TransientHeatStepDiagnostics3D> diagnostics;
+    // Two solver diagnostics per accepted time step; temperature vectors
+    // are omitted because the full adaptive field history is not retained.
+    std::vector<linalg::SolverResult> substep_solvers;
+
     // Number of distinct dt-dependent constrained systems prepared by each
     // adaptive trial slot. Repeated identical time steps reuse the operators.
     std::size_t full_step_operator_builds{};
@@ -48,12 +55,6 @@ struct AdaptiveHeat3DResult {
     // Exact-matrix IC(0) factor builds per slot; zero for other preconditioners.
     std::size_t full_step_ic0_factor_builds{};
     std::size_t half_step_ic0_factor_builds{};
-    std::vector<AdaptiveHeatAttempt3D> attempts;
-    // Each entry combines the two accepted half-step energy budgets.
-    std::vector<TransientHeatStepDiagnostics3D> diagnostics;
-    // Two solver diagnostics per accepted time step; temperature vectors
-    // are omitted because the full adaptive field history is not retained.
-    std::vector<linalg::SolverResult> substep_solvers;
 };
 
 // Compare a full step with two half steps from the same initial nodal state.
