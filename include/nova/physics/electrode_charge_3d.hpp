@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nova/physics/electrostatics_3d.hpp"
+#include "nova/linalg/solver_types.hpp"
 
 #include <cstddef>
 #include <span>
