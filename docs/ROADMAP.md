@@ -33,8 +33,7 @@ Implemented:
 - Triangle orientation-independent integration.
 - Orientation-aware 2D triangle quality analysis (minimum angle, mean ratio, element area and longest edge).
 - 3D tetrahedral mesh quality analysis (total volume, mean ratio and minimum dihedral angle), exposed through pre-solve CLI inspection and user-selected quality gates.
-- Conforming uniform 1-to-4 triangle refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
-- One-level conforming local tetrahedral edge refinement driven by marked cells, with deterministic shared-edge subdivision, boundary-face parent maps, Dörfler bulk marking, exact P1 prolongation and cellwise-constant transfer.
+- Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
 - Nonlinear 1D P1 diffusion residual and consistent Jacobian assembly.
@@ -42,7 +41,7 @@ Implemented:
 
 Remaining:
 - Reusable element and integration interfaces shared across physics.
-- Multilevel graded refinement with shape-quality controls, natural-boundary residual indicators, and end-to-end adaptive solver state transfer.
+- Local/graded adaptive mesh refinement, error indicators, quality-based marking and solver mesh-transfer workflows.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.
 
@@ -116,9 +115,9 @@ Implemented:
 - Time-dependent 3D scalar/tensor conductivity and volumetric capacity, with conservative enthalpy storage, endpoint-consistent Backward Euler/Crank–Nicolson operators, adaptive step-doubling support and energy-budget closure.
 
 Remaining:
-- Couple 3D residual indicators to Dörfler marking and repeated refine-transfer-resolve cycles; preserve physical groups, boundary callbacks and restart metadata across spatial adaptation.
+- Spatial error-driven refinement coupled to local tetrahedral refinement and mesh transfer; broader adaptive temporal-error estimators.
 - Gmsh binary and higher-order element import, and independent cross-solver thermal benchmarks.
-- Shape-quality-controlled multilevel refinement and physical-boundary metadata transfer across adaptive cycles.
+- Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
 ### 3D steady conduction flux recovery (experimental)
 
