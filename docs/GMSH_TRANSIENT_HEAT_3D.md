@@ -29,6 +29,28 @@ written synchronously by the solver observer.
 For a single final result, use `--vtk heated_wall_final.vtk` instead of
 `--vtk-series heated_wall.pvd`.
 
+## Inspect mesh quality before running heat studies
+
+The transient Gmsh CLI uses the same validated P1 tetrahedral mesh-quality
+metric as the steady 3D CLI. Inspect a mesh without specifying materials or
+running a thermal solve:
+
+```sh
+./build/nova_gmsh_transient_heat_3d examples/gmsh_diffusion_3d/two_layer_wall.msh --check-mesh
+```
+
+The report includes total volume, minimum mean ratio (0 to 1), worst-element
+index and minimum dihedral angle. Add `--quality-report` to a normal thermal
+study to print these diagnostics. Add `--min-mean-ratio q` with
+`0 < q <= 1` to print the report and reject the mesh **before FEM assembly or
+any VTK/PVD result writes** if its worst tetrahedron has mean ratio below
+`q`. The quality-only `--check-mesh` mode accepts the same threshold but
+cannot be combined with study settings.
+
+This is a geometric screening threshold, not a guarantee of convergence,
+accuracy or engineering suitability. Choose a tolerance appropriate to the
+meshing workflow and verify the solved fields independently.
+
 ## Inputs and conventions
 
 - `--material VOL k`: finite positive isotropic conductivity (W/m/K) for a
