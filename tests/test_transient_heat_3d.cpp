@@ -21,6 +21,20 @@ TransientHeat3DProblem unit_heat() {
     return problem;
 }
 
+TransientHeat3DProblem skewed_one_free_node_heat() {
+    auto problem = unit_heat();
+    problem.diffusion.mesh = {
+        {{0.0,0.0,0.0}, {2.0,0.0,0.0},
+         {0.0,1.0,0.0}, {0.5,0.25,2.0}},
+        {{0U,1U,2U,3U}}
+    };
+    problem.diffusion.dirichlet_constraints = {
+        {0U,0.0}, {1U,0.0}, {2U,0.0}
+    };
+    problem.initial_temperature = {0.0,0.0,0.0,10.0};
+    return problem;
+}
+
 template<class F>
 bool rejects(F&& fn) {
     try {
@@ -732,4 +746,130 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_time_dependent_boundary_data) {
     NOVA_REQUIRE(rejects([&] {
         (void)solve_transient_heat_3d(overlapping_robin);
     }));
+}
+
+
+NOVA_TEST(transient_heat_3d_time_dependent_natural_fluxes_are_exact_on_skewed_tetrahedron) {
+    // The slanted tetrahedron has V=2/3. On face (0,1,3), A=sqrt(65)/4.
+    // For the free vertex 3, grad(phi_3)=(0,0,1/2), so M_33=1/15
+    // and K_33=1/6. Face integrals are int(phi_3)=A/3 and
+    // int(phi_3^2)=A/6; these values are independent of NOVA assembly.
+    constexpr double volume = 2.0 / 3.0;
+    constexpr double mass = 1.0 / 15.0;
+    constexpr double conductivity = 1.0 / 6.0;
+    const double area = std::sqrt(65.0) / 4.0;
+
+    TransientHeat3DOptions options;
+    options.start_time = 0.2;
+    options.time_step = 0.05;
+    options.steps = 4U;
+    options.retain_step_solutions = true;
+    options.solver_options.relative_tolerance = 1.0e-13;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        const double theta =
+            scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
+
+        auto robin_problem = skewed_one_free_node_heat();
+        robin_problem.time_dependent_robin_faces.push_back({
+            {0U,1U,3U},
+            [](double, double, double, double time) { return 2.0 + time; },
+            [](double, double, double, double time) { return 300.0 + 4.0 * time; }
+        });
+        const auto robin_result = solve_transient_heat_3d(robin_problem, options);
+        double expected_robin_temperature = 10.0;
+        for (std::size_t step = 0; step < options.steps; ++step) {
+            const double t0 = options.start_time +
+                options.time_step * static_cast<double>(step);
+            const double t1 = t0 + options.time_step;
+            const double h0 = 2.0 + t0;
+            const double h1 = 2.0 + t1;
+            const double ambient0 = 300.0 + 4.0 * t0;
+            const double ambient1 = 300.0 + 4.0 * t1;
+            const double r0 = h0 * area / 6.0;
+            const double r1 = h1 * area / 6.0;
+            const double b0 = h0 * ambient0 * area / 3.0;
+            const double b1 = h1 * ambient1 * area / 3.0;
+            const double previous_temperature = expected_robin_temperature;
+            expected_robin_temperature = (
+                (mass - (1.0 - theta) * options.time_step *
+                    (conductivity + r0)) * previous_temperature +
+                options.time_step * (
+                    theta * b1 + (1.0 - theta) * b0
+                )
+            ) / (
+                mass + theta * options.time_step * (conductivity + r1)
+            );
+
+            const double expected_heat = volume * expected_robin_temperature / 4.0;
+            const double expected_robin_energy = options.time_step * (
+                theta * h1 * area *
+                    (ambient1 - expected_robin_temperature / 3.0) +
+                (1.0 - theta) * h0 * area *
+                    (ambient0 - previous_temperature / 3.0)
+            );
+            NOVA_REQUIRE_NEAR(
+                robin_result.linear_solvers[step].solution[3],
+                expected_robin_temperature, 3.0e-10);
+            NOVA_REQUIRE_NEAR(
+                robin_result.diagnostics[step].heat_content,
+                expected_heat, 3.0e-10);
+            NOVA_REQUIRE_NEAR(
+                robin_result.diagnostics[step].robin_energy,
+                expected_robin_energy, 3.0e-10);
+            NOVA_REQUIRE_NEAR(
+                robin_result.diagnostics[step].balance_residual,
+                0.0, 3.0e-9);
+        }
+        NOVA_REQUIRE_NEAR(
+            robin_result.temperature[3], expected_robin_temperature, 3.0e-10);
+
+        auto neumann_problem = skewed_one_free_node_heat();
+        neumann_problem.time_dependent_neumann_faces.push_back({
+            {0U,1U,3U},
+            [](double, double, double, double time) { return 4.0 + 2.0 * time; }
+        });
+        const auto neumann_result =
+            solve_transient_heat_3d(neumann_problem, options);
+        double expected_neumann_temperature = 10.0;
+        for (std::size_t step = 0; step < options.steps; ++step) {
+            const double t0 = options.start_time +
+                options.time_step * static_cast<double>(step);
+            const double t1 = t0 + options.time_step;
+            const double q0 = 4.0 + 2.0 * t0;
+            const double q1 = 4.0 + 2.0 * t1;
+            const double load0 = -q0 * area / 3.0;
+            const double load1 = -q1 * area / 3.0;
+            const double previous_temperature = expected_neumann_temperature;
+            expected_neumann_temperature = (
+                (mass - (1.0 - theta) * options.time_step * conductivity) *
+                    previous_temperature +
+                options.time_step * (
+                    theta * load1 + (1.0 - theta) * load0
+                )
+            ) / (mass + theta * options.time_step * conductivity);
+
+            const double expected_heat = volume * expected_neumann_temperature / 4.0;
+            const double expected_neumann_energy = -options.time_step * area *
+                (theta * q1 + (1.0 - theta) * q0);
+            NOVA_REQUIRE_NEAR(
+                neumann_result.linear_solvers[step].solution[3],
+                expected_neumann_temperature, 3.0e-10);
+            NOVA_REQUIRE_NEAR(
+                neumann_result.diagnostics[step].heat_content,
+                expected_heat, 3.0e-10);
+            NOVA_REQUIRE_NEAR(
+                neumann_result.diagnostics[step].neumann_energy,
+                expected_neumann_energy, 3.0e-10);
+            NOVA_REQUIRE_NEAR(
+                neumann_result.diagnostics[step].balance_residual,
+                0.0, 3.0e-9);
+        }
+        NOVA_REQUIRE_NEAR(
+            neumann_result.temperature[3], expected_neumann_temperature, 3.0e-10);
+    }
 }

@@ -126,6 +126,7 @@ ctest --test-dir build -C Release --output-on-failure
 - Three fixed vertices of a unit tetrahedron: the remaining DOF has `M_33=1/60`, `K_33=1/6`. Starting at 10 with `dt=0.1`, the one-step exact algebraic results are 5 (Backward Euler) and 10/3 (Crank–Nicolson).
 - Neumann-flux heat loss, static and time-dependent Robin convection, mixed tensor conductivity with a spatial heat capacity, and numerical energy-budget closure.
 - Closed-form one-free-DOF Backward Euler and Crank–Nicolson recurrences for time-varying Robin transfer/ambient data, including per-step Robin energy.
+- Skewed, non-axis-aligned tetrahedron checks of time-dependent Neumann and Robin face quadrature against independent one-free-DOF recurrences and per-step energy closure.
 - Adaptive full-step/two-half-step integration with time-dependent Robin data and energy-budget closure.
 - Heterogeneous cellwise SPD tensor conductivity with cellwise capacity and cell-only source, plus zero-source insulated equilibrium.
 - Multi-tetrahedron heterogeneous cellwise SPD tensors with uniform heating, exact heat-content growth, and invalid tensor/cell-array rejection.

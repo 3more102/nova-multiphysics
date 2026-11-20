@@ -104,12 +104,12 @@ Implemented transient thermal regression cases:
 - 3D transient analytical time-step refinement on a single free tetrahedral DOF: expected first-order Backward Euler and second-order Crank–Nicolson error ratios, nonzero physical start time, and per-step energy closure.
 - 3D time-dependent Robin transfer/ambient data: closed-form one-free-DOF Backward Euler and Crank–Nicolson recurrences, per-step Robin energy and discrete budget closure.
 - Adaptive 3D Robin trials: full-step/two-half-step agreement with the fixed half-step reference; changing transfer coefficients rebuild operators/factors, while ambient-only changes reuse them.
+- Distorted non-axis-aligned tetrahedron: time-dependent Neumann and Robin face quadrature checked against independent one-free-DOF recurrences and per-step energy closure.
 
 Required next verification:
 - Quantify discrete energy decay, adaptive error-controller sensitivity, and step efficiency for a cooling plate.
 - Cross-check transient thermal benchmarks against an independent reference solver.
 - Cross-check independent physical fluxes, Dirichlet boundary reactions, and energy changes.
-- Add distorted-mesh verification for transient Neumann/Robin conditions.
 
 ## Legacy gate 5 cases
 
