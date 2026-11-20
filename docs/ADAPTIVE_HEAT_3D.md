@@ -1,13 +1,13 @@
 # Adaptive transient 3D heat (experimental)
 
-`nova/fem/adaptive_heat_3d.hpp` adds **fixed-mesh temporal adaptivity** to
+\`nova/fem/adaptive_heat_3d.hpp\` adds **fixed-mesh temporal adaptivity** to
 NOVA's existing consistent-mass P1 tetrahedral transient solver. It does not
 change the supported materials or boundary conditions: coefficients and
 Dirichlet/Neumann/Robin data remain **time-independent**.
 
 ## API
 
-```cpp
+\`\`\`cpp
 #include "nova/fem/adaptive_heat_3d.hpp"
 
 nova::fem::AdaptiveHeat3DOptions options;
@@ -25,49 +25,71 @@ options.on_step = [](std::size_t index, double time,
     // Persist or visualize this field while the callback is active.
 };
 const auto result = nova::fem::solve_adaptive_heat_3d(problem, options);
-```
+\`\`\`
 
-For each attempted interval `dt`, the integrator runs one full step and
+For each attempted interval \`dt\`, the integrator runs one full step and
 two half steps **from the same previously accepted nodal state**. The order
-is `p=1` for Backward Euler, `p=2` for Crank–Nicolson. Its RMS nodal
+is \`p=1\` for Backward Euler, \`p=2\` for Crank–Nicolson. Its RMS nodal
 indicator is
 
-```text
+\`\`\`text
 e = sqrt(mean_i( [ (T_2half[i] - T_full[i]) / (2^p-1) /
     (atol + rtol * max(abs(T_old[i]), abs(T_2half[i]))) ]^2 ))
-```
+\`\`\`
 
-If `e <= 1`, the two-half-step state is accepted. Otherwise the trial is
+If \`e <= 1\`, the two-half-step state is accepted. Otherwise the trial is
 rejected without modifying the accepted nodal field or energy history. The
-next interval uses `0.9 * e^(-1/(p+1))`, bounded to control growth or
-shrinkage. A smaller final interval is allowed to land on `end_time`.
+next interval uses \`0.9 * e^(-1/(p+1))\`, bounded to control growth or
+shrinkage. A smaller final interval is allowed to land on \`end_time\`.
 
 The result includes accepted/rejected counts, a record of all attempted
 intervals and their errors, a final nodal field, and **two linear solver
 diagnostics for each accepted step** (with full field copies suppressed).
 Each accepted energy diagnostic is the sum of both half-step contributions;
-`heat_content` is taken from the **second** half step. Thus rejected trial
+\`heat_content\` is taken from the **second** half step. Thus rejected trial
 energy is never accidentally included. Restart by passing the returned
-temperature to `TransientHeat3DProblem::initial_temperature` and using
-`result.final_time` as the next `start_time`.
+temperature to \`TransientHeat3DProblem::initial_temperature\` and using
+\`result.final_time\` as the next \`start_time\`.
 
-`AdaptiveHeat3DOptions::on_step` emits the Dirichlet-projected initial field
+\`AdaptiveHeat3DOptions::on_step\` emits the Dirichlet-projected initial field
 once at index 0, then only the accepted two-half-step macro fields at indices
 1..N. The coarse full-step estimate, intermediate half-step field and
 rejected trials are never emitted. The field reference is valid only during
 the callback. Observer exceptions propagate and abort the integration.
 
+## Assembly and factorization reuse
+
+The adaptive integration prepares the time-independent FEM data once:
+consistent mass, conductivity-plus-Robin stiffness, fixed volume/Neumann/
+ambient loads, Dirichlet constraints and capacity weights. It does not
+re-evaluate material, capacity or source fields for every trial.
+
+Two bounded system-cache slots retain the full-step and half-step systems
+independently. Each slot is keyed by the exact time-step value and scheme.
+Changing either rebuilds that slot's left/right operators, constrained CSR
+system and boundary shift; the other slot remains valid. This avoids
+unbounded matrix/factor storage as the controller changes its step size.
+
+Each slot owns a \`CachedConjugateGradient\`. With IC(0), its factor is reused
+only when the constrained CSR matrix is exactly unchanged (same dimensions,
+nonzero count, sparsity and coefficients). A changed time step or scheme
+therefore causes a safe rebuild rather than reuse of a stale factor. The
+two half steps share one slot and reuse the same factor within an attempt;
+repeated adaptive step sizes can also reuse the full/half factors across
+attempts. Other preconditioners retain their existing behavior.
+
 ## Verification and limits
 
-`tests/test_adaptive_heat_3d.cpp` covers exact insulated uniform heating
+\`tests/test_adaptive_heat_3d.cpp\` covers exact insulated uniform heating
 and heat budget closure for both schemes, temporal tolerance sensitivity
 against the analytical semidiscrete one-free-DOF decay solution, mixed
 boundary restart, invalid control rejection, the maximum-attempt gate,
-accepted-only observer ordering, initial Dirichlet projection and observer
-exception propagation.
+accepted-only observer ordering, initial Dirichlet projection, observer
+exception propagation, and one-time spatial operator assembly across
+multiple rejected/accepted trials. The internal workspace regression also
+checks bounded system-cache reuse and IC(0) invalidation when the step size
+or time scheme changes.
 
-**Performance limitation:** each full-step and two-half-step trial invokes
-the existing solver, so the mesh, FE operators, and linear systems are
-reassembled for each trial. Caching the assembled operators across trial
-steps and efficiently reusing factors is a future optimization. This is a
-research-grade implementation, not engineering-design certification.
+This remains a research-grade fixed-mesh implementation, not engineering-
+design certification. Time-varying coefficients, phase change and adaptive
+spatial remeshing are outside this API.
