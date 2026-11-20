@@ -23,6 +23,43 @@ The weak form reuses NOVA's validated scalar/tensor P1 tetrahedral diffusion ass
 
 The energy is evaluated in long double and checked for non-finite or materially negative density. Positive-definite permittivity implies E dot D >= 0.
 
+## Fixed-electrode charge diagnostic (experimental)
+
+Use `nova/physics/electrode_charge_3d.hpp` after a converged solution to
+integrate the adjacent P1 tetrahedral electric displacement over selected
+fixed-potential exterior triangles:
+
+```cpp
+auto charges = nova::physics::evaluate_electrode_charges_3d(
+    problem, solved, electrode_faces, electrode_ids
+);
+```
+
+`electrode_faces` and `electrode_ids` must have equal lengths. Each
+nonnegative ID identifies one equipotential conductor boundary. All selected
+vertices must be constrained by `potential_constraints` or `potential_faces`.
+The routine rejects non-exterior faces, duplicates, unfixed nodes, nonuniform
+group potentials and non-finite fields. It never runs a second field solve.
+
+For the dielectric domain's outward unit normal `n`, the integrated
+displacement `integral(D dot n) dA` has units of coulombs. The charge on
+the adjacent conductor is its **negative**. Each result reports both signs,
+the electrode's potential, area and number of triangles. The reported groups
+are sorted by electrode ID; input winding does not affect orientation.
+
+In the included parallel-plate test (1 m² plates, 1 m separation, epsilon
+= 2 F/m, V_low = 0 V, V_high = 10 V), the grounded electrode carries
+-20 C and the high-potential electrode +20 C. Under those *charge-free*
+two-electrode conditions, `C = Q_high/(V_high - V_low) = 2 F`, matching
+`U = 100 J`.
+
+**Accuracy warning:** This is a direct integration of *element-averaged*
+`D`, not an equilibrated boundary flux, discrete electrode reaction, or
+conservative surface-charge reconstruction. Coarse meshes, material jumps
+or volume free charge can spoil charge balance. Capacitance from `Q/dV`
+requires an appropriate charge-free two-terminal problem and independent
+mesh-convergence verification.
+
 ## Verification
 
 The regression suite includes:
