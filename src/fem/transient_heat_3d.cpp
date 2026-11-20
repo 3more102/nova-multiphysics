@@ -230,6 +230,18 @@ PreparedTransientHeat3D prepare_transient_heat_3d(
             boundary.face, boundary.outward_flux, area_scale
         });
     }
+    for (const auto& boundary : problem.time_dependent_robin_faces) {
+        exterior.claim(boundary.face);
+        if (!boundary.transfer_coefficient || !boundary.ambient_value) {
+            throw std::invalid_argument(
+                "Transient 3D time-dependent Robin face needs transfer and ambient fields.");
+        }
+        const double area_scale = face_jacobian(mesh, boundary.face);
+        prepared.time_dependent_robin_faces.push_back({
+            boundary.face, boundary.transfer_coefficient,
+            boundary.ambient_value, area_scale
+        });
+    }
 
     for (std::size_t node = 0; node < n; ++node) {
         prepared.constrained[node] =
@@ -396,20 +408,44 @@ void prepare_step_operators(
     const PreparedTransientHeat3D& prepared,
     double time_step,
     TransientHeat3DScheme scheme,
-    TransientHeat3DStepCache& cache
+    TransientHeat3DStepCache& cache,
+    const CsrMatrix* previous_time_dependent_robin,
+    const CsrMatrix* next_time_dependent_robin
 ) {
+    const auto matches_cached_matrix = [](
+        const std::optional<CsrMatrix>& cached,
+        const CsrMatrix* candidate
+    ) {
+        if (candidate == nullptr) return !cached.has_value();
+        return cached.has_value() && cached->exactly_equal(*candidate);
+    };
     if (cache.operators && cache.time_step == time_step &&
-        cache.scheme == scheme) {
+        cache.scheme == scheme &&
+        matches_cached_matrix(cache.previous_time_dependent_robin,
+                              previous_time_dependent_robin) &&
+        matches_cached_matrix(cache.next_time_dependent_robin,
+                              next_time_dependent_robin)) {
         return;
     }
 
     const double theta =
         scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
+    CsrMatrix lhs_stiffness = prepared.stiffness;
+    if (next_time_dependent_robin != nullptr) {
+        lhs_stiffness = CsrMatrix::linear_combination(
+            prepared.stiffness, 1.0, *next_time_dependent_robin, 1.0);
+    }
+    CsrMatrix rhs_stiffness = prepared.stiffness;
+    if (previous_time_dependent_robin != nullptr) {
+        rhs_stiffness = CsrMatrix::linear_combination(
+            prepared.stiffness, 1.0, *previous_time_dependent_robin, 1.0);
+    }
+
     TransientHeat3DStepOperators next;
     next.lhs = CsrMatrix::linear_combination(
-        prepared.mass, 1.0, prepared.stiffness, theta * time_step);
+        prepared.mass, 1.0, lhs_stiffness, theta * time_step);
     next.rhs_operator = CsrMatrix::linear_combination(
-        prepared.mass, 1.0, prepared.stiffness, -(1.0 - theta) * time_step);
+        prepared.mass, 1.0, rhs_stiffness, -(1.0 - theta) * time_step);
 
     const std::size_t n = prepared.initial_state.size();
     std::vector<Triplet> free_entries;
@@ -442,6 +478,16 @@ void prepare_step_operators(
     cache.operators = std::move(next);
     cache.time_step = time_step;
     cache.scheme = scheme;
+    if (previous_time_dependent_robin != nullptr) {
+        cache.previous_time_dependent_robin = *previous_time_dependent_robin;
+    } else {
+        cache.previous_time_dependent_robin.reset();
+    }
+    if (next_time_dependent_robin != nullptr) {
+        cache.next_time_dependent_robin = *next_time_dependent_robin;
+    } else {
+        cache.next_time_dependent_robin.reset();
+    }
     ++cache.operator_builds;
 }
 
@@ -526,6 +572,82 @@ std::vector<double> evaluate_time_dependent_neumann_load(
     return load;
 }
 
+struct TimeDependentRobinEvaluation3D {
+    CsrMatrix matrix;
+    std::vector<double> ambient_load;
+};
+
+TimeDependentRobinEvaluation3D evaluate_time_dependent_robin(
+    const PreparedTransientHeat3D& prepared,
+    double time
+) {
+    if (!std::isfinite(time) || prepared.mesh == nullptr ||
+        prepared.time_dependent_robin_faces.empty()) {
+        throw std::logic_error(
+            "Transient 3D time-dependent Robin preparation is inconsistent.");
+    }
+
+    const auto& mesh = *prepared.mesh;
+    const std::size_t n = prepared.initial_state.size();
+    std::vector<Triplet> entries;
+    if (prepared.time_dependent_robin_faces.size() >
+        entries.max_size() / 27U) {
+        throw std::length_error(
+            "Transient 3D time-dependent Robin matrix exceeds storage limits.");
+    }
+    entries.reserve(prepared.time_dependent_robin_faces.size() * 27U);
+    std::vector<double> ambient_load(n, 0.0);
+
+    for (const auto& boundary : prepared.time_dependent_robin_faces) {
+        for (const auto& quadrature : triangle_face_degree_two_quadrature) {
+            const auto point = simplex_point(mesh, boundary.face, quadrature.shape);
+            const double transfer = boundary.transfer_coefficient(
+                point.x, point.y, point.z, time);
+            const double ambient = boundary.ambient_value(
+                point.x, point.y, point.z, time);
+            if (!std::isfinite(transfer) || transfer < 0.0 ||
+                !std::isfinite(ambient)) {
+                throw std::invalid_argument(
+                    "Transient 3D time-dependent Robin data must be finite with h >= 0.");
+            }
+            const double weight = boundary.area_scale * quadrature.weight;
+            const double ambient_transfer = transfer * ambient;
+            if (!std::isfinite(weight) || !std::isfinite(ambient_transfer)) {
+                throw std::overflow_error(
+                    "Transient 3D time-dependent Robin quadrature overflowed.");
+            }
+            for (std::size_t i = 0; i < 3; ++i) {
+                const auto row = boundary.face[i];
+                const double load_contribution =
+                    ambient_transfer * quadrature.shape[i] * weight;
+                if (!std::isfinite(load_contribution)) {
+                    throw std::overflow_error(
+                        "Transient 3D time-dependent Robin load overflowed.");
+                }
+                ambient_load[row] += load_contribution;
+                if (!std::isfinite(ambient_load[row])) {
+                    throw std::overflow_error(
+                        "Transient 3D time-dependent Robin load accumulation overflowed.");
+                }
+                for (std::size_t j = 0; j < 3; ++j) {
+                    const double value =
+                        transfer * quadrature.shape[i] * quadrature.shape[j] * weight;
+                    if (!std::isfinite(value)) {
+                        throw std::overflow_error(
+                            "Transient 3D time-dependent Robin matrix overflowed.");
+                    }
+                    entries.push_back({row, boundary.face[j], value});
+                }
+            }
+        }
+    }
+
+    return {
+        CsrMatrix::from_triplets(n, n, entries),
+        std::move(ambient_load)
+    };
+}
+
 } // namespace
 
 TransientHeat3DResult solve_prepared_transient_heat_3d(
@@ -552,8 +674,6 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
         }
     }
 
-    prepare_step_operators(prepared, options.time_step, options.scheme, cache);
-    const auto& operators = *cache.operators;
     const double dt = options.time_step;
     const double theta =
         options.scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
@@ -565,6 +685,11 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
     std::vector<double> previous_time_neumann;
     if (!prepared.time_dependent_neumann_faces.empty() && theta < 1.0) {
         previous_time_neumann = evaluate_time_dependent_neumann_load(
+            prepared, options.start_time);
+    }
+    std::optional<TimeDependentRobinEvaluation3D> previous_time_robin;
+    if (!prepared.time_dependent_robin_faces.empty() && theta < 1.0) {
+        previous_time_robin = evaluate_time_dependent_robin(
             prepared, options.start_time);
     }
 
@@ -588,6 +713,16 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
             !prepared.time_dependent_neumann_faces.empty()
                 ? evaluate_time_dependent_neumann_load(prepared, step_time)
                 : std::vector<double>{};
+        std::optional<TimeDependentRobinEvaluation3D> next_time_robin;
+        if (!prepared.time_dependent_robin_faces.empty()) {
+            next_time_robin = evaluate_time_dependent_robin(prepared, step_time);
+        }
+        prepare_step_operators(
+            prepared, dt, options.scheme, cache,
+            previous_time_robin ? &previous_time_robin->matrix : nullptr,
+            next_time_robin ? &next_time_robin->matrix : nullptr);
+        const auto& operators = *cache.operators;
+
         std::vector<double> weighted_time_neumann;
         if (!prepared.time_dependent_neumann_faces.empty()) {
             weighted_time_neumann.resize(n);
@@ -603,6 +738,27 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
                 }
             }
         }
+        std::vector<double> weighted_time_robin_load;
+        if (!prepared.time_dependent_robin_faces.empty()) {
+            if (!next_time_robin || (theta < 1.0 && !previous_time_robin)) {
+                throw std::logic_error(
+                    "Transient 3D time-dependent Robin endpoint data are incomplete.");
+            }
+            weighted_time_robin_load.resize(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                weighted_time_robin_load[i] =
+                    theta * next_time_robin->ambient_load[i];
+                if (theta < 1.0) {
+                    weighted_time_robin_load[i] +=
+                        (1.0 - theta) * previous_time_robin->ambient_load[i];
+                }
+                if (!std::isfinite(weighted_time_robin_load[i])) {
+                    throw std::overflow_error(
+                        "Transient 3D weighted Robin load overflowed.");
+                }
+            }
+        }
+
         const auto current_prescribed =
             evaluate_prescribed_values(prepared, step_time);
 
@@ -624,7 +780,9 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
             const double load = prepared.total_load[i] +
                 (prepared.time_dependent_source ? weighted_time_source[i] : 0.0) +
                 (!prepared.time_dependent_neumann_faces.empty()
-                    ? weighted_time_neumann[i] : 0.0);
+                    ? weighted_time_neumann[i] : 0.0) +
+                (!prepared.time_dependent_robin_faces.empty()
+                    ? weighted_time_robin_load[i] : 0.0);
             rhs[i] += dt * load;
             if (!std::isfinite(rhs[i])) {
                 throw std::overflow_error("Transient 3D RHS overflowed.");
@@ -695,6 +853,12 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
         const auto unconstrained_lhs = operators.lhs.multiply(next);
         const auto previous_robin = prepared.robin.multiply(state);
         const auto next_robin = prepared.robin.multiply(next);
+        const auto previous_time_robin_product = previous_time_robin
+            ? previous_time_robin->matrix.multiply(state)
+            : std::vector<double>{};
+        const auto next_time_robin_product = next_time_robin
+            ? next_time_robin->matrix.multiply(next)
+            : std::vector<double>{};
 
         TransientHeatStepDiagnostics3D diagnostic;
         diagnostic.time = step_time;
@@ -710,8 +874,10 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
         diagnostic.neumann_energy = dt * (
             sum(prepared.neumann_load) + sum(weighted_time_neumann));
         diagnostic.robin_energy = dt * (
-            sum(prepared.ambient_load) - theta * sum(next_robin) -
-            (1.0 - theta) * sum(previous_robin));
+            sum(prepared.ambient_load) + sum(weighted_time_robin_load) -
+            theta * (sum(next_robin) + sum(next_time_robin_product)) -
+            (1.0 - theta) *
+                (sum(previous_robin) + sum(previous_time_robin_product)));
         for (std::size_t i = 0; i < n; ++i) {
             if (current_prescribed[i]) {
                 diagnostic.dirichlet_energy +=
@@ -722,7 +888,10 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
             diagnostic.heat_content - dot(prepared.capacity_weights, state) -
             diagnostic.source_energy - diagnostic.neumann_energy -
             diagnostic.robin_energy - diagnostic.dirichlet_energy;
-        if (!std::isfinite(diagnostic.dirichlet_energy) ||
+        if (!std::isfinite(diagnostic.source_energy) ||
+            !std::isfinite(diagnostic.neumann_energy) ||
+            !std::isfinite(diagnostic.robin_energy) ||
+            !std::isfinite(diagnostic.dirichlet_energy) ||
             !std::isfinite(diagnostic.balance_residual)) {
             throw std::overflow_error("Transient 3D energy diagnostic overflowed.");
         }
@@ -732,6 +901,9 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
         }
         if (theta < 1.0 && !prepared.time_dependent_neumann_faces.empty()) {
             previous_time_neumann = std::move(next_time_neumann);
+        }
+        if (theta < 1.0 && next_time_robin) {
+            previous_time_robin = std::move(next_time_robin);
         }
         state = std::move(next);
         result.diagnostics.push_back(diagnostic);
