@@ -510,3 +510,93 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_time_dependent_boundary_data) {
         (void)solve_transient_heat_3d(missing_callback);
     }));
 }
+
+
+NOVA_TEST(transient_heat_3d_time_dependent_robin_uses_scheme_endpoint_quadrature_and_closes_energy) {
+    auto p = unit_heat();
+    p.diffusion.dirichlet_constraints = {{0U, 300.0}, {1U, 300.0}, {2U, 300.0}};
+    p.initial_temperature = {300.0, 300.0, 300.0, 300.0};
+
+    std::size_t transfer_samples = 0U;
+    std::size_t ambient_samples = 0U;
+    p.time_dependent_robin_faces.push_back({
+        {0U, 1U, 3U},
+        [&](double, double, double, double time) {
+            ++transfer_samples;
+            return 1.0 + time;
+        },
+        [&](double, double, double, double time) {
+            ++ambient_samples;
+            return 290.0 + time;
+        }
+    });
+
+    TransientHeat3DOptions options;
+    options.start_time = 2.0;
+    options.time_step = 0.1;
+    options.steps = 2U;
+    options.solver_options.relative_tolerance = 1.0e-13;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        transfer_samples = 0U;
+        ambient_samples = 0U;
+        options.scheme = scheme;
+        const auto result = solve_transient_heat_3d(p, options);
+        const std::size_t expected_time_samples =
+            scheme == TransientHeat3DScheme::BackwardEuler ? 2U : 3U;
+        NOVA_REQUIRE(transfer_samples == expected_time_samples * 3U);
+        NOVA_REQUIRE(ambient_samples == expected_time_samples * 3U);
+        NOVA_REQUIRE(result.temperature[3] < 300.0);
+        for (const auto& diagnostic : result.diagnostics) {
+            NOVA_REQUIRE(diagnostic.robin_energy < 0.0);
+            NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2.0e-9);
+        }
+    }
+}
+
+NOVA_TEST(transient_heat_3d_rejects_invalid_time_dependent_robin_data_and_overlap) {
+    const auto base = unit_heat();
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = base;
+        bad.time_dependent_robin_faces.push_back({
+            {0U, 1U, 2U}, {},
+            [](double, double, double, double) { return 300.0; }
+        });
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = base;
+        bad.time_dependent_robin_faces.push_back({
+            {0U, 1U, 2U},
+            [](double, double, double, double) { return -1.0; },
+            [](double, double, double, double) { return 300.0; }
+        });
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = base;
+        bad.time_dependent_robin_faces.push_back({
+            {0U, 1U, 2U},
+            [](double, double, double, double) { return 1.0; },
+            [](double, double, double, double) {
+                return std::numeric_limits<double>::quiet_NaN();
+            }
+        });
+        (void)solve_transient_heat_3d(bad);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        auto bad = base;
+        bad.diffusion.neumann_faces.push_back({
+            {0U, 1U, 2U}, [](double, double, double) { return 0.0; }
+        });
+        bad.time_dependent_robin_faces.push_back({
+            {0U, 1U, 2U},
+            [](double, double, double, double) { return 1.0; },
+            [](double, double, double, double) { return 300.0; }
+        });
+        (void)solve_transient_heat_3d(bad);
+    }));
+}
