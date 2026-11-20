@@ -102,7 +102,6 @@ def verify_series(exe, mesh, args, pvd):
     assert all((pvd.parent / name).is_file() for name in original_names)
 
 
-
 def verify_mesh_quality(exe, mesh, thermal_args, directory):
     # Inspection must work without thermal parameters or a solver run.
     report = invoke(exe, mesh, "--check-mesh")
