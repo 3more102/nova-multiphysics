@@ -102,6 +102,53 @@ def verify_series(exe, mesh, args, pvd):
     assert all((pvd.parent / name).is_file() for name in original_names)
 
 
+
+def verify_mesh_quality(exe, mesh, thermal_args, directory):
+    # Inspection must work without thermal parameters or a solver run.
+    report = invoke(exe, mesh, "--check-mesh")
+    ratio = report_number(report, "Minimum mean ratio:")
+    volume = report_number(report, "Total tetrahedral volume [m^3]:")
+    angle = report_number(report, "Minimum dihedral angle [degrees]:")
+    if not (0.0 < ratio < 1.0 and volume > 0.0 and angle > 0.0):
+        raise AssertionError("Invalid tetrahedral quality report")
+    if "Worst tetrahedron index (zero-based):" not in report:
+        raise AssertionError("Missing worst-cell diagnostic")
+
+    accepted = format(0.5 * ratio, ".17g")
+    rejected = format(0.5 * (1.0 + ratio), ".17g")
+    assert "Minimum mean ratio:" in invoke(
+        exe, mesh, "--min-mean-ratio", accepted, "--check-mesh")
+
+    # Report/gate option order must not affect an otherwise valid heat solve.
+    for quality_options in (
+        ("--quality-report", "--min-mean-ratio", accepted),
+        ("--min-mean-ratio", accepted, "--quality-report"),
+    ):
+        solved = invoke(exe, mesh, *thermal_args, *quality_options)
+        assert "Minimum mean ratio:" in solved
+        assert "final_time" in solved
+
+    # Reject the mesh before writing any ParaView frame or collection.
+    rejected_pvd = directory / "blocked_quality.pvd"
+    command = [str(exe), str(mesh), *map(str, thermal_args),
+               "--min-mean-ratio", rejected, "--vtk-series", str(rejected_pvd)]
+    failed = subprocess.run(command, capture_output=True, text=True, check=False)
+    if failed.returncode == 0 or "quality gate failed" not in failed.stderr:
+        raise AssertionError("Quality gate failed to reject the transient solve")
+    if rejected_pvd.exists() or list(directory.glob("blocked_quality_*.vtk")):
+        raise AssertionError("Quality-gate failure created partial result files")
+
+    for invalid in ("0", "-0.1", "1.001", "nan", "not_a_number"):
+        invoke(exe, mesh, "--check-mesh", "--min-mean-ratio", invalid,
+               good=False)
+    invoke(exe, mesh, "--check-mesh", "--min-mean-ratio", accepted,
+           "--min-mean-ratio", accepted, good=False)
+    invoke(exe, mesh, "--check-mesh", "--quality-report",
+           "--quality-report", good=False)
+    invoke(exe, mesh, "--check-mesh", "--material", 11, 1, good=False)
+    invoke(exe, mesh, "--check-mesh", "--scheme", "cn", good=False)
+
+
 def main():
     exe, mesh = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
     with tempfile.TemporaryDirectory(prefix="nova-gmsh-transient-") as temp:
@@ -110,6 +157,7 @@ def main():
                 "--capacity", 11, 2, "--capacity", 22, 2,
                 "--initial", 300, "--source", 4, "--dt", 0.1,
                 "--steps", 5, "--scheme", "cn")
+        verify_mesh_quality(exe, mesh, args, directory)
         pvd = directory / "uniform_heat.pvd"
         verify_series(exe, mesh, args, pvd)
 
@@ -191,7 +239,7 @@ def main():
         invoke(exe, mesh, *args, "--vtk", directory / "both.vtk",
                "--vtk-series", directory / "both.pvd", good=False)
 
-    print("PASS: Gmsh transient BE/CN, PVD frames, cell fields, source, flux, energy and invalid-input checks")
+    print("PASS: Gmsh transient BE/CN, quality gates, PVD frames, cell fields, source, flux, energy and invalid-input checks")
 
 
 if __name__ == "__main__":
