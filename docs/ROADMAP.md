@@ -41,7 +41,7 @@ Implemented:
 
 Remaining:
 - Reusable element and integration interfaces shared across physics.
-- Local/graded adaptive mesh refinement, error indicators, quality-based marking and solver mesh-transfer workflows.
+- Local/graded adaptive mesh refinement, natural-boundary residual indicators, quality-based marking and solver mesh-transfer workflows.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.
 
@@ -125,10 +125,11 @@ Implemented:
 - Optional cellwise-conservative integrated heat rates on shared tetrahedral faces.
 - Equal-and-opposite interior face rates, prescribed Neumann/Robin rates, and Dirichlet reaction outlets.
 - Area-weighted minimum-change reconciliation with component-scaled sparse solves and local per-cell energy-budget checks.
-- Raw P1 interior normal-flux continuity diagnostics on all shared tetrahedral faces, with per-face jumps, per-cell weighted indicators and a global indicator (not a full residual estimator).
+- Raw P1 interior normal-flux continuity diagnostics on all shared tetrahedral faces, with per-face jumps, per-cell weighted indicators and a global indicator.
+- P1 tetrahedral interior residual indicator combining the cell-source residual with interior flux jumps for positive, elementwise-constant scalar conductivity.
 
 Remaining:
-- A complete residual-based 3D estimator including cell-source and exterior-boundary residuals, coupled to graded local tetrahedral refinement.
+- Natural-boundary residual terms (Neumann/Robin mismatch) and coupling of the interior residual indicator to graded local tetrahedral refinement.
 - H(div)-conforming vector flux spaces and enforced pointwise normal-flux continuity.
 - Independent distorted-mesh and multi-material flux-convergence benchmarks.
 - Export of recovered face rates to result files and visualization.

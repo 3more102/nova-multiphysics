@@ -150,3 +150,12 @@ invalid topology, componentwise Neumann compatibility, a rotated material interf
 and agreement between assembly and flux recovery on material selection. The
 end-to-end CTest reads exported results, checks both boundary heat rates and measures
 temperature and flux error under refinement. [Reproduction and thresholds](STEADY_CONDUCTION_3D.md)
+
+
+## 3D P1 interior residual indicator
+
+- A globally affine harmonic field on a conforming six-tetrahedron box has a near-zero indicator.
+- A unit reference tetrahedron with zero field and constant unit source reproduces the analytical cell residual \(\sqrt{1/3}\).
+- Two tetrahedra sharing one face reproduce analytical interior flux-jump contributions for both a discontinuous P1 field and discontinuous element conductivity.
+- Invalid nodal data, conductivity lengths/values, missing sources and non-finite source evaluations are rejected.
+- Natural-boundary residuals and automatic local refinement are explicitly outside this first indicator.
