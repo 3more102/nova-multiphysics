@@ -195,7 +195,9 @@ Settings read_settings(int argc, char** argv,
             throw std::invalid_argument("Unknown argument: " + std::string(option) + "\n" + usage);
         }
     }
-    if (settings.minimum_mean_ratio) settings.quality_report = true;
+    if (settings.minimum_mean_ratio || settings.check_mesh_only) {
+        settings.quality_report = true;
+    }
     if (settings.check_mesh_only) {
         if (!settings.materials.empty() || !settings.tensor_materials.empty() ||
             !settings.capacities.empty() || !settings.heat_sources.empty() ||
