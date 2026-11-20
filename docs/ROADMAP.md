@@ -124,9 +124,11 @@ Implemented:
 - Optional cellwise-conservative integrated heat rates on shared tetrahedral faces.
 - Equal-and-opposite interior face rates, prescribed Neumann/Robin rates, and Dirichlet reaction outlets.
 - Area-weighted minimum-change reconciliation with component-scaled sparse solves and local per-cell energy-budget checks.
+- Raw P1 interior normal-flux continuity diagnostics on all shared tetrahedral faces, with per-face jumps, per-cell weighted indicators and a global indicator (not a full residual estimator).
 
 Remaining:
-- H(div)-conforming vector flux spaces and pointwise normal-flux continuity.
+- A complete residual-based 3D estimator including cell-source and exterior-boundary residuals, coupled to graded local tetrahedral refinement.
+- H(div)-conforming vector flux spaces and enforced pointwise normal-flux continuity.
 - Independent distorted-mesh and multi-material flux-convergence benchmarks.
 - Export of recovered face rates to result files and visualization.
 

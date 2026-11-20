@@ -34,6 +34,7 @@ The C++ library, CLI, unit tests and wall smoke test run independently of Python
 | `--heat-source volume_id Q` | Signed volumetric source density in W/m³ for a selected volume ID. Can repeat for different IDs; unlisted IDs add zero. This density adds to `--source`. |
 | `--vtk output.vtk` | Optional file containing the solved nodal and cell fields. |
 | `--flux-report` | Print per-physical-surface triangle count, area (m²), and outward conductive heat rate (W), including untagged ID 0. |
+| `--jump-report` | Print a weighted interior normal-flux jump indicator and maximum face jump for the solved raw P1 field. Not a complete error estimate. |
 | `--balance-report` | Independently reassemble FEM weak-form residuals and report global source, Neumann, Robin, nodal reactions and free-equation residuals in W. |
 | `--quality-report` | Report total mesh volume, minimum tetrahedral mean ratio, minimum dihedral angle and worst element index before solving. |
 | `--min-mean-ratio q` | Reject a mesh before assembly if its minimum mean ratio is below the user-selected threshold (0 < q ≤ 1); also enables the quality report. |
@@ -178,6 +179,34 @@ equilibrated. Reported surface rates therefore are estimates and their sum
 is **not** an enforced conservation identity. The volume-integrated source
 and FEM reaction require a separate consistent balance computation before
 the output can be used as a strict energy-conservation certificate.
+
+## Interior normal-flux continuity diagnostic
+
+Append `--jump-report` to a solved Gmsh case, or call
+`evaluate_interior_flux_jumps_3d` from
+`nova/fem/interior_flux_jumps_3d.hpp`, to inspect every shared tetrahedral
+face. For an interior face `F`, let `q_1` and `q_2` be the adjacent
+cell-averaged raw P1 conductive fluxes, and let `n_1` and `n_2` be their
+outward unit normals. The signed jump is
+
+`J_F = q_1 · n_1 + q_2 · n_2`.
+
+With `h_F` equal to the longest edge of the triangular face, the global
+continuity indicator is
+
+`eta_jump = sqrt(sum_F h_F |F| J_F^2)`.
+
+Half of each nonnegative face contribution is assigned to each adjacent
+tetrahedron; the API returns those per-cell indicators, the face owners,
+geometry and signed jump. Every shared face is counted once. Boundary faces
+are excluded.
+
+**Scope:** this measures continuity of the element-averaged raw P1 flux only.
+It does not include cell-source residuals, exterior-boundary mismatch or
+sub-element conductivity variation. It is not a guaranteed PDE error bound,
+a locally conservative flux reconstruction, or an engineering-validation
+result. A zero indicator does not establish that the temperature solution is
+accurate. The diagnostic does not modify the mesh or solver.
 
 ## Discrete global energy balance
 

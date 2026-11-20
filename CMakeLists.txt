@@ -39,6 +39,7 @@ add_library(nova_core
     src/fem/diffusion_nullspace.cpp
     src/fem/diffusion_3d.cpp
     src/fem/p1_flux_3d.cpp
+    src/fem/interior_flux_jumps_3d.cpp
     src/fem/tagged_boundary_flux_3d.cpp
     src/fem/transient_heat_3d.cpp
     src/fem/adaptive_heat_3d.cpp
@@ -140,6 +141,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_diffusion_3d.cpp
         tests/test_cell_conduction_3d.cpp
         tests/test_p1_flux_3d.cpp
+        tests/test_interior_flux_jumps_3d.cpp
         tests/test_tagged_boundary_flux_3d.cpp
         tests/test_energy_balance_3d.cpp
         tests/test_conservative_face_heat_3d.cpp
@@ -203,6 +205,16 @@ if(NOVA_BUILD_TESTS)
             --convection 102 12 300 --flux-report)
         set_tests_properties(nova_tagged_flux_report_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "Net outward conductive heat rate")
+        add_test(NAME nova_interior_jumps_3d_smoke COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
+            --material 11 2 --material 22 6 --temperature 101 400
+            --convection 102 12 300 --jump-report)
+        set_tests_properties(nova_interior_jumps_3d_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "Interior flux-jump indicator")
+        add_test(NAME nova_jump_report_rejects_mesh_only COMMAND nova_gmsh_diffusion_3d
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh"
+            --check-mesh --jump-report)
+        set_tests_properties(nova_jump_report_rejects_mesh_only PROPERTIES WILL_FAIL TRUE)
         add_test(NAME nova_energy_balance_3d_smoke COMMAND nova_gmsh_diffusion_3d
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/gmsh_diffusion_3d/two_layer_wall.msh"
             --material 11 2 --material 22 6 --temperature 101 400

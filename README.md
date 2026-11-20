@@ -56,6 +56,10 @@ with `--heat-source 11 120 --heat-source 22 360` (W/m³); signed
 per-volume sources add to the optional uniform `--source Q`. The verification suite also measures temperature and flux convergence
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
 
+Use `--jump-report` on a solved Gmsh case to inspect raw P1 normal heat-flux
+jumps across shared tetrahedral faces. This is a flux-continuity diagnostic,
+not a complete PDE error estimator or a local-conservation certificate.
+
 Inspect a mesh before simulation, or apply a user-selected quality gate before
 the FEM solve. NOVA reports total tetrahedral volume, minimum mean ratio,
 minimum dihedral angle and the worst element index:
