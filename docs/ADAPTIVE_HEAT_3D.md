@@ -19,13 +19,12 @@ options.min_step = 1.0e-5;
 options.max_step = 0.2;
 options.absolute_tolerance = 1.0e-5;
 options.relative_tolerance = 1.0e-4;
-const auto result = nova::fem::solve_adaptive_heat_3d(problem, options);
-
 // Optional accepted-state stream: index 0 is the projected initial field.
 options.on_step = [](std::size_t index, double time,
                      const std::vector<double>& temperature) {
     // Persist or visualize this field while the callback is active.
 };
+const auto result = nova::fem::solve_adaptive_heat_3d(problem, options);
 ```
 
 For each attempted interval `dt`, the integrator runs one full step and
