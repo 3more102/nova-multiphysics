@@ -98,6 +98,9 @@ void validate_time_grid(const TransientHeat3DOptions& options) {
 
 namespace detail {
 
+using nova::linalg::CsrMatrix;
+using nova::linalg::Triplet;
+
 PreparedTransientHeat3D prepare_transient_heat_3d(
     const TransientHeat3DProblem& problem
 ) {
