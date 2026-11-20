@@ -19,6 +19,11 @@ options.min_step = 1.0e-5;
 options.max_step = 0.2;
 options.absolute_tolerance = 1.0e-5;
 options.relative_tolerance = 1.0e-4;
+// Optional accepted-state stream: index 0 is the projected initial field.
+options.on_step = [](std::size_t index, double time,
+                     const std::vector<double>& temperature) {
+    // Persist or visualize this field while the callback is active.
+};
 const auto result = nova::fem::solve_adaptive_heat_3d(problem, options);
 ```
 
@@ -46,12 +51,20 @@ energy is never accidentally included. Restart by passing the returned
 temperature to `TransientHeat3DProblem::initial_temperature` and using
 `result.final_time` as the next `start_time`.
 
+`AdaptiveHeat3DOptions::on_step` emits the Dirichlet-projected initial field
+once at index 0, then only the accepted two-half-step macro fields at indices
+1..N. The coarse full-step estimate, intermediate half-step field and
+rejected trials are never emitted. The field reference is valid only during
+the callback. Observer exceptions propagate and abort the integration.
+
 ## Verification and limits
 
 `tests/test_adaptive_heat_3d.cpp` covers exact insulated uniform heating
 and heat budget closure for both schemes, temporal tolerance sensitivity
 against the analytical semidiscrete one-free-DOF decay solution, mixed
-boundary restart, invalid control rejection and the maximum-attempt gate.
+boundary restart, invalid control rejection, the maximum-attempt gate,
+accepted-only observer ordering, initial Dirichlet projection and observer
+exception propagation.
 
 **Performance limitation:** each full-step and two-half-step trial invokes
 the existing solver, so the mesh, FE operators, and linear systems are

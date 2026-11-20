@@ -69,7 +69,9 @@ struct TransientHeat3DResult {
 // One time-independent system matrix is reused across all steps; CG receives a
 // warm-start state. Purely insulated meshes are permitted because positive
 // thermal mass removes the steady-state constant-mode singularity.
-// No time-varying coefficients, phase change or adaptive 3D time steps yet.
+// The fixed-step API is complemented by the experimental fixed-mesh adaptive
+// step-doubling API in adaptive_heat_3d.hpp; time-varying coefficients and
+// phase change remain unsupported.
 [[nodiscard]] TransientHeat3DResult solve_transient_heat_3d(
     const TransientHeat3DProblem& problem,
     const TransientHeat3DOptions& options = {}

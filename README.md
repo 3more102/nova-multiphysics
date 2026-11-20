@@ -99,7 +99,10 @@ See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_
 
 Experimental **adaptive 3D timestep control** now compares one full step
 with two half steps for Backward Euler or Crank–Nicolson. The accepted
-half-step solutions preserve energy diagnostics and support restart.
+half-step solutions preserve energy diagnostics and support restart. Its
+`on_step` observer emits the Dirichlet-projected initial field and accepted
+macro-step fields only; rejected and coarse full-step trial fields are not
+published.
 This initial fixed-mesh implementation reassembles FE operators per trial;
 see [adaptive 3D API and limitations](docs/ADAPTIVE_HEAT_3D.md).
 The structured-box example is complemented by an imported-mesh CLI. It

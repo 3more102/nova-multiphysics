@@ -4,6 +4,8 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace {
 using namespace nova::fem;
@@ -181,4 +183,86 @@ NOVA_TEST(adaptive_heat_3d_rejects_invalid_controls_and_attempt_limit) {
     try { (void)solve_adaptive_heat_3d(p, capped); }
     catch (const std::runtime_error&) { capped_failure = true; }
     NOVA_REQUIRE(capped_failure);
+}
+
+
+NOVA_TEST(adaptive_heat_3d_observer_emits_projected_initial_and_accepted_fields_only) {
+    auto p = tetra_problem();
+    p.initial_temperature = {5.0, 6.0, 7.0, 10.0};
+
+    AdaptiveHeat3DOptions options;
+    options.scheme = TransientHeat3DScheme::BackwardEuler;
+    options.start_time = 3.0;
+    options.end_time = 3.2;
+    options.initial_step = 0.2;
+    options.min_step = 1.0e-5;
+    options.max_step = 0.2;
+    options.absolute_tolerance = 0.002;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-13;
+
+    std::vector<double> observed_times;
+    std::vector<std::vector<double>> observed_fields;
+    options.on_step = [&](std::size_t index, double time,
+                          const std::vector<double>& temperature) {
+        NOVA_REQUIRE(index == observed_times.size());
+        observed_times.push_back(time);
+        observed_fields.push_back(temperature);
+    };
+
+    const auto result = solve_adaptive_heat_3d(p, options);
+    NOVA_REQUIRE(result.rejected_steps > 0U);
+    NOVA_REQUIRE(observed_times.size() == result.accepted_steps + 1U);
+    NOVA_REQUIRE(observed_fields.size() == observed_times.size());
+    NOVA_REQUIRE_NEAR(observed_times.front(), options.start_time, 1.0e-14);
+    NOVA_REQUIRE_NEAR(observed_fields.front()[0], 0.0, 1.0e-14);
+    NOVA_REQUIRE_NEAR(observed_fields.front()[1], 0.0, 1.0e-14);
+    NOVA_REQUIRE_NEAR(observed_fields.front()[2], 0.0, 1.0e-14);
+    NOVA_REQUIRE_NEAR(observed_fields.front()[3], 10.0, 1.0e-14);
+    for (std::size_t i = 1U; i < observed_times.size(); ++i) {
+        NOVA_REQUIRE(observed_times[i] > observed_times[i - 1U]);
+        NOVA_REQUIRE_NEAR(observed_times[i], result.diagnostics[i - 1U].time, 1.0e-13);
+    }
+    NOVA_REQUIRE_NEAR(observed_times.back(), result.final_time, 1.0e-13);
+    for (std::size_t i = 0U; i < result.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(observed_fields.back()[i], result.temperature[i], 1.0e-13);
+    }
+}
+
+NOVA_TEST(adaptive_heat_3d_observer_exceptions_propagate) {
+    auto p = tetra_problem();
+    AdaptiveHeat3DOptions options;
+    options.on_step = [](std::size_t, double, const std::vector<double>&) {
+        throw std::runtime_error("initial observer aborted");
+    };
+    bool initial_propagated = false;
+    try {
+        (void)solve_adaptive_heat_3d(p, options);
+    } catch (const std::runtime_error& error) {
+        initial_propagated = std::string(error.what()) == "initial observer aborted";
+    }
+    NOVA_REQUIRE(initial_propagated);
+
+    auto uniform = tetra_problem();
+    uniform.diffusion.dirichlet_constraints.clear();
+    uniform.diffusion.source = [](double, double, double) { return 2.0; };
+    uniform.initial_temperature = {10.0, 10.0, 10.0, 10.0};
+    options.start_time = 0.0;
+    options.end_time = 0.1;
+    options.initial_step = 0.1;
+    options.min_step = 0.1;
+    options.max_step = 0.1;
+    options.absolute_tolerance = 1.0e-8;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-13;
+    options.on_step = [](std::size_t index, double, const std::vector<double>&) {
+        if (index == 1U) throw std::runtime_error("accepted observer aborted");
+    };
+    bool accepted_propagated = false;
+    try {
+        (void)solve_adaptive_heat_3d(uniform, options);
+    } catch (const std::runtime_error& error) {
+        accepted_propagated = std::string(error.what()) == "accepted observer aborted";
+    }
+    NOVA_REQUIRE(accepted_propagated);
 }
