@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <ios>
 #include <limits>
+#include <locale>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -14,6 +15,11 @@
 #include <utility>
 
 namespace {
+
+class CommaDecimal final : public std::numpunct<char> {
+protected:
+    char do_decimal_point() const override { return ','; }
+};
 
 nova::fem::TetrahedralMesh3D unit_mesh() {
     return {
@@ -49,16 +55,21 @@ NOVA_TEST(thermal_checkpoint_3d_roundtrips_exact_doubles_and_preserves_stream_fo
     const std::vector<double> values{
         300.5, std::nextafter(1.0, 2.0), -1e-200, 1.2345678901234567e100
     };
+    const std::locale comma_locale(std::locale::classic(), new CommaDecimal);
+    const double time = std::nextafter(3.125, 4.0);
     std::ostringstream output;
+    output.imbue(comma_locale);
     output << std::fixed << std::setprecision(2);
     const auto flags = output.flags();
-    nova::io::write_transient_heat_checkpoint_3d(output, mesh, 3.125, values);
+    nova::io::write_transient_heat_checkpoint_3d(output, mesh, time, values);
     NOVA_REQUIRE(output.flags() == flags);
     NOVA_REQUIRE(output.precision() == 2);
+    NOVA_REQUIRE(output.str().find("time 3.") != std::string::npos);
 
     std::istringstream input(output.str());
+    input.imbue(comma_locale);
     const auto loaded = nova::io::read_transient_heat_checkpoint_3d(input, mesh);
-    NOVA_REQUIRE(loaded.time == 3.125);
+    NOVA_REQUIRE(loaded.time == time);
     NOVA_REQUIRE(loaded.temperature == values);
 }
 
