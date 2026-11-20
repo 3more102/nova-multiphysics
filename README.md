@@ -97,6 +97,11 @@ per-step solver observer avoid repeated assembly/solves and avoid retaining
 all intermediate nodal fields when `retain_step_solutions=false`.
 See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
 
+Experimental C++ users can also serialize and restore the exact nodal state at a
+nonzero physical time with a [versioned, mesh-validated 3D thermal checkpoint](docs/THERMAL_CHECKPOINT_3D.md).
+This is a state-only checkpoint; the same material model, boundary conditions
+and numerical settings must be reconstructed before continuation.
+
 Experimental **adaptive 3D timestep control** now compares one full step
 with two half steps for Backward Euler or Crank–Nicolson. The accepted
 half-step solutions preserve energy diagnostics and support restart.
