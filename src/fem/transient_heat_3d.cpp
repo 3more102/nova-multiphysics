@@ -17,7 +17,7 @@
 #include <vector>
 
 namespace nova::fem {
-namespace {
+namespace detail {
 
 using nova::linalg::CsrMatrix;
 using nova::linalg::Triplet;
@@ -93,13 +93,6 @@ void validate_time_grid(const TransientHeat3DOptions& options) {
         throw std::invalid_argument("Unknown transient 3D time scheme.");
     }
 }
-
-} // namespace
-
-namespace detail {
-
-using nova::linalg::CsrMatrix;
-using nova::linalg::Triplet;
 
 PreparedTransientHeat3D prepare_transient_heat_3d(
     const TransientHeat3DProblem& problem
@@ -521,7 +514,7 @@ TransientHeat3DResult solve_transient_heat_3d(
     const TransientHeat3DProblem& problem,
     const TransientHeat3DOptions& options
 ) {
-    validate_time_grid(options);
+    detail::validate_time_grid(options);
     const auto prepared = detail::prepare_transient_heat_3d(problem);
     detail::TransientHeat3DStepCache cache;
     return detail::solve_prepared_transient_heat_3d(
