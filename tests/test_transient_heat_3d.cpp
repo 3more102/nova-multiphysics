@@ -1,4 +1,5 @@
 #include "test_framework.hpp"
+#include "nova/fem/adaptive_heat_3d.hpp"
 #include "nova/fem/transient_heat_3d.hpp"
 
 #include <array>
@@ -482,6 +483,116 @@ NOVA_TEST(transient_heat_3d_time_dependent_neumann_uses_scheme_time_quadrature) 
     }
 }
 
+NOVA_TEST(transient_heat_3d_time_dependent_robin_uses_endpoint_operators_and_energy) {
+    auto p = unit_heat();
+    p.initial_temperature = {0.0, 0.0, 0.0, 10.0};
+    p.diffusion.dirichlet_constraints = {{0U, 0.0}, {1U, 0.0}, {2U, 0.0}};
+    p.time_dependent_robin_faces.push_back({
+        {0U, 1U, 3U},
+        [](double, double, double, double time) { return 2.0 + time; },
+        [](double, double, double, double time) { return 3.0 + 2.0 * time; }
+    });
+
+    TransientHeat3DOptions options;
+    options.start_time = 0.2;
+    options.time_step = 0.1;
+    options.steps = 5U;
+    options.solver_options.relative_tolerance = 1e-13;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+
+    constexpr double mass = 1.0 / 60.0;
+    constexpr double conductivity = 1.0 / 6.0;
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        options.scheme = scheme;
+        const double theta =
+            scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
+        double expected_temperature = 10.0;
+        const auto result = solve_transient_heat_3d(p, options);
+        NOVA_REQUIRE(result.diagnostics.size() == options.steps);
+
+        for (std::size_t step = 1U; step <= options.steps; ++step) {
+            const double previous_temperature = expected_temperature;
+            const double previous_time = options.start_time +
+                options.time_step * static_cast<double>(step - 1U);
+            const double next_time = options.start_time +
+                options.time_step * static_cast<double>(step);
+            const double previous_transfer = 2.0 + previous_time;
+            const double next_transfer = 2.0 + next_time;
+            const double previous_ambient = 3.0 + 2.0 * previous_time;
+            const double next_ambient = 3.0 + 2.0 * next_time;
+            const double previous_load =
+                previous_transfer * previous_ambient / 6.0;
+            const double next_load =
+                next_transfer * next_ambient / 6.0;
+            const double previous_robin = previous_transfer / 12.0;
+            const double next_robin = next_transfer / 12.0;
+
+            if (theta == 1.0) {
+                expected_temperature =
+                    (mass * previous_temperature +
+                     options.time_step * next_load) /
+                    (mass + options.time_step * (conductivity + next_robin));
+            } else {
+                expected_temperature =
+                    ((mass - 0.5 * options.time_step *
+                         (conductivity + previous_robin)) *
+                         previous_temperature +
+                     0.5 * options.time_step * (previous_load + next_load)) /
+                    (mass + 0.5 * options.time_step *
+                        (conductivity + next_robin));
+            }
+
+            const double expected_robin_energy = options.time_step * (
+                theta * (next_transfer * next_ambient / 2.0 -
+                         next_transfer * expected_temperature / 6.0) +
+                (1.0 - theta) *
+                    (previous_transfer * previous_ambient / 2.0 -
+                     previous_transfer * previous_temperature / 6.0));
+            const auto& diagnostic = result.diagnostics[step - 1U];
+            NOVA_REQUIRE_NEAR(diagnostic.time, next_time, 1e-14);
+            NOVA_REQUIRE_NEAR(
+                diagnostic.robin_energy, expected_robin_energy, 2e-12);
+            NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2e-10);
+        }
+        NOVA_REQUIRE_NEAR(result.temperature[3], expected_temperature, 2e-11);
+        for (std::size_t node = 0U; node < 3U; ++node) {
+            NOVA_REQUIRE_NEAR(result.temperature[node], 0.0, 1e-15);
+        }
+    }
+}
+
+NOVA_TEST(adaptive_heat_3d_accepts_time_dependent_robin_boundaries) {
+    auto p = unit_heat();
+    p.initial_temperature = {300.0, 300.0, 300.0, 300.0};
+    p.time_dependent_robin_faces.push_back({
+        {0U, 1U, 2U},
+        [](double, double, double, double time) { return 2.0 + time; },
+        [](double, double, double, double time) { return 290.0 + time; }
+    });
+
+    AdaptiveHeat3DOptions options;
+    options.start_time = 1.0;
+    options.end_time = 1.2;
+    options.initial_step = 0.1;
+    options.min_step = 0.01;
+    options.max_step = 0.1;
+    options.absolute_tolerance = 1000.0;
+    options.relative_tolerance = 0.0;
+    options.max_attempts = 10U;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+
+    const auto result = solve_adaptive_heat_3d(p, options);
+    NOVA_REQUIRE_NEAR(result.final_time, options.end_time, 1e-14);
+    NOVA_REQUIRE(result.accepted_steps > 0U);
+    NOVA_REQUIRE(result.diagnostics.size() == result.accepted_steps);
+    for (const auto& diagnostic : result.diagnostics) {
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2e-8);
+    }
+}
+
 NOVA_TEST(transient_heat_3d_rejects_invalid_time_dependent_boundary_data) {
     auto bad_dirichlet = unit_heat();
     bad_dirichlet.time_dependent_dirichlet_constraints.push_back({
@@ -508,5 +619,39 @@ NOVA_TEST(transient_heat_3d_rejects_invalid_time_dependent_boundary_data) {
     missing_callback.time_dependent_dirichlet_faces.push_back({{0U, 1U, 2U}, {}});
     NOVA_REQUIRE(rejects([&] {
         (void)solve_transient_heat_3d(missing_callback);
+    }));
+
+    auto bad_robin = unit_heat();
+    bad_robin.time_dependent_robin_faces.push_back({
+        {0U, 1U, 2U},
+        [](double, double, double, double) { return -1.0; },
+        [](double, double, double, double) { return 300.0; }
+    });
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_transient_heat_3d(bad_robin);
+    }));
+
+    auto missing_robin_callback = unit_heat();
+    missing_robin_callback.time_dependent_robin_faces.push_back({
+        {0U, 1U, 2U},
+        [](double, double, double, double) { return 1.0; },
+        {}
+    });
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_transient_heat_3d(missing_robin_callback);
+    }));
+
+    auto overlapping_robin = unit_heat();
+    overlapping_robin.time_dependent_neumann_faces.push_back({
+        {0U, 1U, 2U},
+        [](double, double, double, double) { return 0.0; }
+    });
+    overlapping_robin.time_dependent_robin_faces.push_back({
+        {0U, 1U, 2U},
+        [](double, double, double, double) { return 1.0; },
+        [](double, double, double, double) { return 300.0; }
+    });
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_transient_heat_3d(overlapping_robin);
     }));
 }
