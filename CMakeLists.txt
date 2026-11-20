@@ -44,6 +44,7 @@ add_library(nova_core
     src/fem/energy_balance_3d.cpp
     src/fem/conservative_face_heat_3d.cpp
     src/physics/electrostatics_3d.cpp
+    src/physics/electrode_charge_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/gmsh_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
