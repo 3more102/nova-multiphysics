@@ -730,4 +730,3 @@ TransientHeat2DResult solve_transient_heat_2d(
 }
 
 } // namespace nova::fem
-} // namespace nova::fem
