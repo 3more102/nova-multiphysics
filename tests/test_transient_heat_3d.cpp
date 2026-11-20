@@ -949,6 +949,33 @@ NOVA_TEST(transient_heat_3d_time_dependent_materials_preserve_energy_and_tempora
         TransientHeat3DScheme::CrankNicolson, 0.05, 4U, true);
     NOVA_REQUIRE_NEAR(
         tensor.temperature[3], cn_fine.temperature[3], 2.0e-11);
+
+    // Exercise each mixed static/dynamic material combination as well.
+    auto dynamic_k_only = make_problem();
+    dynamic_k_only.time_dependent_volumetric_capacity = {};
+    dynamic_k_only.cell_volumetric_capacity = {1.0};
+    TransientHeat3DOptions mixed_options;
+    mixed_options.scheme = TransientHeat3DScheme::CrankNicolson;
+    mixed_options.start_time = 0.3;
+    mixed_options.time_step = 0.05;
+    mixed_options.steps = 4U;
+    mixed_options.solver_options.relative_tolerance = 1.0e-13;
+    mixed_options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+    const auto dynamic_k_result =
+        solve_transient_heat_3d(dynamic_k_only, mixed_options);
+    for (const auto& diagnostic : dynamic_k_result.diagnostics) {
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 3.0e-10);
+    }
+
+    auto dynamic_capacity_only = make_problem();
+    dynamic_capacity_only.time_dependent_diffusivity = {};
+    dynamic_capacity_only.diffusion.cell_diffusivity = {1.0};
+    const auto dynamic_capacity_result =
+        solve_transient_heat_3d(dynamic_capacity_only, mixed_options);
+    for (const auto& diagnostic : dynamic_capacity_result.diagnostics) {
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 3.0e-10);
+    }
 }
 
 NOVA_TEST(transient_heat_3d_rejects_invalid_time_dependent_materials) {
