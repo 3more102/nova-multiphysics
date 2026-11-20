@@ -44,6 +44,12 @@ struct AdaptiveHeat2DResult {
     std::vector<TransientHeatStepDiagnostics2D> diagnostics;
     // Two successful half-step linear solver diagnostics per accepted step.
     std::vector<linalg::SolverResult> substep_solvers;
+    // Builds of the dt-dependent M + theta*dt*K base system in each trial slot.
+    std::size_t full_step_operator_builds{};
+    std::size_t half_step_operator_builds{};
+    // Exact-matrix IC(0) factor builds; zero for other preconditioners.
+    std::size_t full_step_ic0_factor_builds{};
+    std::size_t half_step_ic0_factor_builds{};
 };
 
 // Fixed-mesh adaptive time integration by step doubling.
@@ -52,8 +58,10 @@ struct AdaptiveHeat2DResult {
 // Throws when tolerances cannot be met above min_step, when the attempt
 // limit is exceeded, or when underlying numerical solves fail.
 //
-// This reference implementation reassembles the fixed-step FEM systems
-// on each trial; future work should reuse mass/stiffness and system factors.
+// Static H1 mass/stiffness operators are prepared once per study. Separate
+// full-step and half-step caches retain dt-dependent base systems and IC(0)
+// factors. Time-dependent source and boundary functions remain evaluated at
+// each physical time; changed Robin matrices invalidate exact-matrix factors.
 [[nodiscard]] AdaptiveHeat2DResult solve_adaptive_heat_2d(
     const TransientHeat2DProblem& problem,
     const AdaptiveHeat2DOptions& options = {}
