@@ -1,6 +1,7 @@
 #include "nova/fem/transient_heat_2d.hpp"
 
 #include "nova/fem/triangle_p1.hpp"
+#include "transient_heat_2d_internal.hpp"
 
 #include <algorithm>
 #include <array>
@@ -88,11 +89,7 @@ struct ElementMapping {
     return load;
 }
 
-struct BoundaryData {
-    std::vector<Point2D> coordinates;
-    std::vector<std::vector<TransientScalarField2D>> functions;
-    std::vector<bool> constrained;
-};
+using BoundaryData = detail::TransientHeat2DBoundaryData;
 
 [[nodiscard]] BoundaryData prepare_boundary_data(
     const TransientHeat2DProblem& problem,
@@ -326,9 +323,11 @@ struct NaturalBoundaryAssembly {
                     throw std::overflow_error("Robin transient load overflowed.");
                 }
                 for (std::size_t j = 0; j < edge_count; ++j) {
-                    robin_entries.push_back({
-                        ids[i], ids[j], h * phi[i] * phi[j] * weight
-                    });
+                    const double matrix_value = h * phi[i] * phi[j] * weight;
+                    if (!std::isfinite(matrix_value)) {
+                        throw std::overflow_error("Robin transient matrix entry overflowed.");
+                    }
+                    robin_entries.push_back({ids[i], ids[j], matrix_value});
                 }
             }
         }
@@ -353,6 +352,35 @@ struct NaturalBoundaryAssembly {
         result += left[i] * right[i];
     }
     return result;
+}
+
+void validate_time_grid(const TransientHeat2DOptions& options) {
+    if (!std::isfinite(options.time_step) || options.time_step <= 0.0 ||
+        options.steps == 0U) {
+        throw std::invalid_argument("Transient time step and number of steps must be positive.");
+    }
+    if (!std::isfinite(options.start_time)) {
+        throw std::invalid_argument("Transient start time must be finite.");
+    }
+    const double final_time =
+        options.start_time + options.time_step * static_cast<double>(options.steps);
+    if (!std::isfinite(final_time) || final_time <= options.start_time) {
+        throw std::invalid_argument("Transient final time must advance and be finite.");
+    }
+    double previous_time = options.start_time;
+    for (std::size_t completed = 0; completed < options.steps; ++completed) {
+        const double step_time = options.start_time +
+            options.time_step * static_cast<double>(completed + 1U);
+        if (!std::isfinite(step_time) || !(step_time > previous_time)) {
+            throw std::invalid_argument(
+                "Transient time step is too small to advance representable physical time.");
+        }
+        previous_time = step_time;
+    }
+    if (options.scheme != TransientTimeScheme::BackwardEuler &&
+        options.scheme != TransientTimeScheme::CrankNicolson) {
+        throw std::invalid_argument("Unsupported transient time integration scheme.");
+    }
 }
 
 } // namespace
@@ -430,43 +458,33 @@ ScalarH1Operators2D assemble_scalar_h1_operators_2d(
     };
 }
 
-TransientHeat2DResult solve_transient_heat_2d(
+namespace detail {
+
+PreparedTransientHeat2D prepare_transient_heat_2d(
     const TransientHeat2DProblem& problem,
-    const TransientHeat2DOptions& options
+    const H1FunctionSpace2D& space
 ) {
-    if (!std::isfinite(options.time_step) || options.time_step <= 0.0 ||
-        options.steps == 0U) {
-        throw std::invalid_argument("Transient time step and number of steps must be positive.");
-    }
-    if (!std::isfinite(options.start_time)) {
-        throw std::invalid_argument("Transient start time must be finite.");
-    }
-    const double final_time =
-        options.start_time + options.time_step * static_cast<double>(options.steps);
-    if (!std::isfinite(final_time) || final_time <= options.start_time) {
-        throw std::invalid_argument("Transient final time must advance and be finite.");
-    }
+    PreparedTransientHeat2D prepared;
+    prepared.operators = assemble_scalar_h1_operators_2d(
+        problem.mesh, space.order(),
+        problem.volumetric_capacity, problem.conductivity
+    );
+    prepared.boundary = prepare_boundary_data(problem, space);
+    validate_natural_boundaries(problem);
+    prepared.capacity_weights = prepared.operators.mass.multiply(
+        std::vector<double>(space.dimension(), 1.0)
+    );
+    return prepared;
+}
+
+std::vector<double> initial_heat_state(
+    const TransientHeat2DProblem& problem,
+    const H1FunctionSpace2D& space
+) {
     if (!problem.source ||
         (problem.initial_dof_values.empty() && !problem.initial_temperature)) {
         throw std::invalid_argument("Transient source and initial field/DOFs are required.");
     }
-    if (options.scheme != TransientTimeScheme::BackwardEuler &&
-        options.scheme != TransientTimeScheme::CrankNicolson) {
-        throw std::invalid_argument("Unsupported transient time integration scheme.");
-    }
-    const double theta = options.scheme == TransientTimeScheme::BackwardEuler
-        ? 1.0 : 0.5;
-    const double previous_weight = 1.0 - theta;
-    const double dt = options.time_step;
-    const H1FunctionSpace2D space(problem.mesh, options.order);
-    const ScalarH1Operators2D operators = assemble_scalar_h1_operators_2d(
-        problem.mesh, options.order,
-        problem.volumetric_capacity, problem.conductivity
-    );
-    const BoundaryData boundary = prepare_boundary_data(problem, space);
-    validate_natural_boundaries(problem);
-    const std::size_t n = space.dimension();
-
     std::vector<double> state = problem.initial_dof_values.empty()
         ? space.interpolate(problem.initial_temperature)
         : problem.initial_dof_values;
@@ -478,18 +496,58 @@ TransientHeat2DResult solve_transient_heat_2d(
             throw std::invalid_argument("Initial temperature must be finite.");
         }
     }
+    return state;
+}
+
+TransientHeat2DResult solve_prepared_transient_heat_2d(
+    const TransientHeat2DProblem& problem,
+    const H1FunctionSpace2D& space,
+    const PreparedTransientHeat2D& prepared,
+    const TransientHeat2DOptions& options,
+    std::vector<double> state,
+    TransientHeat2DStepCache& cache
+) {
+    validate_time_grid(options);
+    if (space.order() != options.order) {
+        throw std::invalid_argument("Prepared transient H1 order does not match solver options.");
+    }
+    const std::size_t n = space.dimension();
+    if (state.size() != n) {
+        throw std::invalid_argument("Initial H1 DOF state dimension mismatch.");
+    }
+    for (const double value : state) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument("Initial temperature must be finite.");
+        }
+    }
+
+    const double theta = options.scheme == TransientTimeScheme::BackwardEuler
+        ? 1.0 : 0.5;
+    const double previous_weight = 1.0 - theta;
+    const double dt = options.time_step;
+    const auto& operators = prepared.operators;
+    const auto& boundary = prepared.boundary;
+
+    if (!cache.base_system || cache.time_step != dt ||
+        cache.scheme != options.scheme) {
+        if (cache.base_operator_builds == std::numeric_limits<std::size_t>::max()) {
+            throw std::overflow_error("Transient 2D base-operator counter overflowed.");
+        }
+        auto base = linalg::CsrMatrix::linear_combination(
+            operators.mass, 1.0, operators.stiffness, theta * dt
+        );
+        cache.base_system = std::move(base);
+        cache.time_step = dt;
+        cache.scheme = options.scheme;
+        ++cache.base_operator_builds;
+    }
+
     const auto initial_boundary = boundary_values(boundary, options.start_time);
     for (std::size_t i = 0; i < n; ++i) {
         if (boundary.constrained[i]) {
             state[i] = initial_boundary[i];
         }
     }
-
-    const std::vector<double> ones(n, 1.0);
-    const auto capacity_weights = operators.mass.multiply(ones);
-    const linalg::CsrMatrix base_system = linalg::CsrMatrix::linear_combination(
-        operators.mass, 1.0, operators.stiffness, theta * dt
-    );
 
     NaturalBoundaryAssembly previous_natural =
         assemble_natural_boundaries(problem, space, options.start_time);
@@ -498,13 +556,10 @@ TransientHeat2DResult solve_transient_heat_2d(
     );
 
     TransientHeat2DResult result;
-    result.final_time = final_time;
+    result.final_time = options.start_time +
+        dt * static_cast<double>(options.steps);
     result.linear_solvers.reserve(options.steps);
     result.diagnostics.reserve(options.steps);
-
-    // Reuse IC(0) when the time-dependent boundary data leave the CSR matrix
-    // unchanged; exact coefficient or sparsity changes force a rebuild.
-    linalg::CachedConjugateGradient cached_cg;
 
     for (std::size_t step = 1; step <= options.steps; ++step) {
         const double time =
@@ -515,15 +570,20 @@ TransientHeat2DResult solve_transient_heat_2d(
         const auto prescribed = boundary_values(boundary, time);
         NaturalBoundaryAssembly current_natural =
             assemble_natural_boundaries(problem, space, time);
-        std::vector<double> current_volume = assemble_load(space, problem.source, time);
+        std::vector<double> current_volume =
+            assemble_load(space, problem.source, time);
 
+        // The static mass/stiffness contribution is cached per dt and scheme.
+        // Time-dependent Robin terms are assembled at this time level and
+        // exact-matrix IC(0) reuse is decided by CachedConjugateGradient.
         const linalg::CsrMatrix full_system =
             linalg::CsrMatrix::linear_combination(
-                base_system, 1.0, current_natural.robin_matrix, theta * dt
+                *cache.base_system, 1.0, current_natural.robin_matrix, theta * dt
             );
         std::vector<linalg::Triplet> free_entries;
         std::vector<linalg::Triplet> boundary_couplings;
-        if (full_system.non_zeros() > free_entries.max_size() - n) {
+        if (n > free_entries.max_size() ||
+            full_system.non_zeros() > free_entries.max_size() - n) {
             throw std::length_error("Constrained transient matrix is too large.");
         }
         free_entries.reserve(full_system.non_zeros() + n);
@@ -578,7 +638,7 @@ TransientHeat2DResult solve_transient_heat_2d(
             }
         }
 
-        linalg::SolverResult step_result = cached_cg.solve(
+        linalg::SolverResult step_result = cache.cached_cg.solve(
             system, std::span<const double>(rhs), options.solver_options
         );
         if (!step_result.converged) {
@@ -594,8 +654,10 @@ TransientHeat2DResult solve_transient_heat_2d(
 
         TransientHeatStepDiagnostics2D diagnostic;
         diagnostic.time = time;
-        diagnostic.heat_content = dot_vectors(capacity_weights, next_state);
-        const double old_heat = dot_vectors(capacity_weights, state);
+        diagnostic.heat_content = dot_vectors(
+            prepared.capacity_weights, next_state
+        );
+        const double old_heat = dot_vectors(prepared.capacity_weights, state);
         for (std::size_t i = 0; i < n; ++i) {
             diagnostic.source_energy += dt * (
                 theta * current_volume[i] + previous_weight * previous_volume[i]
@@ -635,8 +697,6 @@ TransientHeat2DResult solve_transient_heat_2d(
             throw std::overflow_error("Transient energy diagnostic overflowed.");
         }
 
-        // Copy the new state before moving step_result into diagnostic history.
-        // next_state is a reference into step_result.solution.
         state = next_state;
         result.diagnostics.push_back(diagnostic);
         result.linear_solvers.push_back(std::move(step_result));
@@ -646,6 +706,22 @@ TransientHeat2DResult solve_transient_heat_2d(
 
     result.temperature = std::move(state);
     return result;
+}
+
+} // namespace detail
+
+TransientHeat2DResult solve_transient_heat_2d(
+    const TransientHeat2DProblem& problem,
+    const TransientHeat2DOptions& options
+) {
+    validate_time_grid(options);
+    const H1FunctionSpace2D space(problem.mesh, options.order);
+    const auto prepared = detail::prepare_transient_heat_2d(problem, space);
+    auto state = detail::initial_heat_state(problem, space);
+    detail::TransientHeat2DStepCache cache;
+    return detail::solve_prepared_transient_heat_2d(
+        problem, space, prepared, options, std::move(state), cache
+    );
 }
 
 } // namespace nova::fem
