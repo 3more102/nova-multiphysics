@@ -11,6 +11,9 @@
 namespace nova::fem::detail {
 
 struct PreparedTransientHeat3D {
+    const TetrahedralMesh3D* mesh{};
+    ScalarField3DTime time_dependent_source;
+    std::vector<double> element_jacobians;
     linalg::CsrMatrix mass;
     linalg::CsrMatrix stiffness;
     linalg::CsrMatrix robin;

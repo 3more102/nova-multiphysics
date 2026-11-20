@@ -1,9 +1,10 @@
 # Adaptive transient 3D heat (experimental)
 
 `nova/fem/adaptive_heat_3d.hpp` adds **fixed-mesh temporal adaptivity** to
-NOVA's existing consistent-mass P1 tetrahedral transient solver. It does not
-change the supported materials or boundary conditions: coefficients and
-Dirichlet/Neumann/Robin data remain **time-independent**.
+NOVA's existing consistent-mass P1 tetrahedral transient solver. Conductivity,
+heat capacity and Dirichlet/Neumann/Robin boundary data remain
+**time-independent**. An optional additive time-dependent volumetric source is
+supported and sampled consistently by both full-step and half-step trials.
 
 ## API
 
@@ -26,6 +27,12 @@ options.on_step = [](std::size_t index, double time,
 };
 const auto result = nova::fem::solve_adaptive_heat_3d(problem, options);
 ```
+
+`TransientHeat3DProblem::time_dependent_source(x,y,z,t)` adds to the existing
+static spatial and cell sources. Backward Euler evaluates the source at each
+substep's new time; Crank–Nicolson averages the source vectors at both endpoints.
+The full-step estimate and the two half-step estimate therefore sample the
+same physical source history at their respective time grids.
 
 For each attempted interval `dt`, the integrator runs one full step and
 two half steps **from the same previously accepted nodal state**. The order
@@ -71,6 +78,8 @@ when the controller changes the time step.
 
 The adaptive study prepares the validated mesh topology, material operators,
 consistent mass/stiffness/Robin matrices, static loads and Dirichlet data once.
+Time-dependent source loads are evaluated at the temporal quadrature points of
+each full or half-step trial; they do not change the cached system matrix.
 It keeps separate full-step and half-step system caches because their time-step
 sizes differ. Repeated trials with an identical `dt` reuse the corresponding
 constrained CSR operators; when `dt` changes, that cache rebuilds its operators.

@@ -9,10 +9,13 @@
 
 namespace nova::fem {
 
-// Experimental P1 tetrahedral, time-independent-coefficient transient heat model:
-//   C(x) dT/dt - div(K(x) grad(T)) = Q(x).
-// Reuses the stationary 3D material, volumetric source and boundary APIs.
-// All boundary functions and loads are fixed in time for this first 3D release.
+using ScalarField3DTime = std::function<double(double, double, double, double)>;
+
+// Experimental P1 tetrahedral transient heat model with time-independent
+// material coefficients and boundary functions:
+//   C(x) dT/dt - div(K(x) grad(T)) = Q(x) + Q_time(x,t).
+// The optional time_dependent_source is additive to the existing static
+// spatial and cell sources. Other loads and boundary data remain time-independent.
 struct TransientHeat3DProblem {
     ScalarDiffusion3DProblem diffusion;
     // Exactly one representation: positive spatial C(x) or one positive C per
@@ -21,6 +24,9 @@ struct TransientHeat3DProblem {
     std::vector<double> cell_volumetric_capacity;
     // Exact initial nodal field; Dirichlet values are imposed at t=start_time.
     std::vector<double> initial_temperature;
+    // Optional additive Q_time(x,y,z,t); BE samples t_(n+1), CN averages both endpoints.
+    // Kept last so existing positional aggregate initialization remains compatible.
+    ScalarField3DTime time_dependent_source;
 };
 
 enum class TransientHeat3DScheme {

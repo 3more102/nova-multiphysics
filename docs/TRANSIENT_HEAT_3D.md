@@ -5,7 +5,7 @@
 NOVA now has a time-dependent 3D **P1 conforming tetrahedral** heat solver:
 
 ```text
-C(x) dT/dt - div(K(x) grad T) = Q(x)
+C(x) dT/dt - div(K(x) grad T) = Q_static(x) + Q_time(x,t)
 ```
 
 - `C = rho * c_p > 0`: volumetric heat capacity, J/(m³ K).
@@ -19,17 +19,17 @@ The spatial operators are **consistent** P1 mass and conductivity stiffness matr
 
 ## Time discretization
 
-Given the assembled heat-capacity matrix `M`, thermal stiffness and convection matrix `K`, and total fixed load `F`:
+Given the assembled heat-capacity matrix `M`, thermal stiffness and convection matrix `K`, and total load `F(t) = F_static + F_time(t)`:
 
 ```text
 [M + theta * dt * K] T_(n+1) =
-  [M - (1-theta) * dt * K] T_n + dt * F
+  [M - (1-theta) * dt * K] T_n + dt * [(1-theta) * F(t_n) + theta * F(t_(n+1))]
 
 theta = 1   Backward Euler
 theta = 1/2 Crank–Nicolson
 ```
 
-`F` includes volume heating, **negative** outward Neumann flux, and the Robin ambient load. Initial nodal values are projected to the fixed Dirichlet constraints. Each step uses symmetric elimination with identity rows on constrained nodes. The sparse constrained matrix is constructed **once** and the preceding solution warm-starts CG. Positive `C` makes the time-step system nonsingular even for a completely insulated mesh.
+`F` includes volume heating, **negative** outward Neumann flux, and the Robin ambient load. The optional `problem.time_dependent_source(x,y,z,t)` adds a time-varying volumetric source to the existing static spatial and cell sources. Backward Euler samples it at the new step time; Crank–Nicolson uses the trapezoidal average of the two endpoint load vectors. Conductivity, capacity and boundary functions remain time-independent. Initial nodal values are projected to the fixed Dirichlet constraints. Each step uses symmetric elimination with identity rows on constrained nodes. The sparse constrained matrix is constructed **once** and the preceding solution warm-starts CG. Positive `C` makes the time-step system nonsingular even for a completely insulated mesh.
 
 The per-step discrete energy budget uses `M * ones` as the heat-content integration weights. Dirichlet input is calculated from the unconstrained system residual on prescribed nodes, **not** from raw P1 face flux. For constant coefficients and loads,
 
@@ -88,6 +88,7 @@ ctest --test-dir build -C Release --output-on-failure
 `tests/test_transient_heat_3d.cpp` exercises:
 
 - Uniform insulated heating: `C=4`, `Q=8`, `T(0)=300` gives `T(t)=300+2t`, exactly represented by P1, for both schemes.
+- A uniform ramp source `Q_time(t)=t` verifies Backward Euler endpoint sampling, Crank–Nicolson trapezoidal integration and source-energy closure.
 - Three fixed vertices of a unit tetrahedron: the remaining DOF has `M_33=1/60`, `K_33=1/6`. Starting at 10 with `dt=0.1`, the one-step exact algebraic results are 5 (Backward Euler) and 10/3 (Crank–Nicolson).
 - Neumann-flux heat loss, Robin convection, mixed tensor conductivity with a spatial heat capacity, and numerical energy-budget closure.
 - Heterogeneous cellwise SPD tensor conductivity with cellwise capacity and cell-only source, plus zero-source insulated equilibrium.
@@ -131,4 +132,4 @@ fields, Dirichlet projection, error propagation and optional history elision.
 
 ## Explicit limits and next milestone
 
-Initial 3D support uses **time-independent** conductivity, capacity, forcing and boundary functions; a constant time step; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. An experimental, separate fixed-mesh 3D adaptive timestep driver is documented in [Adaptive transient 3D heat](ADAPTIVE_HEAT_3D.md), but temperature-dependent properties, latent heat, radiation and moving meshes remain unsupported. The default result history retains every CG solution vector for API compatibility; the optional streaming mode elides them. Next: reuse assembled operators for adaptive 3D trials, spatial error-driven refinement, and independent temporal-convergence benchmarks on spatially varying manufactured solutions.
+Initial 3D support uses **time-independent** conductivity, capacity, static source fields and boundary functions, with an optional additive time-dependent volumetric source; a constant fixed-step size; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. An experimental, separate fixed-mesh 3D adaptive timestep driver is documented in [Adaptive transient 3D heat](ADAPTIVE_HEAT_3D.md), but temperature-dependent properties, latent heat, radiation and moving meshes remain unsupported. The default result history retains every CG solution vector for API compatibility; the optional streaming mode elides them. Next: time-varying material properties and boundary functions, spatial error-driven refinement, and independent temporal-convergence benchmarks on spatially varying manufactured solutions.
