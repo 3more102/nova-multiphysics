@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 #include <utility>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -173,4 +174,31 @@ NOVA_TEST(diffusion_residual_estimator_rejects_invalid_inputs) {
         rejected_nonfinite_state = true;
     }
     NOVA_REQUIRE(rejected_nonfinite_state);
+}
+
+
+NOVA_TEST(diffusion_residual_estimator_is_exact_for_global_p2_quadratic_on_mixed_orientation_mesh) {
+    auto mesh = nova::fem::make_rectangle_mesh_2d(
+        -1.0, 1.0, -0.5, 1.5, 3U, 2U
+    ).mesh;
+    std::swap(mesh.elements[1][1], mesh.elements[1][2]);
+
+    constexpr double conductivity_value = 1.25;
+    const H1FunctionSpace2D space(mesh, H1TriangleOrder::P2);
+    const auto exact = [](const double x, const double y) {
+        return 1.0 + 2.0 * x - y + x * x + 0.5 * x * y + 2.0 * y * y;
+    };
+    const auto values = space.interpolate(exact);
+    const std::vector<double> conductivity(
+        mesh.elements.size(), conductivity_value
+    );
+    const auto result = nova::fem::estimate_diffusion_residual_error_2d(
+        mesh, H1TriangleOrder::P2, values, conductivity,
+        [=](const double, const double) {
+            return -6.0 * conductivity_value;
+        }
+    );
+
+    NOVA_REQUIRE(result.element_errors.size() == mesh.elements.size());
+    NOVA_REQUIRE(result.total_error < 2.0e-10);
 }
