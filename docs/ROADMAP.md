@@ -156,7 +156,7 @@ Remaining:
 
 Implemented (experimental):
 - Gmsh MSH 2.2 and 4.1 ASCII first-order tetrahedral import with physical-group names, sparse IDs, exterior-face tagging and shared topology validation.
-- Pre-solve tetrahedral mesh-quality reporting and user-selected minimum-mean-ratio screening gates for steady Gmsh studies.
+- Pre-solve tetrahedral mesh-quality reporting and user-selected minimum-mean-ratio screening gates for steady and transient Gmsh studies.
 
 Remaining:
 - CAD import and geometry model.
