@@ -71,3 +71,29 @@ NOVA_TEST(csr_linear_combination_merges_sparse_entries) {
     });
     NOVA_REQUIRE(visited == c.non_zeros());
 }
+
+
+NOVA_TEST(csr_exact_equality_checks_dimensions_pattern_and_coefficients) {
+    using nova::linalg::CsrMatrix;
+    const auto a = CsrMatrix::from_triplets(3, 3, {
+        {0,0,4}, {0,1,-1}, {1,0,-1}, {1,1,5}, {2,2,6}
+    });
+    const auto reorder = CsrMatrix::from_triplets(3, 3, {
+        {2,2,6}, {1,1,5}, {1,0,-1}, {0,1,-1}, {0,0,4}
+    });
+    const auto changed_value = CsrMatrix::from_triplets(3, 3, {
+        {0,0,4}, {0,1,-1}, {1,0,-1}, {1,1,5.000000000000001}, {2,2,6}
+    });
+    const auto changed_pattern = CsrMatrix::from_triplets(3, 3, {
+        {0,0,4}, {0,2,-1}, {1,0,-1}, {1,1,5}, {2,2,6}
+    });
+    const auto changed_dimensions = CsrMatrix::from_triplets(4, 4, {
+        {0,0,4}, {0,1,-1}, {1,0,-1}, {1,1,5}, {2,2,6}
+    });
+    NOVA_REQUIRE(a.exactly_equal(a));
+    NOVA_REQUIRE(a.exactly_equal(reorder));
+    NOVA_REQUIRE(reorder.exactly_equal(a));
+    NOVA_REQUIRE(!a.exactly_equal(changed_value));
+    NOVA_REQUIRE(!a.exactly_equal(changed_pattern));
+    NOVA_REQUIRE(!a.exactly_equal(changed_dimensions));
+}

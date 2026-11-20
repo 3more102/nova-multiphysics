@@ -353,15 +353,9 @@ SolverResult CachedConjugateGradient::solve(
         return solve_conjugate_gradient(matrix, right_hand_side, options, initial_guess);
     }
 
-    bool identical = cached_matrix_.has_value() && cached_factor_.has_value() &&
-        cached_matrix_->rows() == matrix.rows() &&
-        cached_matrix_->columns() == matrix.columns() &&
-        cached_matrix_->non_zeros() == matrix.non_zeros();
-    if (identical) {
-        matrix.for_each_nonzero([&](std::size_t i, std::size_t j, double value) {
-            if (identical && cached_matrix_->at(i, j) != value) identical = false;
-        });
-    }
+    // Canonical CSR storage makes exact matrix identity a linear array comparison.
+    const bool identical = cached_matrix_.has_value() && cached_factor_.has_value() &&
+        cached_matrix_->exactly_equal(matrix);
 
     if (!identical) {
         // Build everything before replacing the previous valid cache.
