@@ -209,6 +209,16 @@ NOVA_TEST(adaptive_heat_crank_nicolson_rejects_large_steps_and_refines) {
 
 NOVA_TEST(adaptive_heat_backward_euler_handles_time_dependent_source) {
     auto problem = base_problem(2U);
+    std::size_t capacity_samples = 0U;
+    std::size_t conductivity_samples = 0U;
+    problem.volumetric_capacity = [&](double, double) {
+        ++capacity_samples;
+        return 1.0;
+    };
+    problem.conductivity = [&](double, double) {
+        ++conductivity_samples;
+        return 1.0;
+    };
     // Exact uniform solution u=t^2 (unit volumetric capacity, zero grad).
     problem.source = [](double, double, double t) { return 2.0 * t; };
     AdaptiveHeat2DOptions opts;
@@ -230,6 +240,26 @@ NOVA_TEST(adaptive_heat_backward_euler_handles_time_dependent_source) {
     for (const auto& d : result.diagnostics) {
         NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 2.0e-9);
     }
+
+    // Compare with one explicit FEM assembly: rejected adaptive trials must
+    // not resample static material fields or rebuild their spatial operators.
+    auto reference = base_problem(2U);
+    std::size_t expected_capacity_samples = 0U;
+    std::size_t expected_conductivity_samples = 0U;
+    reference.volumetric_capacity = [&](double, double) {
+        ++expected_capacity_samples;
+        return 1.0;
+    };
+    reference.conductivity = [&](double, double) {
+        ++expected_conductivity_samples;
+        return 1.0;
+    };
+    (void)nova::fem::assemble_scalar_h1_operators_2d(
+        reference.mesh, H1TriangleOrder::P1,
+        reference.volumetric_capacity, reference.conductivity
+    );
+    NOVA_REQUIRE(capacity_samples == expected_capacity_samples);
+    NOVA_REQUIRE(conductivity_samples == expected_conductivity_samples);
 }
 
 NOVA_TEST(adaptive_heat_rejects_invalid_tolerance_and_time_window) {
