@@ -314,3 +314,94 @@ NOVA_TEST(electrostatics_3d_electrode_charge_rejects_invalid_face_sets) {
         );
     });
 }
+
+
+NOVA_TEST(electrostatics_3d_extracts_two_terminal_capacitance_matrix) {
+    using nova::physics::ElectrodeBoundaryGroup3D;
+    using nova::physics::extract_capacitance_matrix_3d;
+
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2, 2, 2
+    );
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    // These loads are intentionally nonzero: capacitance extraction must
+    // isolate the linear dielectric response and discard affine charge loads.
+    problem.free_charge_density = [](double, double, double) { return 123.0; };
+    problem.cell_free_charge_density.assign(problem.mesh.elements.size(), 456.0);
+
+    ElectrodeBoundaryGroup3D low{10, {}};
+    ElectrodeBoundaryGroup3D high{20, {}};
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(problem.mesh, face, 0.0)) {
+            low.faces.push_back(face);
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 77.0; }
+            });
+        } else if (on_x(problem.mesh, face, 1.0)) {
+            high.faces.push_back(face);
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return -31.0; }
+            });
+        }
+    }
+
+    const std::vector<ElectrodeBoundaryGroup3D> electrodes{low, high};
+    const auto capacitance = extract_capacitance_matrix_3d(problem, electrodes);
+    NOVA_REQUIRE(capacitance.electrode_ids.size() == 2U);
+    NOVA_REQUIRE(capacitance.electrode_ids[0] == 10);
+    NOVA_REQUIRE(capacitance.electrode_ids[1] == 20);
+    NOVA_REQUIRE(capacitance.matrix_farads.size() == 4U);
+    // Maxwell matrix for C = epsilon*A/d = 2 F:
+    // [ +C  -C ]
+    // [ -C  +C ]
+    NOVA_REQUIRE_NEAR(capacitance.matrix_farads[0], 2.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(capacitance.matrix_farads[1], -2.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(capacitance.matrix_farads[2], -2.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(capacitance.matrix_farads[3], 2.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(capacitance.max_reciprocity_defect_farads, 0.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(capacitance.max_relative_reciprocity_defect, 0.0, 1.0e-8);
+}
+
+NOVA_TEST(electrostatics_3d_capacitance_matrix_rejects_invalid_electrode_groups) {
+    using nova::physics::ElectrodeBoundaryGroup3D;
+    using nova::physics::extract_capacitance_matrix_3d;
+
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 1, 1
+    );
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 1.0; };
+
+    nova::fem::BoundaryFace3D low_face{}, high_face{};
+    bool found_low = false;
+    bool found_high = false;
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(problem.mesh, face, 0.0) && !found_low) {
+            low_face = face;
+            found_low = true;
+        }
+        if (on_x(problem.mesh, face, 1.0) && !found_high) {
+            high_face = face;
+            found_high = true;
+        }
+    }
+    NOVA_REQUIRE(found_low && found_high);
+
+    const auto rejects = [&](const std::vector<ElectrodeBoundaryGroup3D>& groups) {
+        bool rejected = false;
+        try {
+            (void)extract_capacitance_matrix_3d(problem, groups);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        NOVA_REQUIRE(rejected);
+    };
+
+    rejects({{10, {low_face}}, {10, {high_face}}}); // Duplicate IDs.
+    rejects({{10, {low_face}}, {20, {low_face}}});  // Shared/duplicate electrode face.
+    rejects({{10, {}}});                            // Empty electrode.
+    rejects({{10, {low_face}}});                    // No independent ground reference.
+}
