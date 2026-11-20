@@ -69,6 +69,30 @@ frame files are not overwritten. Individual frames and the collection are
 staged and renamed after successful writes; if a later solve fails, already
 published frames remain without a PVD collection.
 
+## Tetrahedral mesh quality inspection and gates
+
+The same P1 tetrahedral mean-ratio and dihedral-angle evaluator used by the
+steady Gmsh solver is available before transient integration:
+
+```sh
+./build/nova_gmsh_transient_heat_3d tests/data/unit_tetrahedron.msh --check-mesh
+```
+
+`--check-mesh` inspects the imported mesh without requiring material,
+capacity or time-stepping parameters. It reports the node/tetrahedron counts,
+total volume, minimum mean ratio, worst tetrahedron index (zero-based), and
+minimum dihedral angle in degrees. It cannot be combined with simulation
+arguments. `--quality-report` prints these metrics before an ordinary thermal
+study. `--min-mean-ratio q` implies reporting and rejects meshes with a
+minimum mean ratio below the specified finite threshold `0 < q <= 1`
+before constructing or solving the transient problem or writing VTK/PVD output.
+The gate is an optional screening criterion, not a guarantee of FEM accuracy.
+
+The `nova_gmsh_transient_mesh_quality_analytical` tests validate expected
+volume, mean ratio and minimum dihedral angle on both MSH 2.2 and 4.1 unit
+tetrahedra, and exercise accepted/rejected solves, invalid thresholds,
+conflicting arguments, and pre-solve export rejection.
+
 ## Diagnostics and verification
 
 The CLI reports the final temperature range and the maximum absolute

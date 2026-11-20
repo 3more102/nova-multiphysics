@@ -230,6 +230,14 @@ if(NOVA_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_gmsh_quality_3d.py"
                 "$<TARGET_FILE:nova_gmsh_diffusion_3d>"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron41.msh")
+            add_test(NAME nova_gmsh_transient_mesh_quality_analytical COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_gmsh_transient_quality_3d.py"
+                "$<TARGET_FILE:nova_gmsh_transient_heat_3d>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh")
+            add_test(NAME nova_gmsh_transient_mesh_quality_analytical_msh41 COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_gmsh_transient_quality_3d.py"
+                "$<TARGET_FILE:nova_gmsh_transient_heat_3d>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron41.msh")
         endif()
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
         add_test(NAME nova_electrostatics_3d_smoke COMMAND nova_electrostatics_3d)
