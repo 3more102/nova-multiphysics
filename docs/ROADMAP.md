@@ -99,6 +99,7 @@ Remaining:
 Implemented:
 - P1 tetrahedral Backward Euler and Crank–Nicolson with a consistent thermal mass matrix.
 - Fixed-mesh adaptive step doubling for both schemes, with full-step/two-half-step error control, accepted/rejected attempt history and an accepted-state observer.
+- Versioned, mesh-validated text checkpoints for exact 3D transient nodal-state restart; physics model reconstruction remains caller-owned.
 - Once-per-study static FEM preparation plus separate full-step and half-step dt-dependent operator caches; exact CSR IC(0) factor reuse is observable through result counters.
 - Scalar and SPD tensor conductivity, per-cell material tensors, and spatial or cellwise heat capacity.
 - Dirichlet, Neumann and Robin boundaries with per-step integrated energy diagnostics.
