@@ -413,9 +413,12 @@ NOVA_TEST(transient_heat_3d_temporal_convergence_matches_exact_decay) {
 }
 
 
-NOVA_TEST(transient_heat_3d_time_dependent_dirichlet_node_tracks_physical_time) {
+NOVA_TEST(transient_heat_3d_time_dependent_dirichlet_node_and_face_track_physical_time) {
     auto p = unit_heat();
-    p.diffusion.dirichlet_constraints = {{0U, 0.0}, {1U, 0.0}, {2U, 0.0}};
+    p.time_dependent_dirichlet_faces.push_back({
+        {0U, 1U, 2U},
+        [](double, double, double, double time) { return 2.0 * time; }
+    });
     p.time_dependent_dirichlet_constraints.push_back({
         3U, [](double, double, double, double time) { return 2.0 * time; }
     });
@@ -433,18 +436,17 @@ NOVA_TEST(transient_heat_3d_time_dependent_dirichlet_node_tracks_physical_time) 
         options.scheme = scheme;
         const auto result = solve_transient_heat_3d(p, options);
         NOVA_REQUIRE_NEAR(result.final_time, 2.5, 1e-14);
-        for (std::size_t node = 0; node < 3U; ++node) {
-            NOVA_REQUIRE_NEAR(result.temperature[node], 0.0, 1e-14);
+        for (const double temperature : result.temperature) {
+            NOVA_REQUIRE_NEAR(temperature, 5.0, 1e-12);
         }
-        NOVA_REQUIRE_NEAR(result.temperature[3], 5.0, 1e-12);
         NOVA_REQUIRE_NEAR(result.diagnostics.back().heat_content,
-                          5.0 / 24.0, 1e-11);
+                          5.0 / 6.0, 1e-11);
         double imposed_energy = 0.0;
         for (const auto& diagnostic : result.diagnostics) {
             imposed_energy += diagnostic.dirichlet_energy;
             NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2e-10);
         }
-        NOVA_REQUIRE_NEAR(imposed_energy, 1.0 / 24.0, 2e-10);
+        NOVA_REQUIRE_NEAR(imposed_energy, 1.0 / 6.0, 2e-10);
     }
 }
 
