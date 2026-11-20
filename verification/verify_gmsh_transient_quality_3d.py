@@ -14,7 +14,7 @@ def run(cli, mesh, *args):
 
 
 def metric(output, name):
-    match = re.search(r"^" + re.escape(name) + r":\\s*([-+0-9.eE]+)\\s*$",
+    match = re.search(r"^" + re.escape(name) + r":\s*([-+0-9.eE]+)\s*$",
                       output, re.MULTILINE)
     if not match:
         raise AssertionError(f"Missing {name} in quality report: {output}")
