@@ -1,5 +1,7 @@
 #include "nova/fem/adaptive_heat_3d.hpp"
 
+#include "transient_heat_3d_internal.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -104,7 +106,9 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         }
     }
 
-    auto trial_problem = problem;
+    // The spatial FEM operators and fixed loads are assembled once. Separate
+    // bounded caches retain the dt and dt/2 systems used by step-doubling.
+    detail::PreparedTransientHeat3D prepared(problem);
     std::vector<double> state = problem.initial_temperature;
     AdaptiveHeat3DResult result;
     double time = options.start_time;
@@ -124,7 +128,6 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
             throw std::runtime_error("Adaptive 3D time cannot advance representably.");
         }
 
-        trial_problem.initial_temperature = state;
         TransientHeat3DOptions fixed;
         fixed.scheme = options.scheme;
         fixed.start_time = time;
@@ -144,24 +147,22 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
                 }
             };
         }
-        const auto full = solve_transient_heat_3d(trial_problem, fixed);
+        const auto full = prepared.solve(state, fixed, 0U);
         fixed.on_step = {};
-        // Carry the projected initial state into both half-step trials.
-        trial_problem.initial_temperature = state;
 
         fixed.time_step = 0.5 * dt;
         fixed.steps = 2U;
-        auto half = solve_transient_heat_3d(trial_problem, fixed);
+        const auto half = prepared.solve(state, fixed, 1U);
         const double error = normalized_step_error(
             state, full.temperature, half.temperature, options);
         const bool accepted = error <= 1.0;
         result.attempts.push_back({time, dt, error, accepted});
 
         if (accepted) {
-            state = std::move(half.temperature);
+            state = half.temperature;
             result.diagnostics.push_back(combine_half_budgets(half.diagnostics));
-            for (auto& solver : half.linear_solvers) {
-                result.substep_solvers.push_back(std::move(solver));
+            for (const auto& solver : half.linear_solvers) {
+                result.substep_solvers.push_back(solver);
             }
             ++result.accepted_steps;
             time = std::min(options.end_time, time + dt);
