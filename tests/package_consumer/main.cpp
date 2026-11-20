@@ -4,6 +4,7 @@
 #include "nova/linalg/conjugate_gradient.hpp"
 #include "nova/linalg/incomplete_cholesky.hpp"
 #include "nova/physics/electrostatics_3d.hpp"
+#include "nova/physics/electrode_charge_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
 
 #include <array>
@@ -84,6 +85,8 @@ int main() {
     nova::physics::Electrostatics3DProblem electrostatic;
     electrostatic.mesh = box.mesh;
     electrostatic.permittivity = [](double, double, double) { return 2.0; };
+    std::vector<nova::fem::BoundaryFace3D> electrode_faces;
+    std::vector<int> electrode_ids;
     for (const auto& face : box.boundary_faces) {
         const bool left = electrostatic.mesh.nodes[face[0]].x == 0.0 &&
             electrostatic.mesh.nodes[face[1]].x == 0.0 &&
@@ -94,6 +97,8 @@ int main() {
         if (left || right) {
             electrostatic.potential_faces.push_back({face,
                 [](double px, double, double) { return 10.0 * px; }});
+            electrode_faces.push_back(face);
+            electrode_ids.push_back(right ? 2 : 1);
         }
     }
     const auto capacitor = nova::physics::solve_electrostatics_3d(electrostatic);
@@ -104,6 +109,19 @@ int main() {
         if (std::abs(capacitor.potential[i] - 10.0 * electrostatic.mesh.nodes[i].x) > 1.0e-9)
             return 6;
     }
+    // Verify the installed fixed-electrode charge API and exported symbol.
+    const auto electrode_charges = nova::physics::evaluate_electrode_charges_3d(
+        electrostatic, capacitor, electrode_faces, electrode_ids);
+    if (electrode_charges.size() != 2 ||
+        electrode_charges[0].electrode_id != 1 ||
+        electrode_charges[1].electrode_id != 2 ||
+        std::abs(electrode_charges[0].conductor_charge_coulombs + 20.0) > 1.0e-8 ||
+        std::abs(electrode_charges[1].conductor_charge_coulombs - 20.0) > 1.0e-8 ||
+        std::abs(electrode_charges[1].area_square_metres - 1.0) > 1.0e-12) return 10;
+    const double installed_capacitance =
+        electrode_charges[1].conductor_charge_coulombs /
+        (electrode_charges[1].potential_volts - electrode_charges[0].potential_volts);
+    if (std::abs(installed_capacitance - 2.0) > 1.0e-9) return 11;
     // Verify the newly installed generic Gmsh importer as an SDK consumer.
     // This minimal MSH 4.1 file has sparse-compatible block records and no
     // physical groups; topology and exterior faces are reconstructed by NOVA.
