@@ -74,7 +74,7 @@ NOVA_TEST(transient_heat_3d_time_dependent_uniform_source_uses_scheme_quadrature
     };
 
     TransientHeat3DOptions options;
-    options.start_time = 0.0;
+    options.start_time = 2.0;
     options.time_step = 0.1;
     options.steps = 10U;
     options.solver_options.relative_tolerance = 1e-13;
@@ -86,8 +86,9 @@ NOVA_TEST(transient_heat_3d_time_dependent_uniform_source_uses_scheme_quadrature
         options.scheme = scheme;
         const auto result = solve_transient_heat_3d(p, options);
         const bool backward_euler = scheme == TransientHeat3DScheme::BackwardEuler;
-        const double expected_rise = backward_euler ? 0.275 : 0.25;
-        const double expected_source_energy = backward_euler ? 11.0 / 120.0 : 1.0 / 12.0;
+        const double expected_rise = backward_euler ? 1.275 : 1.25;
+        const double expected_source_energy = backward_euler ? 17.0 / 40.0 : 5.0 / 12.0;
+        NOVA_REQUIRE_NEAR(result.final_time, 3.0, 1e-14);
         for (const double temperature : result.temperature) {
             NOVA_REQUIRE_NEAR(temperature, 300.0 + expected_rise, 2e-10);
         }

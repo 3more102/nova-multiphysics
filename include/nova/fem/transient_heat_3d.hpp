@@ -22,10 +22,11 @@ struct TransientHeat3DProblem {
     // tetrahedron, in mesh.elements ordering. C has units J/(m^3 K).
     ScalarField3D volumetric_capacity;
     std::vector<double> cell_volumetric_capacity;
-    // Optional additive Q_time(x,y,z,t); BE samples t_(n+1), CN averages both endpoints.
-    ScalarField3DTime time_dependent_source;
     // Exact initial nodal field; Dirichlet values are imposed at t=start_time.
     std::vector<double> initial_temperature;
+    // Optional additive Q_time(x,y,z,t); BE samples t_(n+1), CN averages both endpoints.
+    // Kept last so existing positional aggregate initialization remains compatible.
+    ScalarField3DTime time_dependent_source;
 };
 
 enum class TransientHeat3DScheme {

@@ -465,7 +465,7 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
 
     for (std::size_t step = 1; step <= options.steps; ++step) {
         const double step_time = options.start_time + dt * static_cast<double>(step);
-        const auto next_time_source = prepared.time_dependent_source
+        auto next_time_source = prepared.time_dependent_source
             ? evaluate_time_dependent_source_load(prepared, step_time)
             : std::vector<double>{};
         std::vector<double> weighted_time_source;
@@ -573,7 +573,7 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
         }
 
         if (theta < 1.0 && prepared.time_dependent_source) {
-            previous_time_source = next_time_source;
+            previous_time_source = std::move(next_time_source);
         }
         state = std::move(next);
         result.diagnostics.push_back(diagnostic);
