@@ -367,16 +367,6 @@ void validate_time_grid(const TransientHeat2DOptions& options) {
     if (!std::isfinite(final_time) || final_time <= options.start_time) {
         throw std::invalid_argument("Transient final time must advance and be finite.");
     }
-    double previous_time = options.start_time;
-    for (std::size_t completed = 0; completed < options.steps; ++completed) {
-        const double step_time = options.start_time +
-            options.time_step * static_cast<double>(completed + 1U);
-        if (!std::isfinite(step_time) || !(step_time > previous_time)) {
-            throw std::invalid_argument(
-                "Transient time step is too small to advance representable physical time.");
-        }
-        previous_time = step_time;
-    }
     if (options.scheme != TransientTimeScheme::BackwardEuler &&
         options.scheme != TransientTimeScheme::CrankNicolson) {
         throw std::invalid_argument("Unsupported transient time integration scheme.");
@@ -465,12 +455,12 @@ PreparedTransientHeat2D prepare_transient_heat_2d(
     const H1FunctionSpace2D& space
 ) {
     PreparedTransientHeat2D prepared;
+    validate_natural_boundaries(problem);
+    prepared.boundary = prepare_boundary_data(problem, space);
     prepared.operators = assemble_scalar_h1_operators_2d(
         problem.mesh, space.order(),
         problem.volumetric_capacity, problem.conductivity
     );
-    prepared.boundary = prepare_boundary_data(problem, space);
-    validate_natural_boundaries(problem);
     prepared.capacity_weights = prepared.operators.mass.multiply(
         std::vector<double>(space.dimension(), 1.0)
     );
@@ -716,8 +706,8 @@ TransientHeat2DResult solve_transient_heat_2d(
 ) {
     validate_time_grid(options);
     const H1FunctionSpace2D space(problem.mesh, options.order);
-    const auto prepared = detail::prepare_transient_heat_2d(problem, space);
     auto state = detail::initial_heat_state(problem, space);
+    const auto prepared = detail::prepare_transient_heat_2d(problem, space);
     detail::TransientHeat2DStepCache cache;
     return detail::solve_prepared_transient_heat_2d(
         problem, space, prepared, options, std::move(state), cache
