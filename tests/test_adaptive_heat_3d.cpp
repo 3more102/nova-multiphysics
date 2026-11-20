@@ -82,7 +82,7 @@ NOVA_TEST(adaptive_heat_3d_tolerance_controls_decay_error) {
     loose.relative_tolerance = 0.0;
     loose.solver_options.relative_tolerance = 1e-13;
     auto tight = loose;
-    tight.absolute_tolerance = 0.004;
+    tight.absolute_tolerance = 0.002;
 
     const auto coarse = solve_adaptive_heat_3d(p, loose);
     const auto fine = solve_adaptive_heat_3d(p, tight);
