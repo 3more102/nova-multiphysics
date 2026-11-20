@@ -2,6 +2,7 @@
 #include "nova/fem/adaptive_heat_3d.hpp"
 #include "../src/fem/transient_heat_3d_internal.hpp"
 
+#include <array>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
