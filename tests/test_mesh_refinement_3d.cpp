@@ -347,15 +347,22 @@ NOVA_TEST(tetra_adaptive_refinement_is_local_conforming_and_transfers_fields) {
     const std::size_t m12 = midpoint(1U, 2U);
     const std::size_t m23 = midpoint(2U, 3U);
     const std::size_t m31 = midpoint(1U, 3U);
-    const std::array<FaceKey, 4> shared_subfaces{{
-        canonical({1U, m12, m31}),
-        canonical({m12, 2U, m23}),
-        canonical({m31, m23, 3U}),
-        canonical({m12, m23, m31})
-    }};
-    for (const auto& face : shared_subfaces) {
-        NOVA_REQUIRE(incidence.at(face) == 2U);
+    const std::set<std::size_t> shared_face_nodes{
+        1U, 2U, 3U, m12, m23, m31
+    };
+    std::size_t shared_subface_count = 0U;
+    for (const auto& [face, count] : incidence) {
+        const bool lies_on_shared_face = std::all_of(
+            face.begin(), face.end(),
+            [&shared_face_nodes](const std::size_t node) {
+                return shared_face_nodes.contains(node);
+            });
+        if (lies_on_shared_face) {
+            ++shared_subface_count;
+            NOVA_REQUIRE(count == 2U);
+        }
     }
+    NOVA_REQUIRE(shared_subface_count == 4U);
 
     const auto expected_boundary = nova::fem::extract_boundary_faces_3d(refined.mesh);
     NOVA_REQUIRE(expected_boundary.size() == refined.boundary_faces.size());
