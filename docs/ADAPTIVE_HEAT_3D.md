@@ -1,10 +1,11 @@
 # Adaptive transient 3D heat (experimental)
 
 `nova/fem/adaptive_heat_3d.hpp` adds **fixed-mesh temporal adaptivity** to
-NOVA's existing consistent-mass P1 tetrahedral transient solver. Conductivity,
-heat capacity and Robin boundary data remain **time-independent**. Additive
-time-dependent volumetric sources, Dirichlet nodal/face values and Neumann
-face fluxes are sampled consistently by both full-step and half-step trials.
+NOVA's existing consistent-mass P1 tetrahedral transient solver. Conductivity
+and heat capacity remain **time-independent**. Additive time-dependent
+volumetric sources, Dirichlet nodal/face values, Neumann face fluxes, and
+Robin transfer/ambient data are sampled consistently by full-step and
+half-step trials.
 
 ## API
 
@@ -37,10 +38,13 @@ same physical source history at their respective time grids.
 Time-dependent Dirichlet constraints and faces are evaluated at the study's
 physical start time and at each substep endpoint. Time-dependent Neumann face
 fluxes are evaluated at the new endpoint for Backward Euler and at both
-endpoints for Crank–Nicolson, using trapezoidal load integration. Their
-time-varying values affect the prescribed vector or right-hand side only, so
-the prepared constrained matrix and its IC(0) factor remain reusable. Robin
-transfer/ambient data and material coefficients are still static.
+endpoints for Crank–Nicolson, using trapezoidal load integration. Robin
+transfer matrices and ambient loads are evaluated at the same endpoints: the
+new-time transfer matrix enters the implicit system, and the old-time matrix
+contributes to the Crank–Nicolson right-hand side. A changing transfer
+coefficient therefore changes the constrained CSR matrix and invalidates its
+IC(0) factor; ambient-only changes affect the load without changing the factor.
+Material coefficients remain static.
 
 
 For each attempted interval `dt`, the integrator runs one full step and
@@ -80,20 +84,22 @@ and heat budget closure for both schemes, temporal tolerance sensitivity
 against the analytical semidiscrete one-free-DOF decay solution, mixed
 boundary restart, invalid control rejection, the maximum-attempt gate,
 accepted-only observer ordering, initial Dirichlet projection, observer
-exception propagation, repeated-dt operator/factor reuse and cache rebuilds
-when the controller changes the time step.
+exception propagation, repeated-dt operator/factor reuse, cache rebuilds when
+the controller changes the time step, and time-dependent Robin equivalence
+against fixed half steps with exact-matrix factor invalidation.
 
 ## Assembly and factor reuse
 
 The adaptive study prepares the validated mesh topology, material operators,
 consistent mass/stiffness/Robin matrices, static loads and Dirichlet data once.
-Time-dependent source loads are evaluated at the temporal quadrature points of
-each full or half-step trial; they do not change the cached system matrix.
-It keeps separate full-step and half-step system caches because their time-step
-sizes differ. Repeated trials with an identical `dt` reuse the corresponding
-constrained CSR operators; when `dt` changes, that cache rebuilds its operators.
-Each slot also owns a `CachedConjugateGradient` instance. IC(0) factors are
-reused only when the complete constrained CSR matrix is exactly identical;
+Time-dependent source loads and Robin face matrices/ambient loads are evaluated
+at the temporal endpoints of each full or half-step trial. Time-varying Robin
+transfer can change the constrained matrix even when `dt` is unchanged.
+The study keeps separate full-step and half-step base-operator caches because
+their time-step sizes differ. Repeated trials with an identical `dt` reuse the
+corresponding base operators; when `dt` changes, that cache rebuilds its
+operators. Each slot also owns a `CachedConjugateGradient` instance. IC(0)
+factors are reused only when the complete constrained CSR matrix is exactly identical;
 a changed matrix triggers a new factorization. The result reports
 `full_step_operator_builds`, `half_step_operator_builds`,
 `full_step_ic0_factor_builds` and `half_step_ic0_factor_builds` so applications
