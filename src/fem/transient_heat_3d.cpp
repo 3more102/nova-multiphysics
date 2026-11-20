@@ -22,14 +22,14 @@ namespace detail {
 using nova::linalg::CsrMatrix;
 using nova::linalg::Triplet;
 
-double positive(double value, const char* what) {
+static double positive(double value, const char* what) {
     if (!std::isfinite(value) || !(value > 0.0)) {
         throw std::invalid_argument(std::string(what) + " must be finite and positive.");
     }
     return value;
 }
 
-void impose(std::vector<std::optional<double>>& constraints,
+static void impose(std::vector<std::optional<double>>& constraints,
             std::size_t node, double value) {
     if (!std::isfinite(value)) {
         throw std::invalid_argument("Transient 3D Dirichlet values must be finite.");
@@ -46,7 +46,7 @@ void impose(std::vector<std::optional<double>>& constraints,
     }
 }
 
-double sum(const std::vector<double>& values) {
+static double sum(const std::vector<double>& values) {
     long double total = 0.0L;
     for (double value : values) total += value;
     if (!std::isfinite(total) ||
@@ -56,7 +56,7 @@ double sum(const std::vector<double>& values) {
     return static_cast<double>(total);
 }
 
-double dot(const std::vector<double>& a, const std::vector<double>& b) {
+static double dot(const std::vector<double>& a, const std::vector<double>& b) {
     long double total = 0.0L;
     for (std::size_t i = 0; i < a.size(); ++i) {
         total += static_cast<long double>(a[i]) * b[i];
@@ -68,7 +68,7 @@ double dot(const std::vector<double>& a, const std::vector<double>& b) {
     return static_cast<double>(total);
 }
 
-void validate_time_grid(const TransientHeat3DOptions& options) {
+static void validate_time_grid(const TransientHeat3DOptions& options) {
     if (!std::isfinite(options.time_step) || !(options.time_step > 0.0) ||
         !std::isfinite(options.start_time) || options.steps == 0U) {
         throw std::invalid_argument("Transient 3D time step, start and step count are invalid.");
