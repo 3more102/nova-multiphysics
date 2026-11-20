@@ -132,6 +132,8 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         fixed.steps = 1U;
         fixed.solver_options = options.solver_options;
         fixed.retain_step_solutions = false;
+        // The first full-step solve supplies the validated Dirichlet projection;
+        // its coarse step result is deliberately not sent to the user observer.
         if (!initial_state_emitted) {
             fixed.on_step = [&](std::size_t step_index, double physical_time,
                                 const std::vector<double>& projected_state) {
