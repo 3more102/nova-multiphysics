@@ -78,6 +78,7 @@ Implemented:
 - Backward Euler and Crank–Nicolson implicit transient time integration.
 - Adaptive, fixed-mesh time stepping by step doubling, absolute/relative local error control, accepted/rejected attempt histories, minimum/maximum step size and attempt limits.
 - 3D P1 tetrahedral adaptive Backward Euler/Crank–Nicolson with accepted-state streaming, once-per-study static FEM preparation, separate full/half system caches and exact-matrix IC(0) factor reuse across repeated time steps.
+- 2D P1/P2 adaptive step-doubling prepares spatial operators once per study, keeps separate full/half dt-dependent base operators, and reuses IC(0) only for identical constrained CSR matrices while reevaluating time-dependent loads and boundary data at each time level.
 - Exact H1 nodal DOF restarts with nonzero physical start times.
 - Spatially varying positive (time-independent) volumetric heat capacity and conductivity.
 - Time-dependent volumetric heating, essential Dirichlet temperatures, Neumann outward heat fluxes, and Robin ambient convection.
@@ -88,7 +89,7 @@ Implemented:
 
 Remaining:
 - Nonlinear temperature-dependent constitutive properties and time-dependent materials.
-- Equivalent prepared-operator and IC(0) cache reuse for 2D adaptive step-doubling, plus broader global temporal error estimation.
+- Broader global temporal error estimation for adaptive step-doubling.
 - Independently recovered normal heat fluxes and physical energy-balance cross-checks.
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.

@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 
 #include "nova/fem/adaptive_heat_2d.hpp"
+#include "nova/fem/triangle_p1.hpp"
 
 #include <cmath>
 #include <functional>
@@ -48,6 +49,21 @@ void set_boundary_trace(
             });
         }
     }
+}
+
+nova::fem::BoundaryEdge2D first_exterior_edge(
+    const nova::fem::TriangleMesh2D& mesh
+) {
+    std::map<std::pair<std::size_t, std::size_t>, std::size_t> incidence;
+    for (const auto& triangle : mesh.elements) {
+        ++incidence[std::minmax(triangle[0], triangle[1])];
+        ++incidence[std::minmax(triangle[1], triangle[2])];
+        ++incidence[std::minmax(triangle[2], triangle[0])];
+    }
+    for (const auto& [edge, count] : incidence) {
+        if (count == 1U) return {edge.first, edge.second};
+    }
+    throw std::runtime_error("Test mesh has no exterior edge.");
 }
 
 TransientHeat2DProblem cubic_manufactured_problem() {
@@ -151,6 +167,8 @@ NOVA_TEST(adaptive_heat_crank_nicolson_rejects_large_steps_and_refines) {
 
     AdaptiveHeat2DOptions fine = coarse;
     fine.absolute_tolerance = 1.0e-6;
+    fine.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
 
     const auto loose = nova::fem::solve_adaptive_heat_2d(problem, coarse);
     const auto strict = nova::fem::solve_adaptive_heat_2d(problem, fine);
@@ -159,6 +177,10 @@ NOVA_TEST(adaptive_heat_crank_nicolson_rejects_large_steps_and_refines) {
     NOVA_REQUIRE_NEAR(strict.final_time, 1.0, 1.0e-14);
     NOVA_REQUIRE(strict.rejected_steps > 0U);
     NOVA_REQUIRE(strict.accepted_steps > loose.accepted_steps);
+    NOVA_REQUIRE(strict.full_step_base_operator_builds > 1U);
+    NOVA_REQUIRE(strict.half_step_base_operator_builds > 1U);
+    NOVA_REQUIRE(strict.full_step_ic0_factor_builds > 1U);
+    NOVA_REQUIRE(strict.half_step_ic0_factor_builds > 1U);
     NOVA_REQUIRE(strict.attempts.size() ==
         strict.accepted_steps + strict.rejected_steps);
     double previous_time = -1.0;
@@ -187,6 +209,16 @@ NOVA_TEST(adaptive_heat_crank_nicolson_rejects_large_steps_and_refines) {
 
 NOVA_TEST(adaptive_heat_backward_euler_handles_time_dependent_source) {
     auto problem = base_problem(2U);
+    std::size_t capacity_samples = 0U;
+    std::size_t conductivity_samples = 0U;
+    problem.volumetric_capacity = [&](double, double) {
+        ++capacity_samples;
+        return 1.0;
+    };
+    problem.conductivity = [&](double, double) {
+        ++conductivity_samples;
+        return 1.0;
+    };
     // Exact uniform solution u=t^2 (unit volumetric capacity, zero grad).
     problem.source = [](double, double, double t) { return 2.0 * t; };
     AdaptiveHeat2DOptions opts;
@@ -208,6 +240,26 @@ NOVA_TEST(adaptive_heat_backward_euler_handles_time_dependent_source) {
     for (const auto& d : result.diagnostics) {
         NOVA_REQUIRE_NEAR(d.balance_residual, 0.0, 2.0e-9);
     }
+
+    // Compare with one explicit FEM assembly: rejected adaptive trials must
+    // not resample static material fields or rebuild their spatial operators.
+    auto reference = base_problem(2U);
+    std::size_t expected_capacity_samples = 0U;
+    std::size_t expected_conductivity_samples = 0U;
+    reference.volumetric_capacity = [&](double, double) {
+        ++expected_capacity_samples;
+        return 1.0;
+    };
+    reference.conductivity = [&](double, double) {
+        ++expected_conductivity_samples;
+        return 1.0;
+    };
+    (void)nova::fem::assemble_scalar_h1_operators_2d(
+        reference.mesh, H1TriangleOrder::P1,
+        reference.volumetric_capacity, reference.conductivity
+    );
+    NOVA_REQUIRE(capacity_samples == expected_capacity_samples);
+    NOVA_REQUIRE(conductivity_samples == expected_conductivity_samples);
 }
 
 NOVA_TEST(adaptive_heat_rejects_invalid_tolerance_and_time_window) {
@@ -263,4 +315,88 @@ NOVA_TEST(adaptive_heat_rejects_nonfinite_restart_state) {
         rejected = true;
     }
     NOVA_REQUIRE(rejected);
+}
+
+
+NOVA_TEST(adaptive_heat_2d_prepares_material_operators_once_and_reuses_ic0) {
+    auto problem = base_problem(2U);
+    problem.initial_temperature = [](double, double) { return 3.25; };
+
+    std::size_t capacity_samples = 0U;
+    std::size_t conductivity_samples = 0U;
+    problem.volumetric_capacity = [&](double, double) {
+        ++capacity_samples;
+        return 1.0;
+    };
+    problem.conductivity = [&](double, double) {
+        ++conductivity_samples;
+        return 1.0;
+    };
+
+    AdaptiveHeat2DOptions options;
+    options.order = H1TriangleOrder::P2;
+    options.scheme = TransientTimeScheme::CrankNicolson;
+    options.end_time = 0.5;
+    options.initial_step = 0.125;
+    options.min_step = 0.125;
+    options.max_step = 0.125;
+    options.absolute_tolerance = 1.0e-7;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-12;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+
+    const auto result = nova::fem::solve_adaptive_heat_2d(problem, options);
+    NOVA_REQUIRE(result.accepted_steps == 4U);
+    NOVA_REQUIRE(result.rejected_steps == 0U);
+    NOVA_REQUIRE(result.full_step_base_operator_builds == 1U);
+    NOVA_REQUIRE(result.half_step_base_operator_builds == 1U);
+    NOVA_REQUIRE(result.full_step_ic0_factor_builds == 1U);
+    NOVA_REQUIRE(result.half_step_ic0_factor_builds == 1U);
+    const std::size_t expected_samples =
+        problem.mesh.elements.size() * nova::fem::triangle_degree_four_quadrature.size();
+    NOVA_REQUIRE(capacity_samples == expected_samples);
+    NOVA_REQUIRE(conductivity_samples == expected_samples);
+    for (const double value : result.temperature) {
+        NOVA_REQUIRE_NEAR(value, 3.25, 1.0e-10);
+    }
+    for (const auto& diagnostic : result.diagnostics) {
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 1.0e-9);
+    }
+}
+
+NOVA_TEST(adaptive_heat_2d_reuses_base_operator_but_rebuilds_time_varying_robin_factor) {
+    auto problem = base_problem(1U);
+    problem.initial_temperature = [](double, double) { return 10.0; };
+    problem.robin_edges.push_back({
+        first_exterior_edge(problem.mesh),
+        [](double, double, double time) { return 1.0 + time; },
+        [](double, double, double) { return 0.0; }
+    });
+
+    AdaptiveHeat2DOptions options;
+    options.scheme = TransientTimeScheme::BackwardEuler;
+    // Binary-exact increments avoid a rounded final remainder that would
+    // legitimately select a distinct dt-dependent base operator.
+    options.end_time = 0.5;
+    options.initial_step = 0.125;
+    options.min_step = 0.125;
+    options.max_step = 0.125;
+    options.absolute_tolerance = 10.0;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-12;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+
+    const auto result = nova::fem::solve_adaptive_heat_2d(problem, options);
+    NOVA_REQUIRE(result.accepted_steps == 4U);
+    NOVA_REQUIRE(result.rejected_steps == 0U);
+    NOVA_REQUIRE(result.full_step_base_operator_builds == 1U);
+    NOVA_REQUIRE(result.half_step_base_operator_builds == 1U);
+    NOVA_REQUIRE(result.full_step_ic0_factor_builds > 1U);
+    NOVA_REQUIRE(result.half_step_ic0_factor_builds > 1U);
+    NOVA_REQUIRE_NEAR(result.final_time, options.end_time, 1.0e-14);
+    for (const auto& diagnostic : result.diagnostics) {
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 2.0e-9);
+    }
 }
