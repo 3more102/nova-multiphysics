@@ -22,6 +22,13 @@ struct PreparedTransientHeat3D {
         double area_scale{};
     };
     std::vector<TimeDependentNeumannFace> time_dependent_neumann_faces;
+    struct TimeDependentRobinFace {
+        BoundaryFace3D face{};
+        ScalarField3DTime transfer_coefficient;
+        ScalarField3DTime ambient_value;
+        double area_scale{};
+    };
+    std::vector<TimeDependentRobinFace> time_dependent_robin_faces;
     linalg::CsrMatrix mass;
     linalg::CsrMatrix stiffness;
     linalg::CsrMatrix robin;
