@@ -268,6 +268,16 @@ NOVA_TEST(electrostatics_3d_electrode_charge_rejects_invalid_face_sets) {
         NOVA_REQUIRE(invalid);
     };
 
+    // A finite-looking field from an unconverged solve must not be reported.
+    solution.linear_solver.converged = false;
+    reject([&] {
+        (void)nova::physics::evaluate_electrode_charges_3d(
+            p, solution, std::vector<nova::fem::BoundaryFace3D>{low},
+            std::vector<int>{7}
+        );
+    });
+    solution.linear_solver.converged = true;
+
     // One group cannot combine two different fixed potentials.
     reject([&] {
         (void)nova::physics::evaluate_electrode_charges_3d(
