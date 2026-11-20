@@ -187,6 +187,16 @@ NOVA_TEST(adaptive_heat_crank_nicolson_rejects_large_steps_and_refines) {
 
 NOVA_TEST(adaptive_heat_backward_euler_handles_time_dependent_source) {
     auto problem = base_problem(2U);
+    std::size_t capacity_samples = 0U;
+    std::size_t conductivity_samples = 0U;
+    problem.volumetric_capacity = [&](double, double) {
+        ++capacity_samples;
+        return 1.0;
+    };
+    problem.conductivity = [&](double, double) {
+        ++conductivity_samples;
+        return 1.0;
+    };
     // Exact uniform solution u=t^2 (unit volumetric capacity, zero grad).
     problem.source = [](double, double, double t) { return 2.0 * t; };
     AdaptiveHeat2DOptions opts;
@@ -198,9 +208,36 @@ NOVA_TEST(adaptive_heat_backward_euler_handles_time_dependent_source) {
     opts.min_step = 1.0e-5;
     opts.absolute_tolerance = 2.0e-4;
     opts.relative_tolerance = 0.0;
+    opts.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
     const auto result = nova::fem::solve_adaptive_heat_2d(problem, opts);
     NOVA_REQUIRE(result.accepted_steps > 2U);
     NOVA_REQUIRE(result.rejected_steps > 0U);
+    NOVA_REQUIRE(result.full_step_operator_builds > 1U);
+    NOVA_REQUIRE(result.half_step_operator_builds > 1U);
+    NOVA_REQUIRE(result.full_step_ic0_factor_builds > 1U);
+    NOVA_REQUIRE(result.half_step_ic0_factor_builds > 1U);
+    NOVA_REQUIRE(capacity_samples > 0U);
+    NOVA_REQUIRE(conductivity_samples > 0U);
+    // The adaptive controller may reject many intervals, but static material
+    // callbacks are sampled only by the one study-level FEM preparation.
+    auto reference = base_problem(2U);
+    std::size_t expected_capacity_samples = 0U;
+    std::size_t expected_conductivity_samples = 0U;
+    reference.volumetric_capacity = [&](double, double) {
+        ++expected_capacity_samples;
+        return 1.0;
+    };
+    reference.conductivity = [&](double, double) {
+        ++expected_conductivity_samples;
+        return 1.0;
+    };
+    (void)nova::fem::assemble_scalar_h1_operators_2d(
+        reference.mesh, H1TriangleOrder::P1,
+        reference.volumetric_capacity, reference.conductivity
+    );
+    NOVA_REQUIRE(capacity_samples == expected_capacity_samples);
+    NOVA_REQUIRE(conductivity_samples == expected_conductivity_samples);
     NOVA_REQUIRE_NEAR(result.final_time, 0.8, 1.0e-14);
     for (const double temperature : result.temperature) {
         NOVA_REQUIRE_NEAR(temperature, 0.64, 0.03);
@@ -263,4 +300,81 @@ NOVA_TEST(adaptive_heat_rejects_nonfinite_restart_state) {
         rejected = true;
     }
     NOVA_REQUIRE(rejected);
+}
+
+
+NOVA_TEST(adaptive_heat_reuses_full_and_half_step_systems_and_ic0_factors) {
+    auto problem = base_problem(2U);
+    problem.source = [](double, double, double) { return 1.0; };
+    problem.initial_temperature = [](double, double) { return 1.0; };
+
+    AdaptiveHeat2DOptions options;
+    options.order = H1TriangleOrder::P1;
+    options.scheme = TransientTimeScheme::CrankNicolson;
+    options.start_time = 0.0;
+    options.end_time = 0.5;
+    options.initial_step = 0.125;
+    options.min_step = 0.125;
+    options.max_step = 0.125;
+    options.absolute_tolerance = 1.0e-7;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-12;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+
+    const auto ic0 = nova::fem::solve_adaptive_heat_2d(problem, options);
+    NOVA_REQUIRE(ic0.accepted_steps == 4U);
+    NOVA_REQUIRE(ic0.rejected_steps == 0U);
+    NOVA_REQUIRE(ic0.full_step_operator_builds == 1U);
+    NOVA_REQUIRE(ic0.half_step_operator_builds == 1U);
+    NOVA_REQUIRE(ic0.full_step_ic0_factor_builds == 1U);
+    NOVA_REQUIRE(ic0.half_step_ic0_factor_builds == 1U);
+    NOVA_REQUIRE_NEAR(ic0.final_time, 0.5, 1.0e-14);
+    for (const double temperature : ic0.temperature) {
+        NOVA_REQUIRE_NEAR(temperature, 1.5, 1.0e-9);
+    }
+
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+    const auto jacobi = nova::fem::solve_adaptive_heat_2d(problem, options);
+    NOVA_REQUIRE(jacobi.full_step_operator_builds == 1U);
+    NOVA_REQUIRE(jacobi.half_step_operator_builds == 1U);
+    NOVA_REQUIRE(jacobi.full_step_ic0_factor_builds == 0U);
+    NOVA_REQUIRE(jacobi.half_step_ic0_factor_builds == 0U);
+    NOVA_REQUIRE(jacobi.accepted_steps == ic0.accepted_steps);
+    for (std::size_t i = 0; i < ic0.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(ic0.temperature[i], jacobi.temperature[i], 1.0e-10);
+    }
+}
+
+NOVA_TEST(adaptive_heat_rebuilds_ic0_when_time_dependent_robin_matrix_changes) {
+    auto problem = base_problem(1U);
+    problem.initial_temperature = [](double, double) { return 1.0; };
+    problem.robin_edges.push_back({
+        {0U, 1U},
+        [](double, double, double time) { return 1.0 + time; },
+        [](double, double, double) { return 0.0; }
+    });
+
+    AdaptiveHeat2DOptions options;
+    options.scheme = TransientTimeScheme::BackwardEuler;
+    options.end_time = 0.2;
+    options.initial_step = 0.1;
+    options.min_step = 0.1;
+    options.max_step = 0.1;
+    options.absolute_tolerance = 1.0;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-12;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+
+    const auto result = nova::fem::solve_adaptive_heat_2d(problem, options);
+    NOVA_REQUIRE(result.accepted_steps == 2U);
+    NOVA_REQUIRE(result.rejected_steps == 0U);
+    NOVA_REQUIRE(result.full_step_operator_builds == 1U);
+    NOVA_REQUIRE(result.half_step_operator_builds == 1U);
+    // Each physical Robin matrix changes, so exact CSR identity must reject
+    // stale IC(0) factors even though each slot keeps the same dt.
+    NOVA_REQUIRE(result.full_step_ic0_factor_builds > 1U);
+    NOVA_REQUIRE(result.half_step_ic0_factor_builds > 1U);
 }
