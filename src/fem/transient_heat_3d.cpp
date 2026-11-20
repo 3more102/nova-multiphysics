@@ -72,6 +72,9 @@ double dot(const std::vector<double>& a, const std::vector<double>& b) {
 
 namespace detail {
 
+using nova::linalg::CsrMatrix;
+using nova::linalg::Triplet;
+
 PreparedTransientHeat3D::PreparedTransientHeat3D(
     const TransientHeat3DProblem& problem
 ) {
