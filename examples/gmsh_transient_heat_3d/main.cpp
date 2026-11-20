@@ -1,4 +1,5 @@
 #include "nova/fem/transient_heat_3d.hpp"
+#include "nova/fem/mesh3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/vtk_legacy_3d.hpp"
@@ -33,6 +34,8 @@ constexpr const char* usage =
     "       --steps N [--scheme be|cn] [--material-tensor VOL xx yy zz xy xz yz]\n"
     "       [--temperature SURF T] [--flux SURF q_out] [--convection SURF h T_inf]\n"
     "       [--source Q] [--heat-source VOL Q] [--vtk final.vtk | --vtk-series result.pvd]\n"
+    "       [--quality-report] [--min-mean-ratio q]\n"
+    "   or: nova_gmsh_transient_heat_3d mesh.msh --check-mesh [--min-mean-ratio q]\n"
     "       VOL and SURF accept numeric Gmsh physical tags or matching physical names.";
 
 template<class T>
@@ -88,6 +91,9 @@ struct Settings {
     std::optional<double> source;
     std::optional<fs::path> vtk;
     std::optional<fs::path> vtk_series;
+    bool quality_report{};
+    bool check_mesh_only{};
+    std::optional<double> minimum_mean_ratio;
     TransientHeat3DScheme scheme{TransientHeat3DScheme::BackwardEuler};
     bool scheme_set{};
 };
@@ -159,6 +165,19 @@ Settings read_settings(int argc, char** argv,
             const auto filename = next();
             if (filename.empty()) throw std::invalid_argument("PVD output path is empty.");
             settings.vtk_series = fs::path(filename);
+        } else if (option == "--quality-report") {
+            if (settings.quality_report) throw std::invalid_argument("Duplicate --quality-report.");
+            settings.quality_report = true;
+        } else if (option == "--check-mesh") {
+            if (settings.check_mesh_only) throw std::invalid_argument("Duplicate --check-mesh.");
+            settings.check_mesh_only = true;
+        } else if (option == "--min-mean-ratio") {
+            if (settings.minimum_mean_ratio) throw std::invalid_argument("Duplicate --min-mean-ratio.");
+            const double threshold = number<double>(next());
+            if (!(threshold > 0.0 && threshold <= 1.0)) {
+                throw std::invalid_argument("Minimum mean ratio must be in (0, 1].");
+            }
+            settings.minimum_mean_ratio = threshold;
         } else if (option == "--temperature" || option == "--flux" || option == "--convection") {
             const int tag = physical_tag(next(), 2, imported);
             Boundary bc;
@@ -177,9 +196,19 @@ Settings read_settings(int argc, char** argv,
             throw std::invalid_argument("Unknown argument: " + std::string(option) + "\n" + usage);
         }
     }
-    if (!settings.dt || !(*settings.dt > 0.0) || !settings.steps || !(*settings.steps > 0U) ||
-        !settings.initial || (settings.materials.empty() && settings.tensor_materials.empty()) ||
-        settings.capacities.empty()) {
+    if (settings.minimum_mean_ratio) settings.quality_report = true;
+    if (settings.check_mesh_only) {
+        if (!settings.materials.empty() || !settings.tensor_materials.empty() ||
+            !settings.capacities.empty() || !settings.heat_sources.empty() ||
+            !settings.boundaries.empty() || settings.initial || settings.dt ||
+            settings.steps || settings.source || settings.vtk || settings.vtk_series ||
+            settings.scheme_set) {
+            throw std::invalid_argument("--check-mesh cannot be combined with simulation options.");
+        }
+    } else if (!settings.dt || !(*settings.dt > 0.0) ||
+               !settings.steps || !(*settings.steps > 0U) || !settings.initial ||
+               (settings.materials.empty() && settings.tensor_materials.empty()) ||
+               settings.capacities.empty()) {
         throw std::invalid_argument(usage);
     }
     if (settings.vtk && settings.vtk_series) {
@@ -434,6 +463,31 @@ int main(int argc, char** argv) {
         if (!file) throw std::runtime_error("Cannot open Gmsh mesh: " + std::string(argv[1]));
         auto imported = nova::io::read_gmsh_tetrahedra(file);
         const auto settings = read_settings(argc, argv, imported);
+        if (settings.quality_report) {
+            const auto quality = evaluate_mesh_quality_3d(imported.mesh);
+            const auto worst = std::min_element(
+                quality.elements.begin(), quality.elements.end(),
+                [](const auto& a, const auto& b) { return a.mean_ratio < b.mean_ratio; });
+            const auto worst_index = static_cast<std::size_t>(worst - quality.elements.begin());
+            std::cout << std::setprecision(17)
+                      << "NOVA Gmsh tetrahedral mesh quality\n"
+                      << "Mesh nodes: " << imported.mesh.nodes.size() << '\n'
+                      << "Mesh tetrahedra: " << quality.elements.size() << '\n'
+                      << "Total tetrahedral volume [m^3]: " << quality.total_volume << '\n'
+                      << "Minimum mean ratio: " << quality.minimum_mean_ratio << '\n'
+                      << "Worst tetrahedron index (zero-based): " << worst_index << '\n'
+                      << "Minimum dihedral angle [degrees]: "
+                      << quality.minimum_dihedral_angle * (180.0 / std::acos(-1.0)) << '\n';
+            if (settings.minimum_mean_ratio &&
+                quality.minimum_mean_ratio < *settings.minimum_mean_ratio) {
+                throw std::runtime_error(
+                    "Mesh mean-ratio quality gate failed at tetrahedron " +
+                    std::to_string(worst_index) + ". Required " +
+                    std::to_string(*settings.minimum_mean_ratio) +
+                    ", observed " + std::to_string(quality.minimum_mean_ratio) + ".");
+            }
+        }
+        if (settings.check_mesh_only) return 0;
         if (settings.vtk) {
             const fs::path parent = settings.vtk->parent_path().empty()
                 ? fs::path(".") : settings.vtk->parent_path();
