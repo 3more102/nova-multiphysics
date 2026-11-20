@@ -1,4 +1,5 @@
 #include "nova/fem/diffusion_3d.hpp"
+#include "nova/fem/mesh_refinement_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
 #include "nova/linalg/csr_matrix.hpp"
 #include "nova/linalg/conjugate_gradient.hpp"
@@ -82,6 +83,32 @@ int main() {
         if (std::abs(three_d.values[i] - problem.mesh.nodes[i].x) > 1.0e-9)
             return 4;
     }
+    // Exercise installed Dörfler marking, local tetrahedral refinement,
+    // and generic state transfer through the packaged public API.
+    std::vector<double> indicator_probe(problem.mesh.elements.size(), 0.0);
+    indicator_probe[0] = 1.0;
+    const auto marked_cells =
+        nova::fem::mark_dorfler_elements_3d(indicator_probe, 0.5);
+    if (marked_cells.size() != 1 || marked_cells[0] != 0) return 13;
+    const auto locally_refined = nova::fem::refine_tetrahedra_adaptively_3d(
+        problem.mesh, marked_cells, box.boundary_faces);
+    const auto transferred_temperature =
+        nova::fem::prolongate_p1_refined_3d(locally_refined, three_d.values);
+    if (transferred_temperature.size() != locally_refined.mesh.nodes.size() ||
+        locally_refined.mesh.elements.size() <= problem.mesh.elements.size()) return 14;
+    for (std::size_t i = 0; i < transferred_temperature.size(); ++i) {
+        if (std::abs(transferred_temperature[i] -
+                     locally_refined.mesh.nodes[i].x) > 1.0e-9) return 15;
+    }
+    const std::vector<double> coarse_cell_values(problem.mesh.elements.size(), 2.5);
+    const auto transferred_cell_values =
+        nova::fem::prolongate_cellwise_constant_refined_3d(
+            locally_refined, coarse_cell_values);
+    if (transferred_cell_values.size() != locally_refined.parent_elements.size()) return 16;
+    for (const double value : transferred_cell_values) {
+        if (value != 2.5) return 17;
+    }
+
     // Exercise the installed experimental electrostatics API and exported symbol.
     nova::physics::Electrostatics3DProblem electrostatic;
     electrostatic.mesh = box.mesh;

@@ -118,7 +118,7 @@ Implemented:
 Remaining:
 - Couple 3D residual indicators to Dörfler marking and repeated refine-transfer-resolve cycles; preserve physical groups, boundary callbacks and restart metadata across spatial adaptation.
 - Gmsh binary and higher-order element import, and independent cross-solver thermal benchmarks.
-- Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
+- Shape-quality-controlled multilevel refinement and physical-boundary metadata transfer across adaptive cycles.
 
 ### 3D steady conduction flux recovery (experimental)
 

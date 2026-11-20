@@ -367,27 +367,37 @@ RefinedTetrahedralMesh3D refine_tetrahedra_adaptively_3d(
         }
     }
 
-    std::set<std::size_t> selected_elements;
-    for (const std::size_t element : marked_elements) {
-        if (element >= mesh.elements.size()) {
+    std::vector<std::size_t> selected_elements(
+        marked_elements.begin(), marked_elements.end());
+    std::sort(selected_elements.begin(), selected_elements.end());
+    for (std::size_t i = 0; i < selected_elements.size(); ++i) {
+        if (selected_elements[i] >= mesh.elements.size()) {
             throw std::out_of_range(
                 "Adaptive refinement marked element is outside the mesh.");
         }
-        if (!selected_elements.insert(element).second) {
+        if (i > 0U && selected_elements[i] == selected_elements[i - 1U]) {
             throw std::invalid_argument(
                 "Adaptive refinement marked elements must be unique.");
         }
     }
 
-    std::set<EdgeKey> marked_edges;
+    std::vector<EdgeKey> marked_edges;
+    if (selected_elements.size() > marked_edges.max_size() / 6U) {
+        throw std::length_error("Adaptive marked-edge list exceeds capacity.");
+    }
+    marked_edges.reserve(6U * selected_elements.size());
     for (const std::size_t element : selected_elements) {
         const auto& tetrahedron = mesh.elements[element];
         for (std::size_t i = 0; i < 4U; ++i) {
             for (std::size_t j = i + 1U; j < 4U; ++j) {
-                marked_edges.insert(edge_key(tetrahedron[i], tetrahedron[j]));
+                marked_edges.push_back(edge_key(tetrahedron[i], tetrahedron[j]));
             }
         }
     }
+    std::sort(marked_edges.begin(), marked_edges.end());
+    marked_edges.erase(
+        std::unique(marked_edges.begin(), marked_edges.end()),
+        marked_edges.end());
 
     RefinedTetrahedralMesh3D result;
     result.coarse_node_count = mesh.nodes.size();
@@ -442,74 +452,107 @@ RefinedTetrahedralMesh3D refine_tetrahedra_adaptively_3d(
         result.mesh.nodes.push_back(midpoint);
     }
 
-    // Every cell applies the same globally ordered edge splits. Thus both
-    // sides of each shared face construct exactly the same face subdivision.
+    // Only inspect each parent's six edges, rather than scanning every
+    // globally marked edge for every cell. Sorted local edges preserve the
+    // same global split order while keeping work O(N log M), not O(N*M).
     for (std::size_t parent = 0; parent < mesh.elements.size(); ++parent) {
-        std::vector<Tetrahedron3D> children{mesh.elements[parent]};
-        for (const EdgeKey& edge : marked_edges) {
-            const auto& original = mesh.elements[parent];
-            const bool belongs_to_parent =
-                std::find(original.begin(), original.end(), edge[0]) != original.end() &&
-                std::find(original.begin(), original.end(), edge[1]) != original.end();
-            if (!belongs_to_parent) {
+        const auto& original = mesh.elements[parent];
+        std::array<EdgeKey, 6> cell_edges{};
+        std::size_t edge_index = 0U;
+        for (std::size_t i = 0; i < 4U; ++i) {
+            for (std::size_t j = i + 1U; j < 4U; ++j) {
+                cell_edges[edge_index++] = edge_key(original[i], original[j]);
+            }
+        }
+        std::sort(cell_edges.begin(), cell_edges.end());
+
+        std::array<Tetrahedron3D, 8> children{};
+        children[0] = original;
+        std::size_t child_count = 1U;
+        for (const EdgeKey& edge : cell_edges) {
+            if (!std::binary_search(marked_edges.begin(), marked_edges.end(), edge)) {
                 continue;
             }
 
-            std::vector<Tetrahedron3D> next;
-            next.reserve(children.size() * 2U);
-            for (const auto& child : children) {
+            std::array<Tetrahedron3D, 8> next{};
+            std::size_t next_count = 0U;
+            for (std::size_t i = 0; i < child_count; ++i) {
                 std::array<Tetrahedron3D, 2> split{};
                 if (bisect_tetrahedron_on_edge(
-                        child, edge, midpoint_ids.at(edge), split)) {
-                    next.push_back(split[0]);
-                    next.push_back(split[1]);
+                        children[i], edge, midpoint_ids.at(edge), split)) {
+                    if (next_count > next.size() - 2U) {
+                        throw std::logic_error(
+                            "Adaptive tetrahedral edge refinement exceeded eight children.");
+                    }
+                    next[next_count++] = split[0];
+                    next[next_count++] = split[1];
                 } else {
-                    next.push_back(child);
+                    if (next_count >= next.size()) {
+                        throw std::logic_error(
+                            "Adaptive tetrahedral edge refinement exceeded eight children.");
+                    }
+                    next[next_count++] = children[i];
                 }
             }
-            children.swap(next);
+            children = next;
+            child_count = next_count;
         }
-        if (children.empty() || children.size() > 8U) {
+        if (child_count == 0U || child_count > children.size()) {
             throw std::logic_error(
                 "Adaptive tetrahedral edge refinement produced an invalid child count.");
         }
-        for (const auto& child : children) {
-            result.mesh.elements.push_back(child);
+        for (std::size_t i = 0; i < child_count; ++i) {
+            result.mesh.elements.push_back(children[i]);
             result.parent_elements.push_back(parent);
         }
     }
 
     for (std::size_t parent = 0; parent < boundary_faces.size(); ++parent) {
-        std::vector<BoundaryFace3D> children{boundary_faces[parent]};
-        for (const EdgeKey& edge : marked_edges) {
-            const auto& original = boundary_faces[parent];
-            const bool belongs_to_parent =
-                std::find(original.begin(), original.end(), edge[0]) != original.end() &&
-                std::find(original.begin(), original.end(), edge[1]) != original.end();
-            if (!belongs_to_parent) {
+        const auto& original = boundary_faces[parent];
+        std::array<EdgeKey, 3> face_edges{{
+            edge_key(original[0], original[1]),
+            edge_key(original[1], original[2]),
+            edge_key(original[2], original[0])
+        }};
+        std::sort(face_edges.begin(), face_edges.end());
+
+        std::array<BoundaryFace3D, 4> children{};
+        children[0] = original;
+        std::size_t child_count = 1U;
+        for (const EdgeKey& edge : face_edges) {
+            if (!std::binary_search(marked_edges.begin(), marked_edges.end(), edge)) {
                 continue;
             }
 
-            std::vector<BoundaryFace3D> next;
-            next.reserve(children.size() * 2U);
-            for (const auto& child : children) {
+            std::array<BoundaryFace3D, 4> next{};
+            std::size_t next_count = 0U;
+            for (std::size_t i = 0; i < child_count; ++i) {
                 std::array<BoundaryFace3D, 2> split{};
                 if (bisect_boundary_triangle_on_edge(
-                        child, edge, midpoint_ids.at(edge), split)) {
-                    next.push_back(split[0]);
-                    next.push_back(split[1]);
+                        children[i], edge, midpoint_ids.at(edge), split)) {
+                    if (next_count > next.size() - 2U) {
+                        throw std::logic_error(
+                            "Adaptive boundary refinement exceeded four children.");
+                    }
+                    next[next_count++] = split[0];
+                    next[next_count++] = split[1];
                 } else {
-                    next.push_back(child);
+                    if (next_count >= next.size()) {
+                        throw std::logic_error(
+                            "Adaptive boundary refinement exceeded four children.");
+                    }
+                    next[next_count++] = children[i];
                 }
             }
-            children.swap(next);
+            children = next;
+            child_count = next_count;
         }
-        if (children.empty() || children.size() > 4U) {
+        if (child_count == 0U || child_count > children.size()) {
             throw std::logic_error(
                 "Adaptive tetrahedral boundary refinement produced an invalid child count.");
         }
-        for (const auto& child : children) {
-            result.boundary_faces.push_back(child);
+        for (std::size_t i = 0; i < child_count; ++i) {
+            result.boundary_faces.push_back(children[i]);
             result.parent_boundary_faces.push_back(parent);
         }
     }

@@ -469,3 +469,54 @@ NOVA_TEST(tetra_adaptive_refinement_preserves_reversed_orientation) {
         nova::fem::evaluate_mesh_quality_3d(refined.mesh).total_volume,
         1.0 / 6.0, 2.0e-14);
 }
+
+
+NOVA_TEST(tetra_adaptive_refinement_is_conforming_for_every_box_marking_subset) {
+    const auto coarse = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    const auto coarse_quality =
+        nova::fem::evaluate_mesh_quality_3d(coarse.mesh);
+    const std::size_t subset_count =
+        std::size_t{1U} << coarse.mesh.elements.size();
+
+    for (std::size_t mask = 0; mask < subset_count; ++mask) {
+        std::vector<std::size_t> marked;
+        for (std::size_t element = 0; element < coarse.mesh.elements.size(); ++element) {
+            if ((mask & (std::size_t{1U} << element)) != 0U) {
+                marked.push_back(element);
+            }
+        }
+
+        const auto refined = nova::fem::refine_tetrahedra_adaptively_3d(
+            coarse.mesh, marked, coarse.boundary_faces);
+        refined.mesh.validate();
+        NOVA_REQUIRE(refined.parent_elements.size() == refined.mesh.elements.size());
+
+        const auto incidence = face_incidence(refined.mesh);
+        for (const auto& [face, count] : incidence) {
+            (void)face;
+            NOVA_REQUIRE(count == 1U || count == 2U);
+        }
+
+        const auto quality =
+            nova::fem::evaluate_mesh_quality_3d(refined.mesh);
+        NOVA_REQUIRE_NEAR(
+            quality.total_volume, coarse_quality.total_volume, 3.0e-13);
+
+        const auto expected_boundary =
+            nova::fem::extract_boundary_faces_3d(refined.mesh);
+        NOVA_REQUIRE(expected_boundary.size() == refined.boundary_faces.size());
+        std::map<FaceKey, BoundaryFace3D> expected_by_key;
+        for (const auto& face : expected_boundary) {
+            expected_by_key.emplace(canonical(face), face);
+        }
+        for (std::size_t i = 0; i < refined.boundary_faces.size(); ++i) {
+            const auto found = expected_by_key.find(canonical(refined.boundary_faces[i]));
+            NOVA_REQUIRE(found != expected_by_key.end());
+            NOVA_REQUIRE(same_outward_winding(
+                refined.boundary_faces[i], found->second));
+            NOVA_REQUIRE(refined.parent_boundary_faces[i] <
+                coarse.boundary_faces.size());
+        }
+    }
+}
