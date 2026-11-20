@@ -27,11 +27,19 @@ struct TimeDependentNeumannBoundaryFace3D {
     ScalarField3DTime outward_flux;
 };
 
+struct TimeDependentRobinBoundaryFace3D {
+    BoundaryFace3D face{};
+    // Outward heat flux is h(t) * (T - T_ambient(t)); h must be nonnegative.
+    ScalarField3DTime transfer_coefficient;
+    ScalarField3DTime ambient_value;
+};
+
 // Experimental P1 tetrahedral transient heat model:
 //   C(x) dT/dt - div(K(x) grad(T)) = Q(x) + Q_time(x,t).
 // The optional time_dependent_source is additive to the existing static
 // spatial and cell sources. Dirichlet and Neumann boundary data may also vary
-// with time; material coefficients and Robin data remain time-independent.
+// with time; material coefficients remain time-independent. Robin data may
+// vary through time_dependent_robin_faces.
 struct TransientHeat3DProblem {
     ScalarDiffusion3DProblem diffusion;
     // Exactly one representation: positive spatial C(x) or one positive C per
@@ -50,6 +58,9 @@ struct TransientHeat3DProblem {
     // Optional outward Neumann flux q_n(x,y,z,t); BE samples t_(n+1), CN
     // averages both endpoints. These faces cannot overlap other face BCs.
     std::vector<TimeDependentNeumannBoundaryFace3D> time_dependent_neumann_faces;
+    // Optional time-varying Robin transfer h and ambient temperature. BE uses
+    // the new endpoint; CN uses both endpoints for the operator and ambient load.
+    std::vector<TimeDependentRobinBoundaryFace3D> time_dependent_robin_faces;
 };
 
 enum class TransientHeat3DScheme {
