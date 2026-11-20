@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "nova/fem/adaptive_heat_3d.hpp"
+#include "../src/fem/transient_heat_3d_internal.hpp"
 
 #include <cmath>
 #include <limits>
@@ -265,4 +266,126 @@ NOVA_TEST(adaptive_heat_3d_observer_exceptions_propagate) {
         accepted_propagated = std::string(error.what()) == "accepted observer aborted";
     }
     NOVA_REQUIRE(accepted_propagated);
+}
+
+
+NOVA_TEST(adaptive_heat_3d_assembles_spatial_operators_once_across_trials) {
+    auto p = tetra_problem();
+    p.diffusion.cell_diffusivity.clear();
+    p.cell_volumetric_capacity.clear();
+
+    std::size_t adaptive_diffusivity_calls = 0U;
+    std::size_t adaptive_capacity_calls = 0U;
+    std::size_t adaptive_source_calls = 0U;
+    p.diffusion.diffusivity = [&](double, double, double) {
+        ++adaptive_diffusivity_calls;
+        return 1.0;
+    };
+    p.volumetric_capacity = [&](double, double, double) {
+        ++adaptive_capacity_calls;
+        return 1.0;
+    };
+    p.diffusion.source = [&](double, double, double) {
+        ++adaptive_source_calls;
+        return 0.0;
+    };
+
+    AdaptiveHeat3DOptions options;
+    options.scheme = TransientHeat3DScheme::BackwardEuler;
+    options.end_time = 0.2;
+    options.initial_step = 0.2;
+    options.max_step = 0.2;
+    options.min_step = 1.0e-5;
+    options.absolute_tolerance = 0.002;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-13;
+    const auto adaptive = solve_adaptive_heat_3d(p, options);
+    NOVA_REQUIRE(adaptive.rejected_steps > 0U);
+    NOVA_REQUIRE(adaptive.attempts.size() > 1U);
+
+    const auto adaptive_counts = std::array{
+        adaptive_diffusivity_calls, adaptive_capacity_calls, adaptive_source_calls
+    };
+
+    auto baseline_problem = p;
+    std::size_t baseline_diffusivity_calls = 0U;
+    std::size_t baseline_capacity_calls = 0U;
+    std::size_t baseline_source_calls = 0U;
+    baseline_problem.diffusion.diffusivity = [&](double, double, double) {
+        ++baseline_diffusivity_calls;
+        return 1.0;
+    };
+    baseline_problem.volumetric_capacity = [&](double, double, double) {
+        ++baseline_capacity_calls;
+        return 1.0;
+    };
+    baseline_problem.diffusion.source = [&](double, double, double) {
+        ++baseline_source_calls;
+        return 0.0;
+    };
+
+    TransientHeat3DOptions fixed;
+    fixed.scheme = TransientHeat3DScheme::BackwardEuler;
+    fixed.time_step = 0.2;
+    fixed.steps = 1U;
+    fixed.solver_options = options.solver_options;
+    (void)solve_transient_heat_3d(baseline_problem, fixed);
+
+    NOVA_REQUIRE(adaptive_counts[0] == baseline_diffusivity_calls);
+    NOVA_REQUIRE(adaptive_counts[1] == baseline_capacity_calls);
+    NOVA_REQUIRE(adaptive_counts[2] == baseline_source_calls);
+}
+
+NOVA_TEST(adaptive_heat_3d_prepared_workspace_reuses_bounded_systems_and_ic0_factors) {
+    const auto p = tetra_problem();
+    detail::PreparedTransientHeat3D prepared(p);
+
+    TransientHeat3DOptions options;
+    options.scheme = TransientHeat3DScheme::BackwardEuler;
+    options.time_step = 0.2;
+    options.steps = 1U;
+    options.solver_options.relative_tolerance = 1.0e-12;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+
+    const auto full = prepared.solve(p.initial_temperature, options, 0U);
+    NOVA_REQUIRE(full.linear_solvers.front().converged);
+    NOVA_REQUIRE(prepared.system_assemblies() == 1U);
+    NOVA_REQUIRE(prepared.factor_builds() == 1U);
+
+    options.start_time = 0.2;
+    const auto repeated_full = prepared.solve(full.temperature, options, 0U);
+    NOVA_REQUIRE(repeated_full.linear_solvers.front().converged);
+    NOVA_REQUIRE(prepared.system_assemblies() == 1U);
+    NOVA_REQUIRE(prepared.factor_builds() == 1U);
+
+    options.start_time = 0.4;
+    options.time_step = 0.1;
+    options.steps = 2U;
+    const auto half_pair = prepared.solve(repeated_full.temperature, options, 1U);
+    NOVA_REQUIRE(half_pair.linear_solvers.size() == 2U);
+    NOVA_REQUIRE(half_pair.linear_solvers[0].converged);
+    NOVA_REQUIRE(half_pair.linear_solvers[1].converged);
+    NOVA_REQUIRE(prepared.system_assemblies() == 2U);
+    NOVA_REQUIRE(prepared.factor_builds() == 2U);
+
+    options.start_time = 0.6;
+    const auto repeated_half_pair = prepared.solve(half_pair.temperature, options, 1U);
+    NOVA_REQUIRE(repeated_half_pair.linear_solvers.size() == 2U);
+    NOVA_REQUIRE(prepared.system_assemblies() == 2U);
+    NOVA_REQUIRE(prepared.factor_builds() == 2U);
+
+    // A different dt in slot 0 must rebuild that system and its IC(0) factor.
+    options.start_time = 0.8;
+    options.steps = 1U;
+    (void)prepared.solve(repeated_half_pair.temperature, options, 0U);
+    NOVA_REQUIRE(prepared.system_assemblies() == 3U);
+    NOVA_REQUIRE(prepared.factor_builds() == 3U);
+
+    // A scheme change also invalidates the slot, even when dt is unchanged.
+    options.scheme = TransientHeat3DScheme::CrankNicolson;
+    options.start_time = 0.9;
+    (void)prepared.solve(repeated_half_pair.temperature, options, 1U);
+    NOVA_REQUIRE(prepared.system_assemblies() == 4U);
+    NOVA_REQUIRE(prepared.factor_builds() == 4U);
 }
