@@ -415,6 +415,9 @@ PreparedTransientHeat3D prepare_transient_heat_3d(
                 }
             }
             for (std::size_t i = 0; i < 4; ++i) {
+                for (std::size_t j = 0; j < i; ++j) {
+                    local_mass[j][i] = local_mass[i][j];
+                }
                 prepared.volume_load[cell[i]] += local_source[i];
                 if (!std::isfinite(prepared.volume_load[cell[i]])) {
                     throw std::overflow_error("Transient 3D source load overflowed.");
