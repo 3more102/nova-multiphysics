@@ -22,6 +22,13 @@ struct PreparedTransientHeat3D {
         double area_scale{};
     };
     std::vector<TimeDependentNeumannFace> time_dependent_neumann_faces;
+    struct TimeDependentRobinFace {
+        BoundaryFace3D face{};
+        ScalarField3DTime transfer_coefficient;
+        ScalarField3DTime ambient_value;
+        double area_scale{};
+    };
+    std::vector<TimeDependentRobinFace> time_dependent_robin_faces;
     linalg::CsrMatrix mass;
     linalg::CsrMatrix stiffness;
     linalg::CsrMatrix robin;
@@ -42,14 +49,18 @@ struct TransientHeat3DStepOperators {
 };
 
 // One cache is used for full-step trials and another for half-step trials.
-// Each slot keeps the most recently prepared dt-dependent matrix and its
-// exact-matrix IC(0) cache. A changed dt rebuilds operators; CachedCG decides
-// whether the resulting constrained matrix actually requires a new factor.
+// Each slot keeps the most recently prepared dt-dependent/time-level matrix
+// and its exact-matrix IC(0) cache. A changed dt or Robin transfer matrix
+// rebuilds operators; CachedCG decides whether a new factor is required.
 struct TransientHeat3DStepCache {
     std::optional<TransientHeat3DStepOperators> operators;
     double time_step{};
     TransientHeat3DScheme scheme{TransientHeat3DScheme::BackwardEuler};
     linalg::CachedConjugateGradient cached_cg;
+    // Dynamic Robin matrices are part of the time-level operators. Exact
+    // equality lets ambient-only changes reuse both operators and IC(0).
+    std::optional<linalg::CsrMatrix> previous_time_dependent_robin;
+    std::optional<linalg::CsrMatrix> next_time_dependent_robin;
     std::size_t operator_builds{};
 };
 

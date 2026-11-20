@@ -1,10 +1,11 @@
 # Adaptive transient 3D heat (experimental)
 
 `nova/fem/adaptive_heat_3d.hpp` adds **fixed-mesh temporal adaptivity** to
-NOVA's existing consistent-mass P1 tetrahedral transient solver. Conductivity,
-heat capacity and Robin boundary data remain **time-independent**. Additive
-time-dependent volumetric sources, Dirichlet nodal/face values and Neumann
-face fluxes are sampled consistently by both full-step and half-step trials.
+NOVA's existing consistent-mass P1 tetrahedral transient solver. Conductivity
+and heat capacity remain **time-independent**. Additive time-dependent
+volumetric sources, Dirichlet nodal/face values, Neumann face fluxes and Robin
+transfer/ambient data are sampled consistently by both full-step and
+half-step trials.
 
 ## API
 
@@ -37,10 +38,11 @@ same physical source history at their respective time grids.
 Time-dependent Dirichlet constraints and faces are evaluated at the study's
 physical start time and at each substep endpoint. Time-dependent Neumann face
 fluxes are evaluated at the new endpoint for Backward Euler and at both
-endpoints for Crank–Nicolson, using trapezoidal load integration. Their
-time-varying values affect the prescribed vector or right-hand side only, so
-the prepared constrained matrix and its IC(0) factor remain reusable. Robin
-transfer/ambient data and material coefficients are still static.
+endpoints for Crank–Nicolson, using trapezoidal load integration. Time-varying
+Robin transfer and ambient callbacks are also evaluated at each required
+endpoint. Ambient-only changes affect the right-hand side; changes to the
+transfer coefficient alter the Robin matrix and trigger exact constrained-CSR
+cache comparison and IC(0) rebuild when necessary.
 
 
 For each attempted interval `dt`, the integrator runs one full step and
@@ -81,20 +83,26 @@ against the analytical semidiscrete one-free-DOF decay solution, mixed
 boundary restart, invalid control rejection, the maximum-attempt gate,
 accepted-only observer ordering, initial Dirichlet projection, observer
 exception propagation, repeated-dt operator/factor reuse and cache rebuilds
-when the controller changes the time step.
+when the controller changes the time step. `tests/test_transient_heat_3d.cpp`
+also verifies the time-dependent Robin endpoint matrices, ambient loads,
+closed-form one-free-DOF updates, per-step energy closure and adaptive use.
 
 ## Assembly and factor reuse
 
-The adaptive study prepares the validated mesh topology, material operators,
-consistent mass/stiffness/Robin matrices, static loads and Dirichlet data once.
-Time-dependent source loads are evaluated at the temporal quadrature points of
-each full or half-step trial; they do not change the cached system matrix.
+The adaptive study prepares the validated mesh topology, static material
+operators, consistent mass/stiffness/static-Robin matrices, static loads and
+Dirichlet data once. Time-dependent source and Neumann loads are evaluated at
+the temporal quadrature points of each full or half-step trial. Dynamic Robin
+matrices and ambient loads are evaluated at the same physical endpoint times
+as the corresponding trial. The transfer matrix participates in the left- or
+right-hand-side operator; the ambient contribution is a load.
 It keeps separate full-step and half-step system caches because their time-step
-sizes differ. Repeated trials with an identical `dt` reuse the corresponding
-constrained CSR operators; when `dt` changes, that cache rebuilds its operators.
-Each slot also owns a `CachedConjugateGradient` instance. IC(0) factors are
-reused only when the complete constrained CSR matrix is exactly identical;
-a changed matrix triggers a new factorization. The result reports
+sizes differ. Repeated trials with an identical `dt` and identical previous/
+next Robin matrices reuse the corresponding constrained CSR operators; a
+changed `dt` or transfer matrix rebuilds that cache. Each slot also owns a
+`CachedConjugateGradient` instance. IC(0) factors are reused only when the
+complete constrained CSR matrix is exactly identical; a changed matrix
+triggers a new factorization. The result reports
 `full_step_operator_builds`, `half_step_operator_builds`,
 `full_step_ic0_factor_builds` and `half_step_ic0_factor_builds` so applications
 and regression tests can observe this behavior. IC(0) build counters remain
