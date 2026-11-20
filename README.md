@@ -103,8 +103,9 @@ half-step solutions preserve energy diagnostics and support restart. Its
 `on_step` observer emits the Dirichlet-projected initial field and accepted
 macro-step fields only; rejected and coarse full-step trial fields are not
 published.
-This initial fixed-mesh implementation reassembles FE operators per trial;
-see [adaptive 3D API and limitations](docs/ADAPTIVE_HEAT_3D.md).
+It assembles spatial operators once and keeps bounded full/half-step system
+caches, including exact-matrix IC(0) factor reuse; see [adaptive 3D API and
+cache behavior](docs/ADAPTIVE_HEAT_3D.md).
 The structured-box example is complemented by an imported-mesh CLI. It
 reads Gmsh MSH 2.2 or 4.1 ASCII tetrahedra, maps conductivity, heat capacity, heat sources
 and thermal boundary conditions from physical groups, and streams all solved
@@ -244,10 +245,11 @@ matrix dimensions, sparsity and every stored coefficient are exactly
 unchanged; any coefficient or pattern change triggers a rebuild. The fixed-step
 2D and 3D transient solvers own one cache per integration. Time-dependent Robin
 coefficients therefore refresh the factor when they change the system matrix.
-Cache instances are stateful and not thread-safe; adaptive step-doubling cache
-sharing across separate trial integrations remains future work.
+Cache instances are stateful and not thread-safe. Adaptive 3D step-doubling
+uses two bounded caches local to each integration; they are not shared across
+independent integration calls.
 
-The 2D P1/P2 stationary solver supports compatible pure-Neumann components with a zero-area-mean gauge; it remains scalar and isotropic. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. IC(0) factor sharing across adaptive step-doubling trial integrations, multilevel preconditioning, error-driven mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
+The 2D P1/P2 stationary solver supports compatible pure-Neumann components with a zero-area-mean gauge; it remains scalar and isotropic. The 3D stationary solver also supports balanced floating components and spatial SPD conductivity tensors. Multilevel preconditioning, error-driven mesh adaptation and a general multiphysics field registry remain outside this mainline configuration. The nonlinear 1D example is a verification model, not yet a general nonlinear material framework.
 
 ## Build requirements
 - CMake 3.20 or newer for command-line builds.
