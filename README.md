@@ -191,6 +191,23 @@ API: `nova/fem/mesh_refinement_2d.hpp`. This is **uniform** refinement,
 not error-driven adaptive mesh refinement. It does not yet preserve arbitrary
 physical boundary groups or transfer P2 solution DOFs automatically.
 
+### 2D diffusion residual error indicators
+
+The stationary P1/P2 H1 diffusion kernel now exposes a residual-based spatial
+indicator for `-div(k grad(u)) = f`. It combines the element residual
+`f + k_K Δu_h` with interior normal-flux jumps and returns both per-element
+indicators and a global Euclidean aggregate. The API accepts one positive,
+elementwise-constant isotropic conductivity value per triangle and a source
+callback. Cell residuals use the six-point degree-four triangle rule; interior
+edge jumps use three-point Gauss-Legendre integration. The P2 cell Laplacian is
+computed from the affine-element quadratic basis Hessian.
+
+This is a practical refinement indicator, not a certified error bound. The
+current formulation omits coefficient-gradient terms for spatially varying
+conductivity and Neumann/Robin boundary residuals. It is not yet connected to
+the uniform-refinement API or to an automatic adaptive solve-estimate-refine
+loop. See `nova/fem/residual_error_estimator_2d.hpp`.
+
 ### Transient 2D heat diffusion
 The continuous P1/P2 H1 kernel solves
 
