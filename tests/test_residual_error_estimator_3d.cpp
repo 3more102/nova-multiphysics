@@ -13,6 +13,16 @@ namespace {
 using nova::fem::H1FunctionSpace3D;
 using nova::fem::TetrahedralMesh3D;
 
+template <typename Function>
+[[nodiscard]] bool rejects(Function&& function) {
+    try {
+        function();
+    } catch (const std::exception&) {
+        return true;
+    }
+    return false;
+}
+
 [[nodiscard]] TetrahedralMesh3D two_tetrahedra_sharing_face() {
     TetrahedralMesh3D mesh;
     mesh.nodes = {
