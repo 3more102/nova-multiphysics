@@ -74,18 +74,20 @@ screening threshold, not proof of solution accuracy or engineering certification
 
 ### Transient 3D heat on tetrahedral solids (experimental)
 
-NOVA now solves `C(x) ∂T/∂t − div(K(x) grad T) = Q(x)` using a
+NOVA now solves `C(x) ∂T/∂t − div(K(x) grad T) = Q_static(x) + Q_time(x,t)` using a
 **consistent P1 tetrahedral thermal mass matrix** and the existing 3D
 conductivity integration kernel. Backward Euler and Crank–Nicolson time
 stepping support scalar or SPD tensor conductivity, positive spatial or
 per-cell heat capacity, volumetric heating, fixed temperature boundaries,
 imposed outward flux and Robin convection. An optional additive time-dependent volumetric source is sampled at the new
 step time for Backward Euler and averaged at both endpoints for Crank–Nicolson.
-Time-dependent Dirichlet nodal/face values and Neumann face fluxes are also
-supported: Dirichlet values are imposed at each endpoint, while Neumann loads
-use endpoint sampling for Backward Euler and trapezoidal integration for
-Crank–Nicolson. Conductivity, capacity and Robin functions remain
-**time-independent**.
+Time-dependent Dirichlet nodal/face values, Neumann face fluxes and Robin
+transfer/ambient data are also supported. Dirichlet values are imposed at each
+endpoint; Neumann fluxes and Robin data use endpoint sampling for Backward
+Euler and trapezoidal integration for Crank–Nicolson. A changing Robin
+transfer coefficient changes the time-level operator and triggers exact CSR
+cache invalidation; ambient-only changes affect the load. Conductivity and
+capacity remain **time-independent**.
 
 The constant time-step CSR system is reused between steps; the solver
 computes temperature corrections to avoid loss of precision for small
@@ -118,9 +120,11 @@ half-step solutions preserve energy diagnostics and support restart. Its
 macro-step fields only; rejected and coarse full-step trial fields are not
 published.
 The adaptive study prepares static tetrahedral material and load operators once,
-then keeps separate full-step and half-step system caches. Repeated identical
-step sizes reuse their constrained CSR operators and exact-matrix IC(0) factors;
-changed step sizes rebuild only the affected cache. The result exposes operator
+then keeps separate full-step and half-step system caches. Time-dependent Robin
+transfer matrices are evaluated at each trial's physical endpoints; ambient
+loads remain right-hand-side data. Exact constrained-CSR comparison reuses
+operators and IC(0) factors when the matrix is unchanged, and rebuilds only
+when the step size or Robin transfer matrix changes. The result exposes operator
 and factor-build counters. See [adaptive 3D API and limitations](docs/ADAPTIVE_HEAT_3D.md).
 The structured-box example is complemented by an imported-mesh CLI. It
 reads Gmsh MSH 2.2 or 4.1 ASCII tetrahedra, maps conductivity, heat capacity, heat sources
