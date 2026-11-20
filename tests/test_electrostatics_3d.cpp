@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "nova/physics/electrostatics_3d.hpp"
+#include "nova/physics/electrode_charge_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -187,4 +188,129 @@ NOVA_TEST(electrostatics_3d_prescribed_displacement_recovers_pure_neumann_affine
         NOVA_REQUIRE_NEAR(displacement.z, 0.0, 1e-9);
     }
     NOVA_REQUIRE_NEAR(result.stored_energy_joules, 1.0, 1e-9);
+}
+
+NOVA_TEST(electrostatics_3d_electrode_charge_parallel_plate) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2, 2, 2
+    );
+    Electrostatics3DProblem p;
+    p.mesh = box.mesh;
+    p.permittivity = [](double, double, double) { return 2.0; };
+    std::vector<nova::fem::BoundaryFace3D> electrodes;
+    std::vector<int> ids;
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(p.mesh, face, 0.0) || on_x(p.mesh, face, 1.0)) {
+            const bool high = on_x(p.mesh, face, 1.0);
+            p.potential_faces.push_back({
+                face, [high](double, double, double) { return high ? 10.0 : 0.0; }
+            });
+            // Deliberately reverse the input winding: the physical sign
+            // must follow the dielectric's outward normal, not this order.
+            electrodes.push_back({face[2], face[1], face[0]});
+            ids.push_back(high ? 20 : 10);
+        }
+    }
+
+    const auto solved = solve_electrostatics_3d(p);
+    const auto charges = nova::physics::evaluate_electrode_charges_3d(
+        p, solved, electrodes, ids
+    );
+    NOVA_REQUIRE(charges.size() == 2U);
+    NOVA_REQUIRE(charges[0].electrode_id == 10);
+    NOVA_REQUIRE(charges[1].electrode_id == 20);
+    NOVA_REQUIRE_NEAR(charges[0].area_square_metres, 1.0, 1e-12);
+    NOVA_REQUIRE_NEAR(charges[1].area_square_metres, 1.0, 1e-12);
+    NOVA_REQUIRE_NEAR(charges[0].potential_volts, 0.0, 1e-12);
+    NOVA_REQUIRE_NEAR(charges[1].potential_volts, 10.0, 1e-12);
+    NOVA_REQUIRE_NEAR(charges[0].conductor_charge_coulombs, -20.0, 1e-8);
+    NOVA_REQUIRE_NEAR(charges[1].conductor_charge_coulombs, 20.0, 1e-8);
+    NOVA_REQUIRE_NEAR(charges[0].dielectric_outward_charge_coulombs, 20.0, 1e-8);
+    NOVA_REQUIRE_NEAR(charges[1].dielectric_outward_charge_coulombs, -20.0, 1e-8);
+    // Here there is no volume charge or other electrode. C=Q_high/dV=2 F;
+    // the independently integrated field energy must equal 0.5*C*dV^2.
+    const double capacitance = charges[1].conductor_charge_coulombs /
+        (charges[1].potential_volts - charges[0].potential_volts);
+    NOVA_REQUIRE_NEAR(capacitance, 2.0, 1e-9);
+    NOVA_REQUIRE_NEAR(solved.stored_energy_joules, 100.0, 1e-7);
+}
+
+NOVA_TEST(electrostatics_3d_electrode_charge_rejects_invalid_face_sets) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 1, 1
+    );
+    Electrostatics3DProblem p;
+    p.mesh = box.mesh;
+    nova::physics::Electrostatics3DResult solution;
+    for (std::size_t i = 0; i < p.mesh.nodes.size(); ++i) {
+        p.potential_constraints.push_back({i, p.mesh.nodes[i].x});
+        solution.potential.push_back(p.mesh.nodes[i].x);
+    }
+    solution.displacement.assign(p.mesh.elements.size(), {-1.0, 0.0, 0.0});
+
+    nova::fem::BoundaryFace3D low{}, high{};
+    bool found_low = false, found_high = false;
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(p.mesh, face, 0.0) && !found_low) {
+            low = face;
+            found_low = true;
+        }
+        if (on_x(p.mesh, face, 1.0) && !found_high) {
+            high = face;
+            found_high = true;
+        }
+    }
+    NOVA_REQUIRE(found_low && found_high);
+    const auto reject = [](const auto& operation) {
+        bool invalid = false;
+        try { operation(); }
+        catch (const std::invalid_argument&) { invalid = true; }
+        NOVA_REQUIRE(invalid);
+    };
+
+    // A finite-looking field from an unconverged solve must not be reported.
+    solution.linear_solver.converged = false;
+    reject([&] {
+        (void)nova::physics::evaluate_electrode_charges_3d(
+            p, solution, std::vector<nova::fem::BoundaryFace3D>{low},
+            std::vector<int>{7}
+        );
+    });
+    solution.linear_solver.converged = true;
+
+    // One group cannot combine two different fixed potentials.
+    reject([&] {
+        (void)nova::physics::evaluate_electrode_charges_3d(
+            p, solution, std::vector<nova::fem::BoundaryFace3D>{low, high},
+            std::vector<int>{7, 7}
+        );
+    });
+    // Faces must be unique, even if their tags differ.
+    reject([&] {
+        (void)nova::physics::evaluate_electrode_charges_3d(
+            p, solution, std::vector<nova::fem::BoundaryFace3D>{low, low},
+            std::vector<int>{7, 8}
+        );
+    });
+    // A selected face with unconstrained vertices is not a conductor electrode.
+    p.potential_constraints.clear();
+    p.potential_constraints.push_back({low[0], 0.0});
+    reject([&] {
+        (void)nova::physics::evaluate_electrode_charges_3d(
+            p, solution, std::vector<nova::fem::BoundaryFace3D>{low},
+            std::vector<int>{7}
+        );
+    });
+    // NaN/Inf displacement is never silently reported as a finite charge.
+    p.potential_constraints.clear();
+    for (std::size_t i = 0; i < p.mesh.nodes.size(); ++i) {
+        p.potential_constraints.push_back({i, p.mesh.nodes[i].x});
+    }
+    solution.displacement[0].x = std::numeric_limits<double>::infinity();
+    reject([&] {
+        (void)nova::physics::evaluate_electrode_charges_3d(
+            p, solution, std::vector<nova::fem::BoundaryFace3D>{low},
+            std::vector<int>{7}
+        );
+    });
 }
