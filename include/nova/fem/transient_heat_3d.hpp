@@ -110,8 +110,8 @@ struct TransientHeat3DResult {
 // warm-start state. Purely insulated meshes are permitted because positive
 // thermal mass removes the steady-state constant-mode singularity.
 // The fixed-step API is complemented by the experimental fixed-mesh adaptive
-// step-doubling API in adaptive_heat_3d.hpp; time-varying coefficients and
-// phase change remain unsupported.
+// step-doubling API in adaptive_heat_3d.hpp; time-varying conductivity and
+// heat capacity, and phase change remain unsupported.
 [[nodiscard]] TransientHeat3DResult solve_transient_heat_3d(
     const TransientHeat3DProblem& problem,
     const TransientHeat3DOptions& options = {}
