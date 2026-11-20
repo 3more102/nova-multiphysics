@@ -241,7 +241,7 @@ NOVA_TEST(electrostatics_3d_electrode_charge_rejects_invalid_face_sets) {
     );
     Electrostatics3DProblem p;
     p.mesh = box.mesh;
-    Electrostatics3DResult solution;
+    nova::physics::Electrostatics3DResult solution;
     for (std::size_t i = 0; i < p.mesh.nodes.size(); ++i) {
         p.potential_constraints.push_back({i, p.mesh.nodes[i].x});
         solution.potential.push_back(p.mesh.nodes[i].x);
