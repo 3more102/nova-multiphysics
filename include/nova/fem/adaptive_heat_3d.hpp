@@ -3,6 +3,7 @@
 #include "nova/fem/transient_heat_3d.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace nova::fem {
@@ -20,6 +21,10 @@ struct AdaptiveHeat3DOptions {
     double relative_tolerance{1.0e-4};
     std::size_t max_attempts{10000U};
     linalg::SolverOptions solver_options{};
+    // Emits the Dirichlet-projected initial field (index 0) and accepted
+    // macro-step fields only. Rejected/full-step trials are never published.
+    // The vector reference is valid only during the callback; exceptions propagate.
+    std::function<void(std::size_t, double, const std::vector<double>&)> on_step;
 };
 
 struct AdaptiveHeatAttempt3D {

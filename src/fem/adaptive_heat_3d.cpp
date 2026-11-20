@@ -112,6 +112,7 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         options.initial_step, options.min_step, options.max_step);
     const double order =
         options.scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 2.0;
+    bool initial_state_emitted = false;
 
     while (time < options.end_time) {
         if (result.attempts.size() >= options.max_attempts) {
@@ -131,7 +132,20 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         fixed.steps = 1U;
         fixed.solver_options = options.solver_options;
         fixed.retain_step_solutions = false;
+        if (!initial_state_emitted) {
+            fixed.on_step = [&](std::size_t step_index, double physical_time,
+                                const std::vector<double>& projected_state) {
+                if (step_index == 0U) {
+                    state = projected_state;
+                    initial_state_emitted = true;
+                    if (options.on_step) options.on_step(0U, physical_time, state);
+                }
+            };
+        }
         const auto full = solve_transient_heat_3d(trial_problem, fixed);
+        fixed.on_step = {};
+        // Carry the projected initial state into both half-step trials.
+        trial_problem.initial_temperature = state;
 
         fixed.time_step = 0.5 * dt;
         fixed.steps = 2U;
@@ -149,6 +163,9 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
             }
             ++result.accepted_steps;
             time = std::min(options.end_time, time + dt);
+            if (options.on_step) {
+                options.on_step(result.accepted_steps, time, state);
+            }
         } else {
             ++result.rejected_steps;
             if (dt <= options.min_step) {
