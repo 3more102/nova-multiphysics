@@ -1,5 +1,7 @@
 #include "nova/fem/adaptive_heat_3d.hpp"
 
+#include "transient_heat_3d_internal.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -95,24 +97,27 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
     const AdaptiveHeat3DOptions& options
 ) {
     validate_options(options);
-    if (problem.initial_temperature.size() != problem.diffusion.mesh.nodes.size()) {
-        throw std::invalid_argument("Adaptive 3D initial field length mismatch.");
-    }
-    for (const double value : problem.initial_temperature) {
-        if (!std::isfinite(value)) {
-            throw std::invalid_argument("Adaptive 3D initial temperature must be finite.");
-        }
-    }
 
-    auto trial_problem = problem;
-    std::vector<double> state = problem.initial_temperature;
+    // Static mesh/material/boundary integration is performed once for the
+    // complete adaptive study, including all rejected trials.
+    const auto prepared = detail::prepare_transient_heat_3d(problem);
+    std::vector<double> state = prepared.initial_state;
+
+    // Full and half steps have different dt-dependent matrices. Separate
+    // slots retain each operator set and its exact-matrix IC(0) factor.
+    detail::TransientHeat3DStepCache full_step_cache;
+    detail::TransientHeat3DStepCache half_step_cache;
+
     AdaptiveHeat3DResult result;
     double time = options.start_time;
     double step = std::clamp(
         options.initial_step, options.min_step, options.max_step);
     const double order =
         options.scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 2.0;
-    bool initial_state_emitted = false;
+
+    if (options.on_step) {
+        options.on_step(0U, time, state);
+    }
 
     while (time < options.end_time) {
         if (result.attempts.size() >= options.max_attempts) {
@@ -121,10 +126,10 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         const double dt = std::min(step, options.end_time - time);
         if (!(dt > 0.0) || !std::isfinite(dt) ||
             !std::isfinite(time + dt) || !(time + dt > time)) {
-            throw std::runtime_error("Adaptive 3D time cannot advance representably.");
+            throw std::runtime_error(
+                "Adaptive 3D time cannot advance representably.");
         }
 
-        trial_problem.initial_temperature = state;
         TransientHeat3DOptions fixed;
         fixed.scheme = options.scheme;
         fixed.start_time = time;
@@ -132,26 +137,14 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         fixed.steps = 1U;
         fixed.solver_options = options.solver_options;
         fixed.retain_step_solutions = false;
-        // The first full-step solve supplies the validated Dirichlet projection;
-        // its coarse step result is deliberately not sent to the user observer.
-        if (!initial_state_emitted) {
-            fixed.on_step = [&](std::size_t step_index, double physical_time,
-                                const std::vector<double>& projected_state) {
-                if (step_index == 0U) {
-                    state = projected_state;
-                    initial_state_emitted = true;
-                    if (options.on_step) options.on_step(0U, physical_time, state);
-                }
-            };
-        }
-        const auto full = solve_transient_heat_3d(trial_problem, fixed);
-        fixed.on_step = {};
-        // Carry the projected initial state into both half-step trials.
-        trial_problem.initial_temperature = state;
+        const auto full = detail::solve_prepared_transient_heat_3d(
+            prepared, fixed, state, full_step_cache);
 
         fixed.time_step = 0.5 * dt;
         fixed.steps = 2U;
-        auto half = solve_transient_heat_3d(trial_problem, fixed);
+        auto half = detail::solve_prepared_transient_heat_3d(
+            prepared, fixed, state, half_step_cache);
+
         const double error = normalized_step_error(
             state, full.temperature, half.temperature, options);
         const bool accepted = error <= 1.0;
@@ -184,6 +177,12 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         step = std::clamp(dt * factor, options.min_step, options.max_step);
     }
 
+    result.full_step_operator_builds = full_step_cache.operator_builds;
+    result.half_step_operator_builds = half_step_cache.operator_builds;
+    result.full_step_ic0_factor_builds =
+        full_step_cache.cached_cg.factor_builds();
+    result.half_step_ic0_factor_builds =
+        half_step_cache.cached_cg.factor_builds();
     result.temperature = std::move(state);
     result.final_time = time;
     return result;

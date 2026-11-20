@@ -77,6 +77,7 @@ Implemented:
 - Consistent scalar capacity and stiffness FEM operators.
 - Backward Euler and Crank–Nicolson implicit transient time integration.
 - Adaptive, fixed-mesh time stepping by step doubling, absolute/relative local error control, accepted/rejected attempt histories, minimum/maximum step size and attempt limits.
+- 3D P1 tetrahedral adaptive Backward Euler/Crank–Nicolson with accepted-state streaming, once-per-study static FEM preparation, separate full/half system caches and exact-matrix IC(0) factor reuse across repeated time steps.
 - Exact H1 nodal DOF restarts with nonzero physical start times.
 - Spatially varying positive (time-independent) volumetric heat capacity and conductivity.
 - Time-dependent volumetric heating, essential Dirichlet temperatures, Neumann outward heat fluxes, and Robin ambient convection.
@@ -87,7 +88,7 @@ Implemented:
 
 Remaining:
 - Nonlinear temperature-dependent constitutive properties and time-dependent materials.
-- Optimized adaptive stepping with shared preassembled FEM operators, IC(0) cache sharing across separate step-doubling trials, and a global temporal error estimator.
+- Equivalent prepared-operator and IC(0) cache reuse for 2D adaptive step-doubling, plus broader global temporal error estimation.
 - Independently recovered normal heat fluxes and physical energy-balance cross-checks.
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.
@@ -97,6 +98,8 @@ Remaining:
 
 Implemented:
 - P1 tetrahedral Backward Euler and Crank–Nicolson with a consistent thermal mass matrix.
+- Fixed-mesh adaptive step doubling for both schemes, with full-step/two-half-step error control, accepted/rejected attempt history and an accepted-state observer.
+- Once-per-study static FEM preparation plus separate full-step and half-step dt-dependent operator caches; exact CSR IC(0) factor reuse is observable through result counters.
 - Scalar and SPD tensor conductivity, per-cell material tensors, and spatial or cellwise heat capacity.
 - Dirichlet, Neumann and Robin boundaries with per-step integrated energy diagnostics.
 - Streaming state observers, optional bounded-memory result history, and validated ParaView PVD/VTK output.
@@ -107,7 +110,7 @@ Implemented:
 - Gmsh MSH 2.2 and 4.1 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
 
 Remaining:
-- Adaptive 3D time steps and time-varying loads/materials.
+- Time-varying 3D loads/materials and broader adaptive temporal-error estimators.
 - Gmsh binary and higher-order element import, time-varying loads/materials, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 

@@ -63,11 +63,28 @@ the callback. Observer exceptions propagate and abort the integration.
 and heat budget closure for both schemes, temporal tolerance sensitivity
 against the analytical semidiscrete one-free-DOF decay solution, mixed
 boundary restart, invalid control rejection, the maximum-attempt gate,
-accepted-only observer ordering, initial Dirichlet projection and observer
-exception propagation.
+accepted-only observer ordering, initial Dirichlet projection, observer
+exception propagation, repeated-dt operator/factor reuse and cache rebuilds
+when the controller changes the time step.
 
-**Performance limitation:** each full-step and two-half-step trial invokes
-the existing solver, so the mesh, FE operators, and linear systems are
-reassembled for each trial. Caching the assembled operators across trial
-steps and efficiently reusing factors is a future optimization. This is a
-research-grade implementation, not engineering-design certification.
+## Assembly and factor reuse
+
+The adaptive study prepares the validated mesh topology, material operators,
+consistent mass/stiffness/Robin matrices, static loads and Dirichlet data once.
+It keeps separate full-step and half-step system caches because their time-step
+sizes differ. Repeated trials with an identical `dt` reuse the corresponding
+constrained CSR operators; when `dt` changes, that cache rebuilds its operators.
+Each slot also owns a `CachedConjugateGradient` instance. IC(0) factors are
+reused only when the complete constrained CSR matrix is exactly identical;
+a changed matrix triggers a new factorization. The result reports
+`full_step_operator_builds`, `half_step_operator_builds`,
+`full_step_ic0_factor_builds` and `half_step_ic0_factor_builds` so applications
+and regression tests can observe this behavior. IC(0) build counters remain
+zero when another preconditioner is selected.
+
+The cache retains only the most recent time step in each slot, not a map of all
+previous step sizes. A later return to an older `dt` after an intervening change
+therefore rebuilds that slot's operators and, when required, its IC(0) factor.
+This is a performance optimization, not a change to the temporal error
+estimator or acceptance rule. NOVA remains experimental and is not
+engineering-design certification.

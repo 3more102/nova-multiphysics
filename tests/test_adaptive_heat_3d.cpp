@@ -266,3 +266,119 @@ NOVA_TEST(adaptive_heat_3d_observer_exceptions_propagate) {
     }
     NOVA_REQUIRE(accepted_propagated);
 }
+
+
+NOVA_TEST(adaptive_heat_3d_reuses_operators_and_ic0_factors_for_repeated_dt) {
+    auto problem = tetra_problem();
+    problem.diffusion.dirichlet_constraints.clear();
+    problem.diffusion.source = [](double, double, double) { return 1.0; };
+    problem.initial_temperature = {1.0, 1.0, 1.0, 1.0};
+
+    AdaptiveHeat3DOptions options;
+    options.scheme = TransientHeat3DScheme::CrankNicolson;
+    options.start_time = 0.0;
+    options.end_time = 0.5;
+    options.initial_step = 0.125;
+    options.min_step = 0.125;
+    options.max_step = 0.125;
+    options.absolute_tolerance = 1.0e-7;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-12;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+
+    const auto ic0 = solve_adaptive_heat_3d(problem, options);
+    NOVA_REQUIRE(ic0.accepted_steps == 4U);
+    NOVA_REQUIRE(ic0.rejected_steps == 0U);
+    NOVA_REQUIRE(ic0.full_step_operator_builds == 1U);
+    NOVA_REQUIRE(ic0.half_step_operator_builds == 1U);
+    NOVA_REQUIRE(ic0.full_step_ic0_factor_builds == 1U);
+    NOVA_REQUIRE(ic0.half_step_ic0_factor_builds == 1U);
+    NOVA_REQUIRE_NEAR(ic0.final_time, 0.5, 1.0e-14);
+    for (const double temperature : ic0.temperature) {
+        NOVA_REQUIRE_NEAR(temperature, 1.5, 1.0e-10);
+    }
+
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+    const auto jacobi = solve_adaptive_heat_3d(problem, options);
+    NOVA_REQUIRE(jacobi.full_step_operator_builds == 1U);
+    NOVA_REQUIRE(jacobi.half_step_operator_builds == 1U);
+    NOVA_REQUIRE(jacobi.full_step_ic0_factor_builds == 0U);
+    NOVA_REQUIRE(jacobi.half_step_ic0_factor_builds == 0U);
+    NOVA_REQUIRE(jacobi.accepted_steps == ic0.accepted_steps);
+    for (std::size_t i = 0; i < ic0.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(ic0.temperature[i], jacobi.temperature[i], 1.0e-11);
+    }
+}
+
+NOVA_TEST(adaptive_heat_3d_rebuilds_cached_operators_when_dt_changes) {
+    auto problem = tetra_problem();
+    AdaptiveHeat3DOptions options;
+    options.scheme = TransientHeat3DScheme::BackwardEuler;
+    options.start_time = 0.0;
+    options.end_time = 0.2;
+    options.initial_step = 0.2;
+    options.min_step = 1.0e-5;
+    options.max_step = 0.2;
+    options.absolute_tolerance = 0.002;
+    options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-13;
+    options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+
+    const auto result = solve_adaptive_heat_3d(problem, options);
+    NOVA_REQUIRE(result.rejected_steps > 0U);
+    NOVA_REQUIRE(result.accepted_steps > 0U);
+    NOVA_REQUIRE(result.full_step_operator_builds > 1U);
+    NOVA_REQUIRE(result.half_step_operator_builds > 1U);
+    NOVA_REQUIRE(result.full_step_ic0_factor_builds > 1U);
+    NOVA_REQUIRE(result.half_step_ic0_factor_builds > 1U);
+    NOVA_REQUIRE_NEAR(result.final_time, options.end_time, 1.0e-14);
+}
+
+
+NOVA_TEST(adaptive_heat_3d_evaluates_static_material_and_load_fields_once_per_study) {
+    auto problem = tetra_problem();
+    problem.diffusion.dirichlet_constraints.clear();
+    problem.diffusion.cell_diffusivity.clear();
+    problem.cell_volumetric_capacity.clear();
+    problem.initial_temperature = {1.0, 1.0, 1.0, 1.0};
+
+    std::size_t conductivity_samples = 0U;
+    std::size_t capacity_samples = 0U;
+    std::size_t source_samples = 0U;
+    problem.diffusion.diffusivity =
+        [&](double, double, double) {
+            ++conductivity_samples;
+            return 1.0;
+        };
+    problem.volumetric_capacity =
+        [&](double, double, double) {
+            ++capacity_samples;
+            return 1.0;
+        };
+    problem.diffusion.source =
+        [&](double, double, double) {
+            ++source_samples;
+            return 1.0;
+        };
+
+    AdaptiveHeat3DOptions options;
+    options.scheme = TransientHeat3DScheme::CrankNicolson;
+    options.end_time = 0.5;
+    options.initial_step = 0.125;
+    options.min_step = 0.125;
+    options.max_step = 0.125;
+    options.absolute_tolerance = 1.0e-7;
+    options.relative_tolerance = 0.0;
+
+    const auto result = solve_adaptive_heat_3d(problem, options);
+    NOVA_REQUIRE(result.accepted_steps == 4U);
+    NOVA_REQUIRE(result.rejected_steps == 0U);
+    // One tetrahedron has four degree-two volume quadrature points. The
+    // spatial callbacks are evaluated once per study, not once per trial.
+    NOVA_REQUIRE(conductivity_samples == 4U);
+    NOVA_REQUIRE(capacity_samples == 4U);
+    NOVA_REQUIRE(source_samples == 4U);
+}
