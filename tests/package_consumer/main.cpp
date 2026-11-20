@@ -5,6 +5,7 @@
 #include "nova/linalg/incomplete_cholesky.hpp"
 #include "nova/physics/electrostatics_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
+#include "nova/io/thermal_checkpoint_3d.hpp"
 
 #include <array>
 #include <cmath>
@@ -132,5 +133,18 @@ $EndElements
         imported.volume_physical_tags.size() != 1 ||
         imported.volume_physical_tags[0] != 0 ||
         imported.exterior_faces.size() != 4) return 7;
+
+    // Verify that the installed SDK exports the public thermal checkpoint API
+    // and its implementation, not just the header copied into the install tree.
+    const std::vector<double> saved_temperature(box.mesh.nodes.size(), 301.25);
+    std::stringstream checkpoint_stream;
+    nova::io::write_transient_heat_checkpoint_3d(
+        checkpoint_stream, box.mesh, 1.75, saved_temperature);
+    std::istringstream checkpoint_input(checkpoint_stream.str());
+    const auto restored = nova::io::read_transient_heat_checkpoint_3d(
+        checkpoint_input, box.mesh);
+    if (restored.time != 1.75 ||
+        restored.temperature != saved_temperature) return 10;
+
     return 0;
 }
