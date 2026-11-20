@@ -76,7 +76,8 @@ Implemented:
 - Stationary scalar conduction/diffusion with P1/P2 H1 elements.
 - Consistent scalar capacity and stiffness FEM operators.
 - Backward Euler and Crank–Nicolson implicit transient time integration.
-- Adaptive, fixed-mesh time stepping by step doubling, absolute/relative local error control, accepted/rejected attempt histories, minimum/maximum step size and attempt limits.
+- Adaptive, fixed-mesh P1/P2 2D time stepping by step doubling, absolute/relative local error control, accepted/rejected attempt histories, minimum/maximum step size and attempt limits.
+- Study-level preparation of 2D H1 mass/stiffness operators with separate full-step and half-step dt-dependent system caches and exact-matrix IC(0) reuse; time-dependent source and boundary functions remain evaluated at each physical time.
 - 3D P1 tetrahedral adaptive Backward Euler/Crank–Nicolson with accepted-state streaming, once-per-study static FEM preparation, separate full/half system caches and exact-matrix IC(0) factor reuse across repeated time steps.
 - Exact H1 nodal DOF restarts with nonzero physical start times.
 - Spatially varying positive (time-independent) volumetric heat capacity and conductivity.
