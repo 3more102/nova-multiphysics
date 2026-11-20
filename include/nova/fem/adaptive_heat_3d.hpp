@@ -49,8 +49,9 @@ struct AdaptiveHeat3DResult {
     // are omitted because the full adaptive field history is not retained.
     std::vector<linalg::SolverResult> substep_solvers;
 
-    // Number of distinct dt-dependent constrained systems prepared by each
-    // adaptive trial slot. Repeated identical time steps reuse the operators.
+    // Number of step-operator builds in each adaptive trial slot. A cached
+    // operator is reused only when dt, scheme and both endpoint Robin matrices
+    // are identical.
     std::size_t full_step_operator_builds{};
     std::size_t half_step_operator_builds{};
     // Exact-matrix IC(0) factor builds per slot; zero for other preconditioners.
@@ -62,9 +63,10 @@ struct AdaptiveHeat3DResult {
 // Accept the two-half-step field, not an extrapolation. Rejected attempts
 // never modify the accepted field or its energy diagnostics.
 // p=1 for backward Euler, p=2 for Crank-Nicolson.
-// Prepares mesh/material/load operators once per study and caches separate
-// full-step and half-step systems across trials. Exact CSR identity controls
-// IC(0) factor reuse when an identical dt recurs.
+// Prepares static mesh/material/load operators once per study and caches
+// separate full-step and half-step systems across trials. Step operators are
+// reused only when dt, scheme and endpoint Robin matrices match exactly.
+// Cached CG reuses IC(0) only when the constrained CSR system is identical.
 // Throws on invalid options, solver failure, unreachable tolerance at
 // min_step, non-advancing floating-point time, or max_attempts exhaustion.
 [[nodiscard]] AdaptiveHeat3DResult solve_adaptive_heat_3d(
