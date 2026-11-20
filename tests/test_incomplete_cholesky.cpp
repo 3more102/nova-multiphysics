@@ -212,6 +212,13 @@ NOVA_TEST(cached_cg_reuses_identical_matrices_and_rebuilds_changed_coefficients_
     NOVA_REQUIRE(first.converged && cache.factor_builds() == 1);
     const auto second = cache.solve(matrix, matrix.multiply(solution_two), options);
     NOVA_REQUIRE(second.converged && cache.factor_builds() == 1);
+    const auto reordered_matrix = CsrMatrix::from_triplets(3, 3, {
+        {2,1,-1}, {1,2,-1}, {1,0,-1}, {0,1,-1},
+        {2,2,6}, {1,1,5}, {0,0,4}
+    });
+    const auto reordered = cache.solve(
+        reordered_matrix, reordered_matrix.multiply(solution_two), options);
+    NOVA_REQUIRE(reordered.converged && cache.factor_builds() == 1);
     for (std::size_t i = 0; i < 3; ++i) {
         NOVA_REQUIRE_NEAR(first.solution[i], solution_one[i], 1e-11);
         NOVA_REQUIRE_NEAR(second.solution[i], solution_two[i], 1e-11);

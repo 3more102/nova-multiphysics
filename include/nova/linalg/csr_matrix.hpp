@@ -25,6 +25,10 @@ public:
     [[nodiscard]] std::size_t columns() const noexcept;
     [[nodiscard]] std::size_t non_zeros() const noexcept;
 
+    // Exact identity of canonical CSR dimensions, sparsity pattern and values.
+    // Compares the storage arrays directly in O(rows + nnz).
+    [[nodiscard]] bool exactly_equal(const CsrMatrix& other) const noexcept;
+
     [[nodiscard]] std::vector<double> multiply(
         std::span<const double> vector
     ) const;
