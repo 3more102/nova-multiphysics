@@ -636,10 +636,10 @@ NOVA_TEST(adaptive_heat_3d_reuses_robin_matrix_when_only_ambient_changes) {
     AdaptiveHeat3DOptions options;
     options.scheme = TransientHeat3DScheme::CrankNicolson;
     options.start_time = 1.0;
-    options.end_time = 1.4;
-    options.initial_step = 0.1;
-    options.min_step = 0.1;
-    options.max_step = 0.1;
+    options.end_time = 1.5;
+    options.initial_step = 0.125;
+    options.min_step = 0.125;
+    options.max_step = 0.125;
     options.absolute_tolerance = 1000.0;
     options.relative_tolerance = 0.0;
     options.max_attempts = 10U;
