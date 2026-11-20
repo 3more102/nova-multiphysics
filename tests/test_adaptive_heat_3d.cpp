@@ -336,3 +336,49 @@ NOVA_TEST(adaptive_heat_3d_rebuilds_cached_operators_when_dt_changes) {
     NOVA_REQUIRE(result.half_step_ic0_factor_builds > 1U);
     NOVA_REQUIRE_NEAR(result.final_time, options.end_time, 1.0e-14);
 }
+
+
+NOVA_TEST(adaptive_heat_3d_evaluates_static_material_and_load_fields_once_per_study) {
+    auto problem = tetra_problem();
+    problem.diffusion.dirichlet_constraints.clear();
+    problem.diffusion.cell_diffusivity.clear();
+    problem.cell_volumetric_capacity.clear();
+    problem.initial_temperature = {1.0, 1.0, 1.0, 1.0};
+
+    std::size_t conductivity_samples = 0U;
+    std::size_t capacity_samples = 0U;
+    std::size_t source_samples = 0U;
+    problem.diffusion.diffusivity =
+        [&](double, double, double) {
+            ++conductivity_samples;
+            return 1.0;
+        };
+    problem.volumetric_capacity =
+        [&](double, double, double) {
+            ++capacity_samples;
+            return 1.0;
+        };
+    problem.diffusion.source =
+        [&](double, double, double) {
+            ++source_samples;
+            return 1.0;
+        };
+
+    AdaptiveHeat3DOptions options;
+    options.scheme = TransientHeat3DScheme::CrankNicolson;
+    options.end_time = 0.5;
+    options.initial_step = 0.125;
+    options.min_step = 0.125;
+    options.max_step = 0.125;
+    options.absolute_tolerance = 1.0e-7;
+    options.relative_tolerance = 0.0;
+
+    const auto result = solve_adaptive_heat_3d(problem, options);
+    NOVA_REQUIRE(result.accepted_steps == 4U);
+    NOVA_REQUIRE(result.rejected_steps == 0U);
+    // One tetrahedron has four degree-two volume quadrature points. The
+    // spatial callbacks are evaluated once per study, not once per trial.
+    NOVA_REQUIRE(conductivity_samples == 4U);
+    NOVA_REQUIRE(capacity_samples == 4U);
+    NOVA_REQUIRE(source_samples == 4U);
+}
