@@ -112,7 +112,8 @@ states to ParaView `.pvd` time series:
 
 The collection includes the projected initial field and every completed
 time step, with nodal temperature and per-cell material, heat-generation and
-heat-flux fields..
+heat-flux fields.
+
 The transient Gmsh CLI also supports `--check-mesh` (quality-only inspection),
 `--quality-report` (diagnostics during studies), and `--min-mean-ratio q`
 (reject meshes below the requested geometric quality threshold before solving
