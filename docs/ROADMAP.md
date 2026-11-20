@@ -111,10 +111,10 @@ Implemented:
 - Instance-owned IC(0) factor reuse across identical fixed-step 2D and 3D transient matrices; exact coefficient or sparsity changes trigger factor rebuilds.
 - Analytical single-mode time-step refinement verifies first-order Backward Euler and second-order Crank–Nicolson with nonzero start time and per-step energy closure.
 - Gmsh MSH 2.2 and 4.1 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
-- Time-dependent 3D Dirichlet nodal/face values and Neumann face fluxes, with Backward Euler endpoint sampling and Crank–Nicolson trapezoidal load integration.
+- Time-dependent 3D Dirichlet nodal/face values, Neumann face fluxes, and Robin transfer/ambient data, with Backward Euler endpoint sampling and Crank–Nicolson trapezoidal load integration.
 
 Remaining:
-- Time-varying 3D material properties and Robin boundary data, plus broader adaptive temporal-error estimators.
+- Time-varying 3D material properties, plus broader adaptive temporal-error estimators.
 - Gmsh binary and higher-order element import, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
