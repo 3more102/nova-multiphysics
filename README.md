@@ -136,6 +136,11 @@ stored energy U = 1/2 integral(E dot D) dV.
 ./build/nova_electrostatics_3d
 ~~~
 
+An experimental [fixed-electrode charge diagnostic](docs/ELECTROSTATICS_3D.md#fixed-electrode-charge-diagnostic-experimental)
+integrates element-averaged displacement on validated prescribed-potential
+boundary faces. It reports dielectric-outward flux and oppositely signed
+conductor charge, but is not an equilibrated Gauss-law flux.
+
 The analytical suite covers a parallel-plate capacitor (C = 2 F, U = 100 J),
 an anisotropic affine field (U = 36.5 J), and an exact one-free-DOF tetrahedral
 charge benchmark. The installed SDK consumer also solves the capacitor case.
