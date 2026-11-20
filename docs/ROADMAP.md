@@ -34,6 +34,7 @@ Implemented:
 - Orientation-aware 2D triangle quality analysis (minimum angle, mean ratio, element area and longest edge).
 - 3D tetrahedral mesh quality analysis (total volume, mean ratio and minimum dihedral angle), exposed through pre-solve CLI inspection and user-selected quality gates.
 - Conforming uniform 1-to-4 refinement with shared edge midpoints, exterior boundary splitting, parent-element maps and P1 nodal prolongation.
+- P1/P2 diffusion residual indicators combining element source/Laplacian residuals with interior normal-flux jumps for positive elementwise-constant isotropic conductivity.
 - Harmonic patch, P2 exact-quadratic, and manufactured quartic-solution benchmarks.
 - L2, H1-seminorm, and H1 error calculations using Duffy-transformed Gaussian quadrature.
 - Nonlinear 1D P1 diffusion residual and consistent Jacobian assembly.
@@ -41,7 +42,7 @@ Implemented:
 
 Remaining:
 - Reusable element and integration interfaces shared across physics.
-- Local/graded adaptive mesh refinement, error indicators, quality-based marking and solver mesh-transfer workflows.
+- Local/graded adaptive mesh refinement, quality-driven marking, physical-boundary-group transfer and solver mesh-transfer workflows; extend the estimator to variable coefficients and natural-boundary residuals.
 - Generic residual and tangent assembly interfaces.
 - Independent benchmark cross-check and numerical evidence report.
 
