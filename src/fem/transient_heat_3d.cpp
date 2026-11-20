@@ -560,9 +560,7 @@ void prepare_step_operators(
     }
     ++cache.operator_builds;
 }
-std::vector<double> evaluate_time_dependent_source_load(
-
-
+ 
 std::vector<double> evaluate_time_dependent_source_load(
     const PreparedTransientHeat3D& prepared,
     double time

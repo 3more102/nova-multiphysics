@@ -33,7 +33,7 @@ theta = 1/2 Crank–Nicolson
 
 `F` includes volume heating, **negative** outward Neumann flux, and Robin ambient loads. The optional `problem.time_dependent_source(x,y,z,t)` adds a time-varying volumetric source to static spatial and cell sources. Backward Euler samples loads at the new endpoint; Crank–Nicolson averages endpoint loads. Time-dependent scalar/tensor conductivity and volumetric-capacity callbacks are also sampled at both material time levels. When capacity varies, the solver uses conservative enthalpy storage `d(C*T)/dt`, so the discrete heat content is `1^T M(t) T(t)`; it does not silently reinterpret the callback as `C(t) dT/dt`. Initial nodal values are projected to the fixed Dirichlet constraints. Each step uses symmetric elimination with identity rows on constrained nodes. Exact endpoint-matrix comparison controls operator and IC(0) reuse. Positive capacity makes the time-step system nonsingular even for a completely insulated mesh.
 
-The per-step discrete energy budget uses `M * ones` as the heat-content integration weights. Dirichlet input is calculated from the unconstrained system residual on prescribed nodes, **not** from raw P1 face flux. For constant coefficients and loads,
+The per-step discrete energy budget uses `M(t) * ones` as the heat-content integration weights. Dirichlet input is calculated from the unconstrained system residual on prescribed nodes, **not** from raw P1 face flux. For each accepted step,
 
 ```text
 Delta(Integral C(t)*T dV) =
@@ -132,7 +132,7 @@ problem.time_dependent_volumetric_capacity =
 
 The capacity callback is mutually exclusive with both static capacity forms.
 For a changing capacity, NOVA discretizes the conservative storage term
-`d(C(x,t)T)/dt); this makes the reported heat-content change consistent with
+`d(C(x,t)T)/dt`; this makes the reported heat-content change consistent with
 the discrete source and boundary energy budget. Temperature-dependent
 constitutive laws (callbacks depending on the unknown temperature) are not
 implemented.
