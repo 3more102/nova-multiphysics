@@ -10,6 +10,8 @@
 namespace nova::fem {
 
 using ScalarField3DTime = std::function<double(double, double, double, double)>;
+using SymmetricTensorField3DTime =
+    std::function<SymmetricTensor3D(double, double, double, double)>;
 
 struct TimeDependentDirichletConstraint3D {
     std::size_t node{};
@@ -34,16 +36,15 @@ struct TimeDependentRobinBoundaryFace3D {
     ScalarField3DTime ambient_value;
 };
 
-// Experimental P1 tetrahedral transient heat model:
-//   C(x) dT/dt - div(K(x) grad(T)) = Q(x) + Q_time(x,t).
-// The optional time_dependent_source is additive to the existing static
-// spatial and cell sources. Dirichlet and Neumann boundary data may also vary
-// with time; material coefficients remain time-independent. Robin data may
-// vary through time_dependent_robin_faces.
+// Experimental P1 tetrahedral transient heat model. Static capacity uses
+// C(x) dT/dt; when time_dependent_volumetric_capacity is supplied, storage is
+// conservative: d(C(x,t) T)/dt. Conductivity may vary as K(x,y,z,t).
+
 struct TransientHeat3DProblem {
     ScalarDiffusion3DProblem diffusion;
-    // Exactly one representation: positive spatial C(x) or one positive C per
-    // tetrahedron, in mesh.elements ordering. C has units J/(m^3 K).
+    // Static capacity: exactly one positive spatial C(x) or one positive C per
+    // tetrahedron, in mesh.elements ordering. C has units J/(m^3 K). A dynamic
+    // alternative is time_dependent_volumetric_capacity below.
     ScalarField3D volumetric_capacity;
     std::vector<double> cell_volumetric_capacity;
     // Exact initial nodal field; Dirichlet values are imposed at t=start_time.
@@ -61,6 +62,14 @@ struct TransientHeat3DProblem {
     // Optional time-varying Robin transfer h and ambient temperature. BE uses
     // the new endpoint; CN uses both endpoints for the operator and ambient load.
     std::vector<TimeDependentRobinBoundaryFace3D> time_dependent_robin_faces;
+    // Optional time-varying scalar conductivity or SPD tensor conductivity.
+    // Select at most one; mutually exclusive with all static diffusion
+    // conductivity representations (including cellwise values).
+    ScalarField3DTime time_dependent_diffusivity;
+    SymmetricTensorField3DTime time_dependent_diffusivity_tensor;
+    // Optional time-varying positive volumetric heat capacity. Mutually
+    // exclusive with volumetric_capacity and cell_volumetric_capacity.
+    ScalarField3DTime time_dependent_volumetric_capacity;
 };
 
 enum class TransientHeat3DScheme {
@@ -90,7 +99,7 @@ struct TransientHeat3DOptions {
 // prescribed nodes, NOT an equilibrated boundary-face flux.
 struct TransientHeatStepDiagnostics3D {
     double time{};
-    double heat_content{};    // Integral C*T dV (J)
+    double heat_content{};    // Integral C(x,t)*T_h dV at this step's end (J)
     double source_energy{};   // Volumetric source input (J)
     double neumann_energy{};  // Prescribed surface flux input (J)
     double robin_energy{};    // Net convection input (J)
@@ -105,15 +114,14 @@ struct TransientHeat3DResult {
     std::vector<TransientHeatStepDiagnostics3D> diagnostics;
 };
 
-// Consistent P1 thermal mass and existing validated 3D conductivity integration.
-// Static FEM operators are prepared once. Unchanged constrained CSR matrices
-// and IC(0) factors are reused; a changed time-dependent Robin transfer matrix
-// rebuilds the affected operator. CG receives a warm-start state. Purely
-// insulated meshes are permitted because positive thermal mass removes the
-// steady-state constant-mode singularity. The fixed-step API is complemented
-// by the experimental fixed-mesh adaptive step-doubling API in
-// adaptive_heat_3d.hpp; time-varying conductivity and heat capacity, and
-// phase change remain unsupported.
+// Consistent P1 tetrahedral transient heat integration. Time-varying
+// conductivity and capacity are sampled at both material time levels; the
+// capacity callback uses conservative d(C*T)/dt storage. Unchanged constrained
+// CSR matrices and IC(0) factors are reused exactly. CG receives a warm-start
+// state. The fixed-step API is complemented by the experimental fixed-mesh
+// adaptive step-doubling API in adaptive_heat_3d.hpp; temperature-dependent
+// constitutive laws, phase change and moving meshes remain unsupported.
+
 [[nodiscard]] TransientHeat3DResult solve_transient_heat_3d(
     const TransientHeat3DProblem& problem,
     const TransientHeat3DOptions& options = {}

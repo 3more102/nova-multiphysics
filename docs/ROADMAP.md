@@ -80,7 +80,7 @@ Implemented:
 - 3D P1 tetrahedral adaptive Backward Euler/Crank–Nicolson with accepted-state streaming, once-per-study static FEM preparation, separate full/half system caches and exact-matrix IC(0) factor reuse across repeated time steps.
 - 2D P1/P2 adaptive step-doubling prepares spatial operators once per study, keeps separate full/half dt-dependent base operators, and reuses IC(0) only for identical constrained CSR matrices while reevaluating time-dependent loads and boundary data at each time level.
 - Exact H1 nodal DOF restarts with nonzero physical start times.
-- Spatially varying positive (time-independent) volumetric heat capacity and conductivity.
+- Spatially varying positive volumetric heat capacity and conductivity; prescribed time-varying scalar/tensor conductivity and volumetric capacity in the 3D transient heat path.
 - Time-dependent volumetric heating, essential Dirichlet temperatures, Neumann outward heat fluxes, and Robin ambient convection.
 - Validated, mutually exclusive exterior-edge boundary assignment; other edges insulated by default.
 - Integrated discrete heat budget with Dirichlet reaction contributions.
@@ -88,7 +88,7 @@ Implemented:
 - Cooling plate, convective boundary-flux, and adaptive time-step example executables.
 
 Remaining:
-- Nonlinear temperature-dependent constitutive properties and time-dependent materials.
+- Nonlinear temperature-dependent constitutive properties; time-dependent material support beyond the 3D transient heat path.
 - Broader global temporal error estimation for adaptive step-doubling.
 - Independently recovered normal heat fluxes and physical energy-balance cross-checks.
 - Large-scale and distorted-mesh verification against independent solvers.
@@ -112,9 +112,10 @@ Implemented:
 - Analytical single-mode time-step refinement verifies first-order Backward Euler and second-order Crank–Nicolson with nonzero start time and per-step energy closure.
 - Gmsh MSH 2.2 and 4.1 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
 - Time-dependent 3D Dirichlet nodal/face values, Neumann face fluxes, and Robin transfer/ambient data, with Backward Euler endpoint sampling and Crank–Nicolson endpoint operator/load integration.
+- Time-dependent 3D scalar/tensor conductivity and volumetric capacity, with conservative enthalpy storage, endpoint-consistent Backward Euler/Crank–Nicolson operators, adaptive step-doubling support and energy-budget closure.
 
 Remaining:
-- Time-varying 3D material properties and broader adaptive temporal-error estimators.
+- Spatial error-driven refinement coupled to local tetrahedral refinement and mesh transfer; broader adaptive temporal-error estimators.
 - Gmsh binary and higher-order element import, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 

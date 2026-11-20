@@ -13,6 +13,9 @@ namespace nova::fem::detail {
 struct PreparedTransientHeat3D {
     const TetrahedralMesh3D* mesh{};
     ScalarField3DTime time_dependent_source;
+    ScalarField3DTime time_dependent_diffusivity;
+    SymmetricTensorField3DTime time_dependent_diffusivity_tensor;
+    ScalarField3DTime time_dependent_volumetric_capacity;
     std::vector<double> element_jacobians;
     std::vector<bool> constrained;
     std::vector<std::vector<ScalarField3DTime>> time_dependent_prescribed;
@@ -41,6 +44,15 @@ struct PreparedTransientHeat3D {
     std::vector<double> initial_state;
 };
 
+struct TransientHeat3DMaterialState {
+    linalg::CsrMatrix mass;
+    // Static material path: conductivity plus static Robin. Dynamic
+    // conductivity path: conductivity only; static Robin is combined by the
+    // step-operator builder after evaluating the time-level material matrix.
+    linalg::CsrMatrix stiffness;
+    std::vector<double> capacity_weights;
+};
+
 struct TransientHeat3DStepOperators {
     linalg::CsrMatrix lhs;
     linalg::CsrMatrix rhs_operator;
@@ -61,6 +73,10 @@ struct TransientHeat3DStepCache {
     // equality lets ambient-only changes reuse both operators and IC(0).
     std::optional<linalg::CsrMatrix> previous_time_dependent_robin;
     std::optional<linalg::CsrMatrix> next_time_dependent_robin;
+    std::optional<linalg::CsrMatrix> previous_material_mass;
+    std::optional<linalg::CsrMatrix> next_material_mass;
+    std::optional<linalg::CsrMatrix> previous_material_stiffness;
+    std::optional<linalg::CsrMatrix> next_material_stiffness;
     std::size_t operator_builds{};
 };
 

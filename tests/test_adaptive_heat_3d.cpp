@@ -505,3 +505,57 @@ NOVA_TEST(adaptive_heat_3d_time_dependent_neumann_uses_full_and_half_time_grids)
                           expected_energy, 2.0e-9);
     }
 }
+
+
+NOVA_TEST(adaptive_heat_3d_time_dependent_materials_match_fixed_half_step_history) {
+    auto problem = tetra_problem();
+    problem.diffusion.cell_diffusivity.clear();
+    problem.diffusion.cell_diffusivity_tensors.clear();
+    problem.diffusion.diffusivity = {};
+    problem.diffusion.diffusivity_tensor = {};
+    problem.diffusion.source = {};
+    problem.diffusion.cell_source.clear();
+    problem.diffusion.dirichlet_constraints = {
+        {0U,0.0}, {1U,0.0}, {2U,0.0}
+    };
+    problem.volumetric_capacity = {};
+    problem.cell_volumetric_capacity.clear();
+    problem.time_dependent_diffusivity =
+        [](double, double, double, double time) { return 2.0 + time; };
+    problem.time_dependent_volumetric_capacity =
+        [](double, double, double, double time) { return 2.0 + time; };
+    problem.initial_temperature = {0.0, 0.0, 0.0, 10.0};
+
+    AdaptiveHeat3DOptions adaptive_options;
+    adaptive_options.scheme = TransientHeat3DScheme::CrankNicolson;
+    adaptive_options.start_time = 0.3;
+    adaptive_options.end_time = 0.5;
+    adaptive_options.initial_step = 0.1;
+    adaptive_options.min_step = 0.1;
+    adaptive_options.max_step = 0.1;
+    adaptive_options.absolute_tolerance = 1.0e6;
+    adaptive_options.relative_tolerance = 0.0;
+    adaptive_options.solver_options.relative_tolerance = 1.0e-13;
+    adaptive_options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::Jacobi;
+    const auto adaptive = solve_adaptive_heat_3d(problem, adaptive_options);
+    NOVA_REQUIRE(adaptive.accepted_steps == 2U);
+    NOVA_REQUIRE(adaptive.rejected_steps == 0U);
+    NOVA_REQUIRE_NEAR(adaptive.final_time, 0.5, 2.0e-14);
+    for (const auto& diagnostic : adaptive.diagnostics) {
+        NOVA_REQUIRE_NEAR(diagnostic.balance_residual, 0.0, 3.0e-10);
+    }
+
+    TransientHeat3DOptions fixed_options;
+    fixed_options.scheme = TransientHeat3DScheme::CrankNicolson;
+    fixed_options.start_time = 0.3;
+    fixed_options.time_step = 0.05;
+    fixed_options.steps = 4U;
+    fixed_options.solver_options = adaptive_options.solver_options;
+    const auto fixed = solve_transient_heat_3d(problem, fixed_options);
+    NOVA_REQUIRE_NEAR(
+        adaptive.temperature[3], fixed.temperature[3], 2.0e-11);
+    NOVA_REQUIRE_NEAR(
+        adaptive.diagnostics.back().heat_content,
+        fixed.diagnostics.back().heat_content, 2.0e-11);
+}

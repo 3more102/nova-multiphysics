@@ -1,11 +1,11 @@
 # Adaptive transient 3D heat (experimental)
 
 `nova/fem/adaptive_heat_3d.hpp` adds **fixed-mesh temporal adaptivity** to
-NOVA's existing consistent-mass P1 tetrahedral transient solver. Conductivity
-and heat capacity remain **time-independent**. Additive time-dependent
-volumetric sources, Dirichlet nodal/face values, Neumann face fluxes and Robin
-transfer/ambient data are sampled consistently by both full-step and
-half-step trials.
+NOVA's consistent-mass P1 tetrahedral transient solver. Conductivity and
+volumetric capacity may be static or prescribed time-dependent scalar/tensor
+fields. Time-dependent volumetric sources, Dirichlet nodal/face values,
+Neumann face fluxes and Robin transfer/ambient data are sampled consistently
+by both full-step and half-step trials.
 
 ## API
 
@@ -34,6 +34,15 @@ static spatial and cell sources. Backward Euler evaluates the source at each
 substep's new time; Crank–Nicolson averages the source vectors at both endpoints.
 The full-step estimate and the two half-step estimate therefore sample the
 same physical source history at their respective time grids.
+
+Time-dependent scalar conductivity, SPD tensor conductivity and volumetric
+capacity callbacks are evaluated at the start and end of each trial substep.
+Backward Euler uses the old capacity matrix on the old state and the new
+material operators implicitly; Crank–Nicolson uses both endpoint matrices.
+When capacity varies, storage is conservative, `d(C*T)/dt`, and the heat
+content at each endpoint is evaluated with that endpoint's capacity matrix.
+The full-step and two-half-step estimates therefore use identical material
+time-level semantics.
 
 Time-dependent Dirichlet constraints and faces are evaluated at the study's
 physical start time and at each substep endpoint. Time-dependent Neumann face
@@ -84,25 +93,22 @@ boundary restart, invalid control rejection, the maximum-attempt gate,
 accepted-only observer ordering, initial Dirichlet projection, observer
 exception propagation, repeated-dt operator/factor reuse and cache rebuilds
 when the controller changes the time step. `tests/test_transient_heat_3d.cpp`
-also verifies the time-dependent Robin endpoint matrices, ambient loads,
-closed-form one-free-DOF updates, per-step energy closure and adaptive use.
+also verifies time-dependent Robin endpoint matrices, dynamic scalar/tensor
+conductivity, dynamic capacity, conservative energy closure and BE/CN temporal
+convergence.
 
 ## Assembly and factor reuse
 
-The adaptive study prepares the validated mesh topology, static material
-operators, consistent mass/stiffness/static-Robin matrices, static loads and
-Dirichlet data once. Time-dependent source and Neumann loads are evaluated at
-the temporal quadrature points of each full or half-step trial. Dynamic Robin
-matrices and ambient loads are evaluated at the same physical endpoint times
-as the corresponding trial. The transfer matrix participates in the left- or
-right-hand-side operator; the ambient contribution is a load.
-It keeps separate full-step and half-step system caches because their time-step
-sizes differ. Repeated trials with an identical `dt` and identical previous/
-next Robin matrices reuse the corresponding constrained CSR operators; a
-changed `dt` or transfer matrix rebuilds that cache. Each slot also owns a
-`CachedConjugateGradient` instance. IC(0) factors are reused only when the
-complete constrained CSR matrix is exactly identical; a changed matrix
-triggers a new factorization. The result reports
+The adaptive study prepares validated mesh topology, static material
+operators, static loads and Dirichlet data once. Dynamic conductivity and
+capacity matrices are integrated at the material time levels of each full or
+half-step trial. Time-dependent source and Neumann loads are evaluated at the
+temporal quadrature points; dynamic Robin matrices and ambient loads are
+evaluated at the same physical endpoint times. Separate full-step and
+half-step caches compare the previous/next mass and conductivity matrices,
+Robin matrices, and `dt` exactly before reusing constrained CSR operators.
+A changed material matrix rebuilds the affected operator; IC(0) is rebuilt
+only if the complete constrained CSR system changes. The result reports
 `full_step_operator_builds`, `half_step_operator_builds`,
 `full_step_ic0_factor_builds` and `half_step_ic0_factor_builds` so applications
 and regression tests can observe this behavior. IC(0) build counters remain

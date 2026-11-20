@@ -131,11 +131,37 @@ PreparedTransientHeat3D prepare_transient_heat_3d(
     const std::size_t n = mesh.nodes.size();
     const bool spatial_capacity = static_cast<bool>(problem.volumetric_capacity);
     const bool cell_capacity = !problem.cell_volumetric_capacity.empty();
-    if (spatial_capacity == cell_capacity) {
+    const bool time_dependent_capacity =
+        static_cast<bool>(problem.time_dependent_volumetric_capacity);
+    if (time_dependent_capacity) {
+        if (spatial_capacity || cell_capacity) {
+            throw std::invalid_argument(
+                "Time-dependent capacity cannot be combined with static capacity.");
+        }
+    } else if (spatial_capacity == cell_capacity) {
         throw std::invalid_argument("Choose exactly one transient 3D capacity representation.");
     }
     if (cell_capacity && problem.cell_volumetric_capacity.size() != mesh.elements.size()) {
         throw std::invalid_argument("Transient 3D cell capacity length mismatch.");
+    }
+    const bool time_dependent_scalar_conductivity =
+        static_cast<bool>(problem.time_dependent_diffusivity);
+    const bool time_dependent_tensor_conductivity =
+        static_cast<bool>(problem.time_dependent_diffusivity_tensor);
+    if (time_dependent_scalar_conductivity && time_dependent_tensor_conductivity) {
+        throw std::invalid_argument(
+            "Select time-dependent scalar or tensor conductivity, not both.");
+    }
+    const bool time_dependent_conductivity =
+        time_dependent_scalar_conductivity || time_dependent_tensor_conductivity;
+    const bool static_conductivity =
+        static_cast<bool>(diffusion.diffusivity) ||
+        static_cast<bool>(diffusion.diffusivity_tensor) ||
+        !diffusion.cell_diffusivity.empty() ||
+        !diffusion.cell_diffusivity_tensors.empty();
+    if (time_dependent_conductivity && static_conductivity) {
+        throw std::invalid_argument(
+            "Time-dependent conductivity cannot be combined with static conductivity.");
     }
     if (diffusion.cell_source.size() != 0U &&
         diffusion.cell_source.size() != mesh.elements.size()) {
@@ -153,10 +179,18 @@ PreparedTransientHeat3D prepare_transient_heat_3d(
         throw std::invalid_argument("Transient 3D initial temperature length mismatch.");
     }
 
-    const DiffusionMaterials3D materials(diffusion);
+    std::optional<DiffusionMaterials3D> static_materials;
+    if (!time_dependent_conductivity) {
+        static_materials.emplace(diffusion);
+    }
     PreparedTransientHeat3D prepared;
     prepared.mesh = &mesh;
     prepared.time_dependent_source = problem.time_dependent_source;
+    prepared.time_dependent_diffusivity = problem.time_dependent_diffusivity;
+    prepared.time_dependent_diffusivity_tensor =
+        problem.time_dependent_diffusivity_tensor;
+    prepared.time_dependent_volumetric_capacity =
+        problem.time_dependent_volumetric_capacity;
     if (prepared.time_dependent_source) {
         prepared.element_jacobians.reserve(mesh.elements.size());
     }
@@ -282,24 +316,91 @@ PreparedTransientHeat3D prepare_transient_heat_3d(
         const auto& cell = mesh.elements[element];
         const auto basis = evaluate_tetrahedron_p1_physical_gradients_3d(mesh, element);
         if (prepared.time_dependent_source) {
-            const double volume_jacobian = std::abs(basis.signed_jacobian_determinant);
-            if (!std::isfinite(volume_jacobian) || !(volume_jacobian > 0.0)) {
+            const double jacobian = std::abs(basis.signed_jacobian_determinant);
+            if (!std::isfinite(jacobian) || !(jacobian > 0.0)) {
                 throw std::overflow_error("Transient 3D element volume is not representable.");
             }
-            prepared.element_jacobians.push_back(volume_jacobian);
+            prepared.element_jacobians.push_back(jacobian);
         }
         std::array<std::array<double, 4>, 4> local_mass{};
         std::array<double, 4> local_source{};
         const double extra_source =
             diffusion.cell_source.empty() ? 0.0 : diffusion.cell_source[element];
-        const auto local_stiffness = integrate_p1_volume_3d(
-            mesh, cell, basis, materials.on_cell(element),
-            [&](const Point3D& point, const auto& shape, double weight) {
-                const double capacity = cell_capacity
-                    ? problem.cell_volumetric_capacity[element]
-                    : positive(problem.volumetric_capacity(
-                                   point.x, point.y, point.z),
-                               "Volumetric heat capacity");
+        if (!time_dependent_conductivity) {
+            // Keep the established static-material integration path unchanged.
+            const auto local_stiffness = integrate_p1_volume_3d(
+                mesh, cell, basis, static_materials->on_cell(element),
+                [&](const Point3D& point, const auto& shape, double weight) {
+                    if (!time_dependent_capacity) {
+                        const double capacity = cell_capacity
+                            ? problem.cell_volumetric_capacity[element]
+                            : positive(problem.volumetric_capacity(
+                                           point.x, point.y, point.z),
+                                       "Volumetric heat capacity");
+                        for (std::size_t i = 0; i < 4; ++i) {
+                            for (std::size_t j = 0; j < 4; ++j) {
+                                local_mass[i][j] += capacity * shape[i] * shape[j] * weight;
+                            }
+                        }
+                    }
+                    const double spatial_source = diffusion.source
+                        ? diffusion.source(point.x, point.y, point.z) : 0.0;
+                    if (!std::isfinite(spatial_source)) {
+                        throw std::invalid_argument("Transient 3D source must be finite.");
+                    }
+                    const double source = spatial_source + extra_source;
+                    if (!std::isfinite(source)) {
+                        throw std::overflow_error("Transient 3D combined source overflowed.");
+                    }
+                    for (std::size_t i = 0; i < 4; ++i) {
+                        local_source[i] += source * shape[i] * weight;
+                    }
+                });
+            for (std::size_t i = 0; i < 4; ++i) {
+                for (std::size_t j = 0; j < i; ++j) {
+                    local_mass[j][i] = local_mass[i][j];
+                }
+                prepared.volume_load[cell[i]] += local_source[i];
+                if (!std::isfinite(prepared.volume_load[cell[i]])) {
+                    throw std::overflow_error("Transient 3D source load overflowed.");
+                }
+                for (std::size_t j = 0; j < 4; ++j) {
+                    if (!std::isfinite(local_stiffness[i][j])) {
+                        throw std::overflow_error("Transient 3D stiffness matrix overflowed.");
+                    }
+                    stiffness_entries.push_back(
+                        {cell[i], cell[j], local_stiffness[i][j]});
+                    if (!time_dependent_capacity) {
+                        if (!std::isfinite(local_mass[i][j])) {
+                            throw std::overflow_error("Transient 3D mass matrix overflowed.");
+                        }
+                        mass_entries.push_back({cell[i], cell[j], local_mass[i][j]});
+                    }
+                }
+            }
+        } else {
+            // With dynamic conductivity only the static mass/source terms are
+            // prepared here; K(x,y,z,t) is assembled at each time level below.
+            const double jacobian = std::abs(basis.signed_jacobian_determinant);
+            if (!std::isfinite(jacobian) || !(jacobian > 0.0)) {
+                throw std::overflow_error("Transient 3D element volume is not representable.");
+            }
+            for (const auto& quadrature : tetrahedron_degree_two_quadrature) {
+                const auto point = simplex_point(mesh, cell, quadrature.shape);
+                const double weight = jacobian * quadrature.weight;
+                if (!time_dependent_capacity) {
+                    const double capacity = cell_capacity
+                        ? problem.cell_volumetric_capacity[element]
+                        : positive(problem.volumetric_capacity(
+                                       point.x, point.y, point.z),
+                                   "Volumetric heat capacity");
+                    for (std::size_t i = 0; i < 4; ++i) {
+                        for (std::size_t j = 0; j < 4; ++j) {
+                            local_mass[i][j] +=
+                                capacity * quadrature.shape[i] * quadrature.shape[j] * weight;
+                        }
+                    }
+                }
                 const double spatial_source = diffusion.source
                     ? diffusion.source(point.x, point.y, point.z) : 0.0;
                 if (!std::isfinite(spatial_source)) {
@@ -310,25 +411,25 @@ PreparedTransientHeat3D prepare_transient_heat_3d(
                     throw std::overflow_error("Transient 3D combined source overflowed.");
                 }
                 for (std::size_t i = 0; i < 4; ++i) {
-                    local_source[i] += source * shape[i] * weight;
+                    local_source[i] += source * quadrature.shape[i] * weight;
+                }
+            }
+            for (std::size_t i = 0; i < 4; ++i) {
+                for (std::size_t j = 0; j < i; ++j) {
+                    local_mass[j][i] = local_mass[i][j];
+                }
+                prepared.volume_load[cell[i]] += local_source[i];
+                if (!std::isfinite(prepared.volume_load[cell[i]])) {
+                    throw std::overflow_error("Transient 3D source load overflowed.");
+                }
+                if (!time_dependent_capacity) {
                     for (std::size_t j = 0; j < 4; ++j) {
-                        local_mass[i][j] += capacity * shape[i] * shape[j] * weight;
+                        if (!std::isfinite(local_mass[i][j])) {
+                            throw std::overflow_error("Transient 3D mass matrix overflowed.");
+                        }
+                        mass_entries.push_back({cell[i], cell[j], local_mass[i][j]});
                     }
                 }
-            }
-        );
-        for (std::size_t i = 0; i < 4; ++i) {
-            prepared.volume_load[cell[i]] += local_source[i];
-            if (!std::isfinite(prepared.volume_load[cell[i]])) {
-                throw std::overflow_error("Transient 3D source load overflowed.");
-            }
-            for (std::size_t j = 0; j < 4; ++j) {
-                if (!std::isfinite(local_mass[i][j]) ||
-                    !std::isfinite(local_stiffness[i][j])) {
-                    throw std::overflow_error("Transient 3D element matrix overflowed.");
-                }
-                mass_entries.push_back({cell[i], cell[j], local_mass[i][j]});
-                stiffness_entries.push_back({cell[i], cell[j], local_stiffness[i][j]});
             }
         }
     }
@@ -408,44 +509,64 @@ void prepare_step_operators(
     const PreparedTransientHeat3D& prepared,
     double time_step,
     TransientHeat3DScheme scheme,
+    const TransientHeat3DMaterialState& previous_material,
+    const TransientHeat3DMaterialState& next_material,
     TransientHeat3DStepCache& cache,
     const CsrMatrix* previous_time_dependent_robin,
     const CsrMatrix* next_time_dependent_robin
 ) {
     const auto matches_cached_matrix = [](
         const std::optional<CsrMatrix>& cached,
-        const CsrMatrix* candidate
+        const CsrMatrix& candidate
     ) {
-        if (candidate == nullptr) return !cached.has_value();
-        return cached.has_value() && cached->exactly_equal(*candidate);
+        return cached.has_value() && cached->exactly_equal(candidate);
     };
     if (cache.operators && cache.time_step == time_step &&
         cache.scheme == scheme &&
-        matches_cached_matrix(cache.previous_time_dependent_robin,
-                              previous_time_dependent_robin) &&
-        matches_cached_matrix(cache.next_time_dependent_robin,
-                              next_time_dependent_robin)) {
+        matches_cached_matrix(cache.previous_material_mass, previous_material.mass) &&
+        matches_cached_matrix(cache.next_material_mass, next_material.mass) &&
+        matches_cached_matrix(cache.previous_material_stiffness, previous_material.stiffness) &&
+        matches_cached_matrix(cache.next_material_stiffness, next_material.stiffness) &&
+        (previous_time_dependent_robin == nullptr
+            ? !cache.previous_time_dependent_robin.has_value()
+            : matches_cached_matrix(cache.previous_time_dependent_robin,
+                                    *previous_time_dependent_robin)) &&
+        (next_time_dependent_robin == nullptr
+            ? !cache.next_time_dependent_robin.has_value()
+            : matches_cached_matrix(cache.next_time_dependent_robin,
+                                    *next_time_dependent_robin))) {
         return;
     }
 
     const double theta =
         scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
-    CsrMatrix lhs_stiffness = prepared.stiffness;
+    const bool dynamic_conductivity =
+        static_cast<bool>(prepared.time_dependent_diffusivity) ||
+        static_cast<bool>(prepared.time_dependent_diffusivity_tensor);
+    CsrMatrix lhs_stiffness = next_material.stiffness;
+    CsrMatrix rhs_stiffness = previous_material.stiffness;
+    if (dynamic_conductivity && prepared.robin.non_zeros() != 0U) {
+        // Dynamic material states contain K(t) only; add static Robin terms
+        // separately. The legacy static path already includes static Robin.
+        lhs_stiffness = CsrMatrix::linear_combination(
+            lhs_stiffness, 1.0, prepared.robin, 1.0);
+        rhs_stiffness = CsrMatrix::linear_combination(
+            rhs_stiffness, 1.0, prepared.robin, 1.0);
+    }
     if (next_time_dependent_robin != nullptr) {
         lhs_stiffness = CsrMatrix::linear_combination(
-            prepared.stiffness, 1.0, *next_time_dependent_robin, 1.0);
+            lhs_stiffness, 1.0, *next_time_dependent_robin, 1.0);
     }
-    CsrMatrix rhs_stiffness = prepared.stiffness;
     if (previous_time_dependent_robin != nullptr) {
         rhs_stiffness = CsrMatrix::linear_combination(
-            prepared.stiffness, 1.0, *previous_time_dependent_robin, 1.0);
+            rhs_stiffness, 1.0, *previous_time_dependent_robin, 1.0);
     }
 
     TransientHeat3DStepOperators next;
     next.lhs = CsrMatrix::linear_combination(
-        prepared.mass, 1.0, lhs_stiffness, theta * time_step);
+        next_material.mass, 1.0, lhs_stiffness, theta * time_step);
     next.rhs_operator = CsrMatrix::linear_combination(
-        prepared.mass, 1.0, rhs_stiffness, -(1.0 - theta) * time_step);
+        previous_material.mass, 1.0, rhs_stiffness, -(1.0 - theta) * time_step);
 
     const std::size_t n = prepared.initial_state.size();
     std::vector<Triplet> free_entries;
@@ -478,6 +599,10 @@ void prepare_step_operators(
     cache.operators = std::move(next);
     cache.time_step = time_step;
     cache.scheme = scheme;
+    cache.previous_material_mass = previous_material.mass;
+    cache.next_material_mass = next_material.mass;
+    cache.previous_material_stiffness = previous_material.stiffness;
+    cache.next_material_stiffness = next_material.stiffness;
     if (previous_time_dependent_robin != nullptr) {
         cache.previous_time_dependent_robin = *previous_time_dependent_robin;
     } else {
@@ -490,9 +615,7 @@ void prepare_step_operators(
     }
     ++cache.operator_builds;
 }
-
-
-
+ 
 std::vector<double> evaluate_time_dependent_source_load(
     const PreparedTransientHeat3D& prepared,
     double time
@@ -648,6 +771,144 @@ TimeDependentRobinEvaluation3D evaluate_time_dependent_robin(
     };
 }
 
+TransientHeat3DMaterialState evaluate_time_dependent_materials(
+    const PreparedTransientHeat3D& prepared,
+    double time
+) {
+    if (!std::isfinite(time) || prepared.mesh == nullptr) {
+        throw std::logic_error(
+            "Transient 3D time-dependent material preparation is inconsistent.");
+    }
+
+    TransientHeat3DMaterialState state{
+        prepared.mass, prepared.stiffness, prepared.capacity_weights
+    };
+    const bool dynamic_capacity =
+        static_cast<bool>(prepared.time_dependent_volumetric_capacity);
+    const bool dynamic_conductivity =
+        static_cast<bool>(prepared.time_dependent_diffusivity) ||
+        static_cast<bool>(prepared.time_dependent_diffusivity_tensor);
+    if (!dynamic_capacity && !dynamic_conductivity) {
+        return state;
+    }
+
+    SpatialScalarField3D scalar_field;
+    SymmetricTensorField3D tensor_field;
+    if (prepared.time_dependent_diffusivity) {
+        const auto field = prepared.time_dependent_diffusivity;
+        scalar_field = [field, time](double x, double y, double z) {
+            return field(x, y, z, time);
+        };
+    }
+    if (prepared.time_dependent_diffusivity_tensor) {
+        const auto field = prepared.time_dependent_diffusivity_tensor;
+        tensor_field = [field, time](double x, double y, double z) {
+            return field(x, y, z, time);
+        };
+    }
+    std::optional<ConductivityField3D> conductivity;
+    if (dynamic_conductivity) {
+        conductivity.emplace(ConductivityField3D{scalar_field, tensor_field});
+        conductivity->validate();
+    }
+
+    const auto& mesh = *prepared.mesh;
+    const std::size_t n = prepared.initial_state.size();
+    std::vector<Triplet> mass_entries;
+    std::vector<Triplet> stiffness_entries;
+    if (dynamic_capacity && mesh.elements.size() > mass_entries.max_size() / 16U) {
+        throw std::length_error(
+            "Transient 3D time-dependent mass matrix exceeds storage limits.");
+    }
+    if (dynamic_conductivity &&
+        mesh.elements.size() > stiffness_entries.max_size() / 16U) {
+        throw std::length_error(
+            "Transient 3D time-dependent stiffness matrix exceeds storage limits.");
+    }
+    if (dynamic_capacity) mass_entries.reserve(mesh.elements.size() * 16U);
+    if (dynamic_conductivity) stiffness_entries.reserve(mesh.elements.size() * 16U);
+
+    for (std::size_t element = 0; element < mesh.elements.size(); ++element) {
+        const auto& cell = mesh.elements[element];
+        const auto basis = evaluate_tetrahedron_p1_physical_gradients_3d(mesh, element);
+        std::array<std::array<double, 4>, 4> local_mass{};
+        P1Matrix3D local_stiffness{};
+        if (conductivity) {
+            local_stiffness = integrate_p1_volume_3d(
+                mesh, cell, basis, *conductivity,
+                [&](const Point3D& point, const auto& shape, double weight) {
+                    if (dynamic_capacity) {
+                        const double capacity = positive(
+                            prepared.time_dependent_volumetric_capacity(
+                                point.x, point.y, point.z, time),
+                            "Time-dependent volumetric heat capacity");
+                        for (std::size_t i = 0; i < 4; ++i) {
+                            for (std::size_t j = 0; j < 4; ++j) {
+                                local_mass[i][j] += capacity * shape[i] * shape[j] * weight;
+                            }
+                        }
+                    }
+                });
+        } else if (dynamic_capacity) {
+            const double jacobian = std::abs(basis.signed_jacobian_determinant);
+            if (!std::isfinite(jacobian) || !(jacobian > 0.0)) {
+                throw std::overflow_error(
+                    "Transient 3D material element volume is not representable.");
+            }
+            for (const auto& quadrature : tetrahedron_degree_two_quadrature) {
+                const auto point = simplex_point(mesh, cell, quadrature.shape);
+                const double capacity = positive(
+                    prepared.time_dependent_volumetric_capacity(
+                        point.x, point.y, point.z, time),
+                    "Time-dependent volumetric heat capacity");
+                const double weight = jacobian * quadrature.weight;
+                for (std::size_t i = 0; i < 4; ++i) {
+                    for (std::size_t j = 0; j < 4; ++j) {
+                        local_mass[i][j] +=
+                            capacity * quadrature.shape[i] * quadrature.shape[j] * weight;
+                    }
+                }
+            }
+        }
+        if (dynamic_capacity) {
+            for (std::size_t i = 0; i < 4; ++i) {
+                for (std::size_t j = 0; j < i; ++j) {
+                    local_mass[j][i] = local_mass[i][j];
+                }
+            }
+        }
+        for (std::size_t i = 0; i < 4; ++i) {
+            for (std::size_t j = 0; j < 4; ++j) {
+                if (dynamic_capacity) {
+                    if (!std::isfinite(local_mass[i][j])) {
+                        throw std::overflow_error(
+                            "Transient 3D time-dependent mass matrix overflowed.");
+                    }
+                    mass_entries.push_back({cell[i], cell[j], local_mass[i][j]});
+                }
+                if (dynamic_conductivity) {
+                    if (!std::isfinite(local_stiffness[i][j])) {
+                        throw std::overflow_error(
+                            "Transient 3D time-dependent stiffness matrix overflowed.");
+                    }
+                    stiffness_entries.push_back(
+                        {cell[i], cell[j], local_stiffness[i][j]});
+                }
+            }
+        }
+    }
+
+    if (dynamic_capacity) {
+        state.mass = CsrMatrix::from_triplets(n, n, mass_entries);
+        state.capacity_weights = state.mass.multiply(
+            std::vector<double>(n, 1.0));
+    }
+    if (dynamic_conductivity) {
+        state.stiffness = CsrMatrix::from_triplets(n, n, stiffness_entries);
+    }
+    return state;
+}
+
 } // namespace
 
 TransientHeat3DResult solve_prepared_transient_heat_3d(
@@ -677,6 +938,8 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
     const double dt = options.time_step;
     const double theta =
         options.scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
+    auto previous_material =
+        evaluate_time_dependent_materials(prepared, options.start_time);
     std::vector<double> previous_time_source;
     if (prepared.time_dependent_source && theta < 1.0) {
         previous_time_source = evaluate_time_dependent_source_load(
@@ -717,8 +980,10 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
         if (!prepared.time_dependent_robin_faces.empty()) {
             next_time_robin = evaluate_time_dependent_robin(prepared, step_time);
         }
+        auto next_material =
+            evaluate_time_dependent_materials(prepared, step_time);
         prepare_step_operators(
-            prepared, dt, options.scheme, cache,
+            prepared, dt, options.scheme, previous_material, next_material, cache,
             previous_time_robin ? &previous_time_robin->matrix : nullptr,
             next_time_robin ? &next_time_robin->matrix : nullptr);
         const auto& operators = *cache.operators;
@@ -865,7 +1130,7 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
         if (!std::isfinite(diagnostic.time)) {
             throw std::overflow_error("Transient 3D time overflowed.");
         }
-        diagnostic.heat_content = dot(prepared.capacity_weights, next);
+        diagnostic.heat_content = dot(next_material.capacity_weights, next);
         diagnostic.source_energy = dt * (
             sum(prepared.volume_load) + sum(weighted_time_source));
         if (!std::isfinite(diagnostic.source_energy)) {
@@ -885,7 +1150,7 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
             }
         }
         diagnostic.balance_residual =
-            diagnostic.heat_content - dot(prepared.capacity_weights, state) -
+            diagnostic.heat_content - dot(previous_material.capacity_weights, state) -
             diagnostic.source_energy - diagnostic.neumann_energy -
             diagnostic.robin_energy - diagnostic.dirichlet_energy;
         if (!std::isfinite(diagnostic.source_energy) ||
@@ -905,6 +1170,7 @@ TransientHeat3DResult solve_prepared_transient_heat_3d(
         if (theta < 1.0 && next_time_robin) {
             previous_time_robin = std::move(next_time_robin);
         }
+        previous_material = std::move(next_material);
         state = std::move(next);
         result.diagnostics.push_back(diagnostic);
         result.linear_solvers.push_back(std::move(solved));
