@@ -1,4 +1,5 @@
 #include "nova/fem/transient_heat_3d.hpp"
+#include "transient_heat_3d_internal.hpp"
 
 #include "nova/fem/simplex_quadrature.hpp"
 #include "nova/linalg/conjugate_gradient.hpp"
@@ -68,8 +69,9 @@ double dot(const std::vector<double>& a, const std::vector<double>& b) {
 
 } // namespace
 
-TransientHeat3DResult solve_transient_heat_3d(
-    const TransientHeat3DProblem& problem, const TransientHeat3DOptions& options
+TransientHeat3DResult solve_transient_heat_3d_with_cache(
+    const TransientHeat3DProblem& problem, const TransientHeat3DOptions& options,
+    nova::linalg::CachedConjugateGradient& cached_cg
 ) {
     if (!std::isfinite(options.time_step) || !(options.time_step > 0.0) ||
         !std::isfinite(options.start_time) || options.steps == 0U) {
@@ -305,10 +307,6 @@ TransientHeat3DResult solve_transient_heat_3d(
     result.linear_solvers.reserve(options.steps);
     result.diagnostics.reserve(options.steps);
 
-    // The constrained system is constant for this time-independent 3D model.
-    // Keep its IC(0) factor alive across every step and warm-started RHS.
-    nova::linalg::CachedConjugateGradient cached_cg;
-
     // Publish the constraint-projected initial field as frame zero.
     if (options.on_step) options.on_step(0U, options.start_time, state);
 
@@ -394,6 +392,13 @@ TransientHeat3DResult solve_transient_heat_3d(
     }
     result.temperature = std::move(state);
     return result;
+}
+
+TransientHeat3DResult solve_transient_heat_3d(
+    const TransientHeat3DProblem& problem, const TransientHeat3DOptions& options
+) {
+    nova::linalg::CachedConjugateGradient cache;
+    return solve_transient_heat_3d_with_cache(problem, options, cache);
 }
 
 } // namespace nova::fem

@@ -1,3 +1,4 @@
+#include "nova/fem/adaptive_heat_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
 #include "nova/linalg/csr_matrix.hpp"
@@ -104,6 +105,35 @@ int main() {
         if (std::abs(capacitor.potential[i] - 10.0 * electrostatic.mesh.nodes[i].x) > 1.0e-9)
             return 6;
     }
+    // Exercise the installed adaptive 3D thermal API, including its
+    // independent full/half IC(0) caches and accepted-step solver diagnostics.
+    TransientHeat3DProblem adaptive_problem;
+    adaptive_problem.diffusion.mesh = {
+        {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}},
+        {{0, 1, 2, 3}}
+    };
+    adaptive_problem.diffusion.cell_diffusivity = {1.0};
+    adaptive_problem.diffusion.source = [](double, double, double) { return 8.0; };
+    adaptive_problem.cell_volumetric_capacity = {4.0};
+    adaptive_problem.initial_temperature = {300.0, 300.0, 300.0, 300.0};
+    AdaptiveHeat3DOptions adaptive_options;
+    adaptive_options.end_time = 0.1;
+    adaptive_options.initial_step = 0.1;
+    adaptive_options.min_step = 0.1;
+    adaptive_options.max_step = 0.1;
+    adaptive_options.absolute_tolerance = 1.0e-8;
+    adaptive_options.relative_tolerance = 0.0;
+    adaptive_options.solver_options.preconditioner =
+        nova::linalg::PreconditionerType::IncompleteCholesky0;
+    const auto adaptive = solve_adaptive_heat_3d(adaptive_problem, adaptive_options);
+    if (adaptive.accepted_steps != 1U || adaptive.rejected_steps != 0U ||
+        adaptive.substep_solvers.size() != 2U ||
+        adaptive.full_step_ic0_factor_builds != 1U ||
+        adaptive.half_step_ic0_factor_builds != 1U) return 10;
+    for (const double temperature : adaptive.temperature) {
+        if (std::abs(temperature - 300.2) > 1.0e-8) return 11;
+    }
+
     // Verify the newly installed generic Gmsh importer as an SDK consumer.
     // This minimal MSH 4.1 file has sparse-compatible block records and no
     // physical groups; topology and exterior faces are reconstructed by NOVA.

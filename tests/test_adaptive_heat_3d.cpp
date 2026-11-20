@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "nova/fem/adaptive_heat_3d.hpp"
+#include "nova/linalg/conjugate_gradient.hpp"
 
 #include <cmath>
 #include <limits>
@@ -164,4 +165,54 @@ NOVA_TEST(adaptive_heat_3d_observer_exception_propagates) {
         propagated = std::string(e.what()) == "observer aborted";
     }
     NOVA_REQUIRE(propagated);
+}
+
+
+NOVA_TEST(adaptive_heat_3d_reuses_ic0_factors_and_invalidates_on_step_change) {
+    for (const auto scheme : {TransientHeat3DScheme::BackwardEuler,
+                              TransientHeat3DScheme::CrankNicolson}) {
+        auto p = base_tetra();
+        p.diffusion.dirichlet_constraints.clear();
+        p.diffusion.source = [](double, double, double) { return 2.0; };
+        p.initial_temperature = {10.0, 10.0, 10.0, 10.0};
+
+        AdaptiveHeat3DOptions options;
+        options.scheme = scheme;
+        options.end_time = 0.3;
+        options.initial_step = 0.1;
+        options.min_step = 0.01;
+        options.max_step = 0.1;
+        options.absolute_tolerance = 1.0e-8;
+        options.relative_tolerance = 0.0;
+        options.solver_options.preconditioner =
+            nova::linalg::PreconditionerType::IncompleteCholesky0;
+        options.solver_options.relative_tolerance = 1.0e-12;
+
+        const auto repeated = solve_adaptive_heat_3d(p, options);
+        NOVA_REQUIRE(repeated.accepted_steps == 3U);
+        NOVA_REQUIRE(repeated.rejected_steps == 0U);
+        NOVA_REQUIRE(repeated.full_step_ic0_factor_builds == 1U);
+        NOVA_REQUIRE(repeated.half_step_ic0_factor_builds == 1U);
+        NOVA_REQUIRE(repeated.substep_solvers.size() == 6U);
+        for (const auto& solver : repeated.substep_solvers) {
+            NOVA_REQUIRE(solver.converged);
+            NOVA_REQUIRE(solver.solution.empty());
+        }
+        for (const double temperature : repeated.temperature) {
+            NOVA_REQUIRE_NEAR(temperature, 10.6, 2.0e-9);
+        }
+
+        // The clipped final interval changes both full- and half-step CSR
+        // coefficients, so each cache must rebuild exactly once.
+        options.end_time = 0.25;
+        const auto clipped = solve_adaptive_heat_3d(p, options);
+        NOVA_REQUIRE(clipped.accepted_steps == 3U);
+        NOVA_REQUIRE(clipped.rejected_steps == 0U);
+        NOVA_REQUIRE(clipped.full_step_ic0_factor_builds == 2U);
+        NOVA_REQUIRE(clipped.half_step_ic0_factor_builds == 2U);
+        NOVA_REQUIRE(clipped.substep_solvers.size() == 6U);
+        for (const double temperature : clipped.temperature) {
+            NOVA_REQUIRE_NEAR(temperature, 10.5, 2.0e-9);
+        }
+    }
 }

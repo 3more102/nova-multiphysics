@@ -22,6 +22,12 @@ the Dirichlet-projected initial field (index 0) and accepted macro-step fields
 only. Exceptions propagate. The returned exact nodal field can be supplied
 as `initial_temperature` for restart with `start_time=final_time`.
 
+The result retains two linear-solver diagnostic records per accepted macro
+step (the accepted half-step solves); their solution vectors are omitted to
+avoid duplicating nodal fields. `full_step_ic0_factor_builds` and
+`half_step_ic0_factor_builds` report cumulative factor builds, including
+rejected attempts.
+
 ## Example
 
 ```cpp
@@ -36,14 +42,20 @@ auto result = nova::fem::solve_adaptive_heat_3d(problem, opts);
 
 ## Limitations
 
-This first forward port delegates each full and half step to the existing
-validated fixed-step solver; **the mass/stiffness matrices are currently
-reassembled for each substep**, and no IC(0) factors are shared across
-trials. It is therefore not a performance-optimized adaptive implementation.
-Material coefficients, heat sources and boundary values must be
-time-independent, as required by the underlying solver. The norm controls
-a local step-doubling defect, not a verified global error bound. This is
-not a substitute for mesh adaptivity, independent solver verification,
-or a commercial-grade thermal certification workflow.
+The adaptive driver keeps separate instance-owned `CachedConjugateGradient`
+objects for full-step matrices (`dt`) and half-step matrices (`dt/2`). When
+the exact canonical CSR matrix repeats, its IC(0) factor is reused across
+trials and across the two half steps. A changed step size changes matrix
+coefficients and triggers exact cache invalidation/rebuild. The factor-build
+counters make this behavior observable. Non-IC(0) preconditioners do not build
+these factors.
+
+The mass/stiffness operators and constrained system are still reassembled
+for every trial; only IC(0) factorization is reused. Prepared-operator reuse is
+the next performance target. Materials, heat sources and boundary values
+remain time-independent, as required by the underlying solver. The norm
+controls a local step-doubling defect, not a verified global error bound.
+This remains experimental software, not a substitute for mesh adaptivity,
+independent solver verification or engineering certification.
 
 Reproduce: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel && ctest --test-dir build --output-on-failure`.

@@ -47,6 +47,12 @@ struct AdaptiveHeat3DResult {
     // One energy-budget record per accepted macro-step. Each combines
     // both half steps; heat_content is the endpoint heat content.
     std::vector<TransientHeatStepDiagnostics3D> diagnostics;
+    // Two accepted half-step CG records per accepted macro-step; solution
+    // vectors are omitted because the accepted nodal field is returned once.
+    std::vector<linalg::SolverResult> substep_solvers;
+    // Cumulative factor builds, including rejected trials; zero unless IC(0) is selected.
+    std::size_t full_step_ic0_factor_builds{};
+    std::size_t half_step_ic0_factor_builds{};
 };
 
 // Uses the current, validated fixed-step 3D heat API for every trial.

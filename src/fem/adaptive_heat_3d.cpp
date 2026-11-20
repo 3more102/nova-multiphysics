@@ -1,4 +1,6 @@
 #include "nova/fem/adaptive_heat_3d.hpp"
+#include "nova/linalg/conjugate_gradient.hpp"
+#include "transient_heat_3d_internal.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -86,6 +88,8 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
 ) {
     validate(options);
     AdaptiveHeat3DResult result;
+    nova::linalg::CachedConjugateGradient full_step_cache;
+    nova::linalg::CachedConjugateGradient half_step_cache;
     std::vector<double> state = problem.initial_temperature;
     double time = options.start_time;
     double proposed = std::clamp(options.initial_step, options.min_step, options.max_step);
@@ -126,17 +130,17 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
                 }
             };
         }
-        const auto full = solve_transient_heat_3d(trial, fixed);
+        const auto full = solve_transient_heat_3d_with_cache(trial, fixed, full_step_cache);
         fixed.on_step = {};
 
         // Evaluate each half step from its own exact accepted candidate,
         // not from a CG defect-correction vector.
         trial.initial_temperature = state;
         fixed.time_step = half_dt;
-        const auto first_half = solve_transient_heat_3d(trial, fixed);
+        auto first_half = solve_transient_heat_3d_with_cache(trial, fixed, half_step_cache);
         trial.initial_temperature = first_half.temperature;
         fixed.start_time = first_half.final_time;
-        const auto second_half = solve_transient_heat_3d(trial, fixed);
+        auto second_half = solve_transient_heat_3d_with_cache(trial, fixed, half_step_cache);
 
         const double error = error_ratio(
             state, full.temperature, second_half.temperature, options);
@@ -146,6 +150,12 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
             state = second_half.temperature;
             result.diagnostics.push_back(combine_half_budgets(
                 first_half.diagnostics.at(0), second_half.diagnostics.at(0)));
+            for (auto& solver : first_half.linear_solvers) {
+                result.substep_solvers.push_back(std::move(solver));
+            }
+            for (auto& solver : second_half.linear_solvers) {
+                result.substep_solvers.push_back(std::move(solver));
+            }
             time = dt == remaining ? options.end_time : target;
             ++result.accepted_steps;
             if (options.on_step) options.on_step(result.accepted_steps, time, state);
@@ -162,6 +172,8 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
         factor = std::clamp(factor, 0.2, accepted ? 2.0 : 0.9);
         proposed = std::clamp(dt * factor, options.min_step, options.max_step);
     }
+    result.full_step_ic0_factor_builds = full_step_cache.factor_builds();
+    result.half_step_ic0_factor_builds = half_step_cache.factor_builds();
     result.final_time = time;
     result.temperature = std::move(state);
     return result;

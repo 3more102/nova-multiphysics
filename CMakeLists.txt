@@ -96,6 +96,10 @@ if(NOVA_BUILD_EXAMPLES)
     target_link_libraries(nova_transient_heat_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_transient_heat_3d)
 
+    add_executable(nova_adaptive_heat_3d examples/adaptive_heat_3d/main.cpp)
+    target_link_libraries(nova_adaptive_heat_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_adaptive_heat_3d)
+
     add_executable(nova_gmsh_transient_heat_3d examples/gmsh_transient_heat_3d/main.cpp)
     target_link_libraries(nova_gmsh_transient_heat_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_gmsh_transient_heat_3d)
@@ -234,6 +238,9 @@ if(NOVA_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron41.msh")
         endif()
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
+        add_test(NAME nova_adaptive_heat_3d_smoke COMMAND nova_adaptive_heat_3d)
+        set_tests_properties(nova_adaptive_heat_3d_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "NOVA adaptive 3D tetrahedral heat demonstration")
         add_test(NAME nova_electrostatics_3d_smoke COMMAND nova_electrostatics_3d)
         set_tests_properties(nova_transient_heat_3d_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "NOVA 3D transient heat demonstration")
@@ -280,7 +287,7 @@ if(NOVA_BUILD_EXAMPLES)
     foreach(example IN ITEMS
         nova_poisson_1d nova_diffusion_2d nova_diffusion_3d
         nova_gmsh_diffusion_3d nova_transient_heat_3d
-        nova_gmsh_transient_heat_3d nova_electrostatics_3d nova_transient_heat_2d nova_transient_flux_2d
+        nova_gmsh_transient_heat_3d nova_electrostatics_3d nova_adaptive_heat_3d nova_transient_heat_2d nova_transient_flux_2d
         nova_adaptive_heat_2d nova_nonlinear_diffusion_1d)
         nova_assert_unique_target_sources(${example})
     endforeach()

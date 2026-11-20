@@ -96,6 +96,13 @@ animate temperature over physical time. A validated PVD writer and an optional
 per-step solver observer avoid repeated assembly/solves and avoid retaining
 all intermediate nodal fields when `retain_step_solutions=false`.
 See [3D transient formulation, API example and analytical tests](docs/TRANSIENT_HEAT_3D.md).
+
+An experimental fixed-mesh adaptive 3D driver compares one full step with two
+half steps for Backward Euler or Crank–Nicolson. It streams the projected
+initial field and accepted macro steps, and combines the two accepted energy
+budgets. Separate full/half IC(0) caches reuse factors for identical CSR
+matrices; a changed step size triggers exact cache invalidation. FEM operators
+are still reassembled per trial. See [adaptive 3D heat](docs/ADAPTIVE_HEAT_3D.md).
 The structured-box example is complemented by an imported-mesh CLI. It
 reads Gmsh MSH 2.2 or 4.1 ASCII tetrahedra, maps conductivity, heat capacity, heat sources
 and thermal boundary conditions from physical groups, and streams all solved
@@ -180,9 +187,9 @@ using:
 - Conjugate Gradient and per-step residual/convergence reports.
 - Manufactured-solution convergence and energy-budget regression tests.
 
-Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), and examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating).
+Examples: examples/transient_heat_2d/main.cpp (P2 cooling plate), examples/transient_flux_2d/main.cpp (P2 Crank–Nicolson boundary exchange), examples/adaptive_heat_2d/main.cpp (error-controlled P2 Crank–Nicolson heating), and examples/adaptive_heat_3d/main.cpp (adaptive P1 tetrahedral heating).
 
-Limitations: no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. Adaptive step doubling reassembles the FEM matrices for each trial and is not optimized for large systems. This prototype is not validated for engineering design use.
+Limitations: no temperature-dependent coefficients, adaptive mesh refinement, time integrators above order two, or independently reconstructed Dirichlet normal heat flux. The 2D adaptive controller reassembles its FEM matrices per trial. The 3D controller reuses exact IC(0) factors for unchanged full/half-step matrices, but still reassembles FEM operators per trial. Neither adaptive path is performance-qualified for large systems. This prototype is not validated for engineering design use.
 
 ### Nonlinear 1D diffusion
 The prototype also includes a nonlinear P1 finite-element benchmark:

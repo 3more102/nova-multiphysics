@@ -87,7 +87,7 @@ Implemented:
 
 Remaining:
 - Nonlinear temperature-dependent constitutive properties and time-dependent materials.
-- Optimized adaptive stepping with shared preassembled FEM operators, IC(0) cache sharing across separate step-doubling trials, and a global temporal error estimator.
+- Share preassembled FEM operators across adaptive trials and develop a global temporal error estimator.
 - Independently recovered normal heat fluxes and physical energy-balance cross-checks.
 - Large-scale and distorted-mesh verification against independent solvers.
 - Parameter sweeps and model-level thermal study configuration.
@@ -105,9 +105,10 @@ Implemented:
 - Instance-owned IC(0) factor reuse across identical fixed-step 2D and 3D transient matrices; exact coefficient or sparsity changes trigger factor rebuilds.
 - Analytical single-mode time-step refinement verifies first-order Backward Euler and second-order Crank–Nicolson with nonzero start time and per-step energy closure.
 - Gmsh MSH 2.2 and 4.1 ASCII tagged transient CLI for first-order tetrahedra, physical-group material/source/boundary mapping, and streamed PVD/VTK output with independent Python verification.
+- Fixed-mesh adaptive P1 tetrahedral Backward Euler/Crank–Nicolson step doubling with accepted-only observers, restart-compatible states, combined energy budgets, and separate exact-matrix IC(0) caches for full/half trials.
 
 Remaining:
-- Adaptive 3D time steps and time-varying loads/materials.
+- Preassembled mass/stiffness reuse across adaptive 3D trials; time-varying loads/materials.
 - Gmsh binary and higher-order element import, time-varying loads/materials, and independent cross-solver thermal benchmarks.
 - Coupling to a reusable adaptive spatial-error estimator and mesh-transfer workflow.
 
