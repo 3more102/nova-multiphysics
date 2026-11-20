@@ -1,7 +1,9 @@
 #include "nova/io/thermal_checkpoint_3d.hpp"
 
+#include <charconv>
 #include <cmath>
 #include <iomanip>
+#include <system_error>
 #include <istream>
 #include <limits>
 #include <locale>
@@ -22,8 +24,15 @@ void expect(std::istream& input, const char* label) {
 
 template<typename T>
 T value(std::istream& input, const char* description) {
+    std::string token;
+    if (!(input >> token)) {
+        throw std::invalid_argument(
+            std::string("Invalid 3D thermal checkpoint: cannot read ") + description);
+    }
     T parsed{};
-    if (!(input >> parsed)) {
+    const auto result = std::from_chars(
+        token.data(), token.data() + token.size(), parsed);
+    if (result.ec != std::errc{} || result.ptr != token.data() + token.size()) {
         throw std::invalid_argument(
             std::string("Invalid 3D thermal checkpoint: cannot read ") + description);
     }
