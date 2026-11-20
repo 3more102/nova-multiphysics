@@ -3,6 +3,7 @@
 #include "nova/fem/simplex_quadrature.hpp"
 #include "nova/linalg/conjugate_gradient.hpp"
 #include "p1_integration_3d.hpp"
+#include "transient_heat_3d_internal.hpp"
 
 #include <algorithm>
 #include <array>
@@ -13,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace nova::fem {
 namespace {
@@ -68,41 +70,18 @@ double dot(const std::vector<double>& a, const std::vector<double>& b) {
 
 } // namespace
 
-TransientHeat3DResult solve_transient_heat_3d(
-    const TransientHeat3DProblem& problem, const TransientHeat3DOptions& options
-) {
-    if (!std::isfinite(options.time_step) || !(options.time_step > 0.0) ||
-        !std::isfinite(options.start_time) || options.steps == 0U) {
-        throw std::invalid_argument("Transient 3D time step, start and step count are invalid.");
-    }
-    const double final_time = options.start_time +
-        options.time_step * static_cast<double>(options.steps);
-    if (!std::isfinite(final_time) || !(final_time > options.start_time)) {
-        throw std::invalid_argument("Transient 3D final time must advance and be finite.");
-    }
-    double previous_time = options.start_time;
-    for (std::size_t completed = 0; completed < options.steps; ++completed) {
-        const double step_time = options.start_time +
-            options.time_step * static_cast<double>(completed + 1U);
-        if (!std::isfinite(step_time) || !(step_time > previous_time)) {
-            throw std::invalid_argument(
-                "Transient 3D time step is too small to advance representable physical time.");
-        }
-        previous_time = step_time;
-    }
-    if (options.scheme != TransientHeat3DScheme::BackwardEuler &&
-        options.scheme != TransientHeat3DScheme::CrankNicolson) {
-        throw std::invalid_argument("Unknown transient 3D time scheme.");
-    }
-    const double theta =
-        options.scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
-    const double dt = options.time_step;
+namespace detail {
 
+PreparedTransientHeat3D::PreparedTransientHeat3D(
+    const TransientHeat3DProblem& problem
+) {
     const auto& diffusion = problem.diffusion;
     const auto& mesh = diffusion.mesh;
-    // Validates geometry, connectivity, and exterior boundary assignments.
-    detail::ExteriorFaceAssignments3D exterior(mesh);
-    const std::size_t n = mesh.nodes.size();
+    // Validate geometry, connectivity, and exterior boundary assignments once.
+    ExteriorFaceAssignments3D exterior(mesh);
+    node_count_ = mesh.nodes.size();
+    const std::size_t n = node_count_;
+
     const bool spatial_capacity = static_cast<bool>(problem.volumetric_capacity);
     const bool cell_capacity = !problem.cell_volumetric_capacity.empty();
     if (spatial_capacity == cell_capacity) {
@@ -115,32 +94,43 @@ TransientHeat3DResult solve_transient_heat_3d(
         diffusion.cell_source.size() != mesh.elements.size()) {
         throw std::invalid_argument("Transient 3D cell heat-source length mismatch.");
     }
-    for (const double c : problem.cell_volumetric_capacity) {
-        (void)positive(c, "Volumetric heat capacity");
+    for (const double capacity : problem.cell_volumetric_capacity) {
+        (void)positive(capacity, "Volumetric heat capacity");
     }
-    for (const double q : diffusion.cell_source) {
-        if (!std::isfinite(q)) throw std::invalid_argument("Transient 3D cell source must be finite.");
+    for (const double source : diffusion.cell_source) {
+        if (!std::isfinite(source)) {
+            throw std::invalid_argument("Transient 3D cell source must be finite.");
+        }
     }
     if (problem.initial_temperature.size() != n) {
         throw std::invalid_argument("Transient 3D initial temperature length mismatch.");
     }
+    for (const double temperature : problem.initial_temperature) {
+        if (!std::isfinite(temperature)) {
+            throw std::invalid_argument("Transient 3D initial temperatures must be finite.");
+        }
+    }
 
-    const detail::DiffusionMaterials3D materials(diffusion);
-    std::vector<std::optional<double>> prescribed(n);
+    const DiffusionMaterials3D materials(diffusion);
+    prescribed_.resize(n);
     std::set<std::size_t> explicit_nodes;
     for (const auto& bc : diffusion.dirichlet_constraints) {
-        if (bc.node >= n) throw std::out_of_range("Transient 3D Dirichlet node is missing.");
+        if (bc.node >= n) {
+            throw std::out_of_range("Transient 3D Dirichlet node is missing.");
+        }
         if (!explicit_nodes.insert(bc.node).second) {
             throw std::invalid_argument("Duplicate transient 3D Dirichlet vertex constraint.");
         }
-        impose(prescribed, bc.node, bc.value);
+        impose(prescribed_, bc.node, bc.value);
     }
     for (const auto& bc : diffusion.dirichlet_faces) {
         exterior.claim(bc.face);
-        if (!bc.value) throw std::invalid_argument("Transient 3D Dirichlet face needs a value.");
+        if (!bc.value) {
+            throw std::invalid_argument("Transient 3D Dirichlet face needs a value.");
+        }
         for (const auto node : bc.face) {
-            const auto& p = mesh.nodes[node];
-            impose(prescribed, node, bc.value(p.x, p.y, p.z));
+            const auto& point = mesh.nodes[node];
+            impose(prescribed_, node, bc.value(point.x, point.y, point.z));
         }
     }
     for (const auto& bc : diffusion.neumann_faces) {
@@ -156,14 +146,6 @@ TransientHeat3DResult solve_transient_heat_3d(
         }
     }
 
-    std::vector<double> state = problem.initial_temperature;
-    for (std::size_t node = 0; node < n; ++node) {
-        if (!std::isfinite(state[node])) {
-            throw std::invalid_argument("Transient 3D initial temperatures must be finite.");
-        }
-        if (prescribed[node]) state[node] = *prescribed[node];
-    }
-
     std::vector<Triplet> mass_entries, stiffness_entries, robin_entries;
     if (mesh.elements.size() > mass_entries.max_size() / 16U ||
         mesh.elements.size() > stiffness_entries.max_size() / 16U ||
@@ -171,24 +153,30 @@ TransientHeat3DResult solve_transient_heat_3d(
         throw std::length_error("Transient 3D matrices exceed storage limits.");
     }
     mass_entries.reserve(mesh.elements.size() * 16U);
-    stiffness_entries.reserve(mesh.elements.size() * 16U + diffusion.robin_faces.size() * 27U);
+    stiffness_entries.reserve(mesh.elements.size() * 16U +
+                              diffusion.robin_faces.size() * 27U);
     robin_entries.reserve(diffusion.robin_faces.size() * 27U);
-    std::vector<double> volume_load(n, 0.0), neumann_load(n, 0.0), ambient_load(n, 0.0);
+    volume_load_.assign(n, 0.0);
+    neumann_load_.assign(n, 0.0);
+    ambient_load_.assign(n, 0.0);
+
     for (std::size_t e = 0; e < mesh.elements.size(); ++e) {
         const auto& cell = mesh.elements[e];
         const auto basis = evaluate_tetrahedron_p1_physical_gradients_3d(mesh, e);
         std::array<std::array<double, 4>, 4> local_mass{};
         std::array<double, 4> local_source{};
-        const double extra_source = diffusion.cell_source.empty() ? 0.0 : diffusion.cell_source[e];
-        const auto local_k = detail::integrate_p1_volume_3d(
+        const double extra_source =
+            diffusion.cell_source.empty() ? 0.0 : diffusion.cell_source[e];
+        const auto local_k = integrate_p1_volume_3d(
             mesh, cell, basis, materials.on_cell(e),
-            [&](const Point3D& p, const auto& shape, double weight) {
+            [&](const Point3D& point, const auto& shape, double weight) {
                 const double capacity = cell_capacity
                     ? problem.cell_volumetric_capacity[e]
-                    : positive(problem.volumetric_capacity(p.x, p.y, p.z),
+                    : positive(problem.volumetric_capacity(
+                                   point.x, point.y, point.z),
                                "Volumetric heat capacity");
                 const double spatial = diffusion.source
-                    ? diffusion.source(p.x, p.y, p.z) : 0.0;
+                    ? diffusion.source(point.x, point.y, point.z) : 0.0;
                 if (!std::isfinite(spatial)) {
                     throw std::invalid_argument("Transient 3D source must be finite.");
                 }
@@ -199,18 +187,20 @@ TransientHeat3DResult solve_transient_heat_3d(
                 for (std::size_t i = 0; i < 4; ++i) {
                     local_source[i] += source * shape[i] * weight;
                     for (std::size_t j = 0; j < 4; ++j) {
-                        local_mass[i][j] += capacity * shape[i] * shape[j] * weight;
+                        local_mass[i][j] +=
+                            capacity * shape[i] * shape[j] * weight;
                     }
                 }
             }
         );
         for (std::size_t i = 0; i < 4; ++i) {
-            volume_load[cell[i]] += local_source[i];
-            if (!std::isfinite(volume_load[cell[i]])) {
+            volume_load_[cell[i]] += local_source[i];
+            if (!std::isfinite(volume_load_[cell[i]])) {
                 throw std::overflow_error("Transient 3D source load overflowed.");
             }
             for (std::size_t j = 0; j < 4; ++j) {
-                if (!std::isfinite(local_mass[i][j]) || !std::isfinite(local_k[i][j])) {
+                if (!std::isfinite(local_mass[i][j]) ||
+                    !std::isfinite(local_k[i][j])) {
                     throw std::overflow_error("Transient 3D element matrix overflowed.");
                 }
                 mass_entries.push_back({cell[i], cell[j], local_mass[i][j]});
@@ -220,34 +210,37 @@ TransientHeat3DResult solve_transient_heat_3d(
     }
 
     for (const auto& bc : diffusion.neumann_faces) {
-        const double area_scale = detail::face_jacobian(mesh, bc.face);
+        const double area_scale = face_jacobian(mesh, bc.face);
         for (const auto& q : triangle_face_degree_two_quadrature) {
-            const auto p = detail::simplex_point(mesh, bc.face, q.shape);
-            const double flux = bc.outward_flux(p.x, p.y, p.z);
+            const auto point = simplex_point(mesh, bc.face, q.shape);
+            const double flux = bc.outward_flux(point.x, point.y, point.z);
             if (!std::isfinite(flux)) {
                 throw std::invalid_argument("Transient 3D Neumann flux must be finite.");
             }
             for (std::size_t i = 0; i < 3; ++i) {
-                neumann_load[bc.face[i]] -= flux * q.shape[i] * area_scale * q.weight;
-                if (!std::isfinite(neumann_load[bc.face[i]])) {
+                neumann_load_[bc.face[i]] -=
+                    flux * q.shape[i] * area_scale * q.weight;
+                if (!std::isfinite(neumann_load_[bc.face[i]])) {
                     throw std::overflow_error("Transient 3D Neumann load overflowed.");
                 }
             }
         }
     }
     for (const auto& bc : diffusion.robin_faces) {
-        const double area_scale = detail::face_jacobian(mesh, bc.face);
+        const double area_scale = face_jacobian(mesh, bc.face);
         for (const auto& q : triangle_face_degree_two_quadrature) {
-            const auto p = detail::simplex_point(mesh, bc.face, q.shape);
-            const double h = bc.transfer_coefficient(p.x, p.y, p.z);
-            const double ambient = bc.ambient_value(p.x, p.y, p.z);
+            const auto point = simplex_point(mesh, bc.face, q.shape);
+            const double h = bc.transfer_coefficient(point.x, point.y, point.z);
+            const double ambient = bc.ambient_value(point.x, point.y, point.z);
             if (!std::isfinite(h) || h < 0.0 || !std::isfinite(ambient)) {
-                throw std::invalid_argument("Transient 3D Robin data must be finite with h >= 0.");
+                throw std::invalid_argument(
+                    "Transient 3D Robin data must be finite with h >= 0.");
             }
             const double weight = area_scale * q.weight;
             for (std::size_t i = 0; i < 3; ++i) {
-                ambient_load[bc.face[i]] += h * ambient * q.shape[i] * weight;
-                if (!std::isfinite(ambient_load[bc.face[i]])) {
+                ambient_load_[bc.face[i]] +=
+                    h * ambient * q.shape[i] * weight;
+                if (!std::isfinite(ambient_load_[bc.face[i]])) {
                     throw std::overflow_error("Transient 3D Robin load overflowed.");
                 }
                 for (std::size_t j = 0; j < 3; ++j) {
@@ -262,96 +255,164 @@ TransientHeat3DResult solve_transient_heat_3d(
         }
     }
 
-    std::vector<double> total_load(n);
+    total_load_.resize(n);
     for (std::size_t i = 0; i < n; ++i) {
-        total_load[i] = volume_load[i] + neumann_load[i] + ambient_load[i];
-        if (!std::isfinite(total_load[i])) {
+        total_load_[i] = volume_load_[i] + neumann_load_[i] + ambient_load_[i];
+        if (!std::isfinite(total_load_[i])) {
             throw std::overflow_error("Transient 3D total load overflowed.");
         }
     }
-    const auto mass = CsrMatrix::from_triplets(n, n, mass_entries);
-    const auto stiffness = CsrMatrix::from_triplets(n, n, stiffness_entries);
-    const auto robin = CsrMatrix::from_triplets(n, n, robin_entries);
-    const auto lhs = CsrMatrix::linear_combination(mass, 1.0, stiffness, theta * dt);
-    const auto rhs_operator =
-        CsrMatrix::linear_combination(mass, 1.0, stiffness, -(1.0 - theta) * dt);
 
-    // Eliminate the constant Dirichlet block ONCE. The free/free CSR matrix
-    // is reused for every step; the previous temperature warm-starts CG.
-    std::vector<Triplet> free_entries;
-    std::vector<Triplet> boundary_couplings;
-    if (lhs.non_zeros() > free_entries.max_size() - n) {
-        throw std::length_error("Transient 3D constrained matrix is too large.");
+    mass_ = CsrMatrix::from_triplets(n, n, mass_entries);
+    stiffness_ = CsrMatrix::from_triplets(n, n, stiffness_entries);
+    robin_ = CsrMatrix::from_triplets(n, n, robin_entries);
+    capacity_weights_ = mass_.multiply(std::vector<double>(n, 1.0));
+}
+
+TransientHeat3DResult PreparedTransientHeat3D::solve(
+    const std::vector<double>& initial_temperature,
+    const TransientHeat3DOptions& options,
+    std::size_t cache_slot
+) {
+    if (cache_slot >= step_systems_.size()) {
+        throw std::out_of_range("Transient 3D system cache slot is out of range.");
     }
-    free_entries.reserve(lhs.non_zeros() + n);
-    lhs.for_each_nonzero([&](std::size_t row, std::size_t col, double value) {
-        if (!prescribed[row] && !prescribed[col]) {
-            free_entries.push_back({row, col, value});
-        } else if (!prescribed[row] && prescribed[col]) {
-            boundary_couplings.push_back({row, col, value});
+    if (!std::isfinite(options.time_step) || !(options.time_step > 0.0) ||
+        !std::isfinite(options.start_time) || options.steps == 0U) {
+        throw std::invalid_argument(
+            "Transient 3D time step, start and step count are invalid.");
+    }
+    const double final_time = options.start_time +
+        options.time_step * static_cast<double>(options.steps);
+    if (!std::isfinite(final_time) || !(final_time > options.start_time)) {
+        throw std::invalid_argument(
+            "Transient 3D final time must advance and be finite.");
+    }
+    double previous_time = options.start_time;
+    for (std::size_t completed = 0; completed < options.steps; ++completed) {
+        const double step_time = options.start_time +
+            options.time_step * static_cast<double>(completed + 1U);
+        if (!std::isfinite(step_time) || !(step_time > previous_time)) {
+            throw std::invalid_argument(
+                "Transient 3D time step is too small to advance representable physical time.");
         }
-    });
-    for (std::size_t i = 0; i < n; ++i) {
-        if (prescribed[i]) free_entries.push_back({i, i, 1.0});
+        previous_time = step_time;
     }
-    const auto system = CsrMatrix::from_triplets(n, n, free_entries);
-    std::vector<double> boundary_shift(n, 0.0);
-    for (const auto& edge : boundary_couplings) {
-        boundary_shift[edge.row] -= edge.value * *prescribed[edge.column];
+    if (options.scheme != TransientHeat3DScheme::BackwardEuler &&
+        options.scheme != TransientHeat3DScheme::CrankNicolson) {
+        throw std::invalid_argument("Unknown transient 3D time scheme.");
     }
-    const auto capacity_weights = mass.multiply(std::vector<double>(n, 1.0));
+    if (initial_temperature.size() != node_count_) {
+        throw std::invalid_argument("Transient 3D initial temperature length mismatch.");
+    }
+    std::vector<double> state = initial_temperature;
+    for (std::size_t node = 0; node < node_count_; ++node) {
+        if (!std::isfinite(state[node])) {
+            throw std::invalid_argument(
+                "Transient 3D initial temperatures must be finite.");
+        }
+        if (prescribed_[node]) state[node] = *prescribed_[node];
+    }
+
+    const double dt = options.time_step;
+    const double theta =
+        options.scheme == TransientHeat3DScheme::BackwardEuler ? 1.0 : 0.5;
+    auto& cache = step_systems_[cache_slot];
+    if (!cache.initialized || cache.time_step != dt ||
+        cache.scheme != options.scheme) {
+        // Build a replacement locally so a failed assembly leaves the previous
+        // valid cache entry and its factorization intact.
+        auto lhs = CsrMatrix::linear_combination(
+            mass_, 1.0, stiffness_, theta * dt);
+        auto rhs_operator = CsrMatrix::linear_combination(
+            mass_, 1.0, stiffness_, -(1.0 - theta) * dt);
+
+        std::vector<Triplet> free_entries;
+        std::vector<Triplet> boundary_couplings;
+        if (lhs.non_zeros() > free_entries.max_size() - node_count_) {
+            throw std::length_error("Transient 3D constrained matrix is too large.");
+        }
+        free_entries.reserve(lhs.non_zeros() + node_count_);
+        lhs.for_each_nonzero([&](std::size_t row, std::size_t col, double value) {
+            if (!prescribed_[row] && !prescribed_[col]) {
+                free_entries.push_back({row, col, value});
+            } else if (!prescribed_[row] && prescribed_[col]) {
+                boundary_couplings.push_back({row, col, value});
+            }
+        });
+        for (std::size_t i = 0; i < node_count_; ++i) {
+            if (prescribed_[i]) free_entries.push_back({i, i, 1.0});
+        }
+        auto system = CsrMatrix::from_triplets(
+            node_count_, node_count_, free_entries);
+        std::vector<double> boundary_shift(node_count_, 0.0);
+        for (const auto& edge : boundary_couplings) {
+            boundary_shift[edge.row] -= edge.value * *prescribed_[edge.column];
+        }
+
+        cache.lhs = std::move(lhs);
+        cache.rhs_operator = std::move(rhs_operator);
+        cache.system = std::move(system);
+        cache.boundary_shift = std::move(boundary_shift);
+        cache.cached_cg = linalg::CachedConjugateGradient{};
+        cache.time_step = dt;
+        cache.scheme = options.scheme;
+        cache.initialized = true;
+        ++system_assemblies_;
+    }
+
     TransientHeat3DResult result;
     result.final_time = final_time;
     result.linear_solvers.reserve(options.steps);
     result.diagnostics.reserve(options.steps);
 
-    // The constrained system is constant for this time-independent 3D model.
-    // Keep its IC(0) factor alive across every step and warm-started RHS.
-    nova::linalg::CachedConjugateGradient cached_cg;
-
     // Publish the constraint-projected initial field as frame zero.
     if (options.on_step) options.on_step(0U, options.start_time, state);
 
     for (std::size_t step = 1; step <= options.steps; ++step) {
-        std::vector<double> rhs = rhs_operator.multiply(state);
-        for (std::size_t i = 0; i < n; ++i) {
-            rhs[i] += dt * total_load[i];
-            if (!std::isfinite(rhs[i])) throw std::overflow_error("Transient 3D RHS overflowed.");
+        std::vector<double> rhs = cache.rhs_operator.multiply(state);
+        for (std::size_t i = 0; i < node_count_; ++i) {
+            rhs[i] += dt * total_load_[i];
+            if (!std::isfinite(rhs[i])) {
+                throw std::overflow_error("Transient 3D RHS overflowed.");
+            }
         }
         // Preserve the assembled, unconstrained rhs for reaction diagnostics.
         const auto physical_rhs = rhs;
-        for (std::size_t i = 0; i < n; ++i) {
-            rhs[i] += boundary_shift[i];
-            if (prescribed[i]) rhs[i] = *prescribed[i];
-            if (!std::isfinite(rhs[i])) throw std::overflow_error("Transient 3D boundary RHS overflowed.");
+        for (std::size_t i = 0; i < node_count_; ++i) {
+            rhs[i] += cache.boundary_shift[i];
+            if (prescribed_[i]) rhs[i] = *prescribed_[i];
+            if (!std::isfinite(rhs[i])) {
+                throw std::overflow_error("Transient 3D boundary RHS overflowed.");
+            }
         }
         // Solve for the small increment rather than the large absolute
-        // temperature. A warm-started CG on absolute T defines its stopping
-        // tolerance using a tiny initial residual, but true-residual
-        // recomputation subtracts O(T) products and can hit the roundoff
-        // floor. Defect correction keeps the same warm start while avoiding
-        // that loss of relative precision inside CG.
-        const auto current_product = system.multiply(state);
-        std::vector<double> increment_rhs(n);
-        for (std::size_t i = 0; i < n; ++i) {
+        // temperature. Defect correction avoids losing relative precision
+        // when true-residual recomputation subtracts O(T) products.
+        const auto current_product = cache.system.multiply(state);
+        std::vector<double> increment_rhs(node_count_);
+        for (std::size_t i = 0; i < node_count_; ++i) {
             increment_rhs[i] = rhs[i] - current_product[i];
             if (!std::isfinite(increment_rhs[i])) {
                 throw std::overflow_error("Transient 3D correction load overflowed.");
             }
         }
-        auto solved = cached_cg.solve(
-            system, increment_rhs, options.solver_options
-        );
+        const auto builds_before = cache.cached_cg.factor_builds();
+        auto solved = cache.cached_cg.solve(
+            cache.system, increment_rhs, options.solver_options);
+        factor_builds_ += cache.cached_cg.factor_builds() - builds_before;
         if (!solved.converged) {
             throw std::runtime_error("Transient 3D step " + std::to_string(step) +
                                      " failed: " + solved.message);
         }
-        std::vector<double> next(n);
-        for (std::size_t i = 0; i < n; ++i) {
+
+        std::vector<double> next(node_count_);
+        for (std::size_t i = 0; i < node_count_; ++i) {
             next[i] = state[i] + solved.solution[i];
-            if (prescribed[i]) next[i] = *prescribed[i];
+            if (prescribed_[i]) next[i] = *prescribed_[i];
             if (!std::isfinite(next[i])) {
-                throw std::overflow_error("Transient 3D corrected temperature overflowed.");
+                throw std::overflow_error(
+                    "Transient 3D corrected temperature overflowed.");
             }
         }
         // Preserve full solver-state history by default for API compatibility.
@@ -361,30 +422,35 @@ TransientHeat3DResult solve_transient_heat_3d(
         } else {
             std::vector<double>{}.swap(solved.solution);
         }
-        const auto unconstrained_lhs = lhs.multiply(next);
-        const auto previous_robin = robin.multiply(state);
-        const auto next_robin = robin.multiply(next);
+        const auto unconstrained_lhs = cache.lhs.multiply(next);
+        const auto previous_robin = robin_.multiply(state);
+        const auto next_robin = robin_.multiply(next);
 
         TransientHeatStepDiagnostics3D diag;
         diag.time = options.start_time + dt * static_cast<double>(step);
-        if (!std::isfinite(diag.time)) throw std::overflow_error("Transient 3D time overflowed.");
-        diag.heat_content = dot(capacity_weights, next);
-        diag.source_energy = dt * sum(volume_load);
-        diag.neumann_energy = dt * sum(neumann_load);
+        if (!std::isfinite(diag.time)) {
+            throw std::overflow_error("Transient 3D time overflowed.");
+        }
+        diag.heat_content = dot(capacity_weights_, next);
+        diag.source_energy = dt * sum(volume_load_);
+        diag.neumann_energy = dt * sum(neumann_load_);
         diag.robin_energy = dt * (
-            sum(ambient_load) - theta * sum(next_robin) -
+            sum(ambient_load_) - theta * sum(next_robin) -
             (1.0 - theta) * sum(previous_robin)
         );
-        for (std::size_t i = 0; i < n; ++i) {
-            if (prescribed[i]) {
-                diag.dirichlet_energy += unconstrained_lhs[i] - physical_rhs[i];
+        for (std::size_t i = 0; i < node_count_; ++i) {
+            if (prescribed_[i]) {
+                diag.dirichlet_energy +=
+                    unconstrained_lhs[i] - physical_rhs[i];
             }
         }
-        diag.balance_residual = diag.heat_content - dot(capacity_weights, state) -
-            diag.source_energy - diag.neumann_energy - diag.robin_energy -
-            diag.dirichlet_energy;
-        if (!std::isfinite(diag.dirichlet_energy) || !std::isfinite(diag.balance_residual)) {
-            throw std::overflow_error("Transient 3D energy diagnostic overflowed.");
+        diag.balance_residual = diag.heat_content -
+            dot(capacity_weights_, state) - diag.source_energy -
+            diag.neumann_energy - diag.robin_energy - diag.dirichlet_energy;
+        if (!std::isfinite(diag.dirichlet_energy) ||
+            !std::isfinite(diag.balance_residual)) {
+            throw std::overflow_error(
+                "Transient 3D energy diagnostic overflowed.");
         }
 
         state = std::move(next);
@@ -394,6 +460,16 @@ TransientHeat3DResult solve_transient_heat_3d(
     }
     result.temperature = std::move(state);
     return result;
+}
+
+} // namespace detail
+
+TransientHeat3DResult solve_transient_heat_3d(
+    const TransientHeat3DProblem& problem,
+    const TransientHeat3DOptions& options
+) {
+    detail::PreparedTransientHeat3D prepared(problem);
+    return prepared.solve(problem.initial_temperature, options);
 }
 
 } // namespace nova::fem
