@@ -4,6 +4,7 @@
 #include "nova/linalg/conjugate_gradient.hpp"
 #include "nova/linalg/csr_matrix.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <vector>
 
