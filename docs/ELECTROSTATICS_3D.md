@@ -38,8 +38,9 @@ auto charges = nova::physics::evaluate_electrode_charges_3d(
 `electrode_faces` and `electrode_ids` must have equal lengths. Each
 nonnegative ID identifies one equipotential conductor boundary. All selected
 vertices must be constrained by `potential_constraints` or `potential_faces`.
-The routine rejects non-exterior faces, duplicates, unfixed nodes, nonuniform
-group potentials and non-finite fields. It never runs a second field solve.
+The routine rejects unconverged solutions, non-exterior faces, duplicates,
+unfixed nodes, nonuniform group potentials and non-finite fields. It never
+runs a second field solve.
 
 For the dielectric domain's outward unit normal `n`, the integrated
 displacement `integral(D dot n) dA` has units of coulombs. The charge on
