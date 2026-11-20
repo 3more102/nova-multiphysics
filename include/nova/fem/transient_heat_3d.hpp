@@ -99,7 +99,7 @@ struct TransientHeat3DOptions {
 // prescribed nodes, NOT an equilibrated boundary-face flux.
 struct TransientHeatStepDiagnostics3D {
     double time{};
-    double heat_content{};    // Integral C*T dV (J)
+    double heat_content{};    // Integral C(x,t)*T_h dV at this step's end (J)
     double source_energy{};   // Volumetric source input (J)
     double neumann_energy{};  // Prescribed surface flux input (J)
     double robin_energy{};    // Net convection input (J)
