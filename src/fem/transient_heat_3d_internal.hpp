@@ -49,9 +49,9 @@ struct TransientHeat3DStepOperators {
 };
 
 // One cache is used for full-step trials and another for half-step trials.
-// Each slot keeps the most recently prepared dt-dependent matrix and its
-// exact-matrix IC(0) cache. A changed dt rebuilds operators; CachedCG decides
-// whether the resulting constrained matrix actually requires a new factor.
+// Each slot keeps the most recently prepared dt-dependent/time-level matrix
+// and its exact-matrix IC(0) cache. A changed dt or Robin transfer matrix
+// rebuilds operators; CachedCG decides whether a new factor is required.
 struct TransientHeat3DStepCache {
     std::optional<TransientHeat3DStepOperators> operators;
     double time_step{};
