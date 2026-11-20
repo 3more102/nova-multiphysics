@@ -1,5 +1,7 @@
 #include "nova/fem/adaptive_heat_2d.hpp"
 
+#include "transient_heat_2d_internal.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -88,26 +90,13 @@ AdaptiveHeat2DResult solve_adaptive_heat_2d(
     validate_options(options);
 
     const H1FunctionSpace2D space(problem.mesh, options.order);
-    if (problem.initial_dof_values.empty() && !problem.initial_temperature) {
-        throw std::invalid_argument("Adaptive heat requires an initial field or initial DOF state.");
-    }
-
-    // Both subtrials receive precisely the same initial vector; the
-    // fixed-step integrator enforces the prescribed temperature trace.
-    std::vector<double> state = problem.initial_dof_values.empty()
-        ? space.interpolate(problem.initial_temperature)
-        : problem.initial_dof_values;
-    if (state.size() != space.dimension()) {
-        throw std::invalid_argument("Adaptive heat initial H1 DOF count mismatch.");
-    }
-    for (const double value : state) {
-        if (!std::isfinite(value)) {
-            throw std::invalid_argument("Adaptive heat initial DOFs must be finite.");
-        }
-    }
-
-    TransientHeat2DProblem trial_problem = problem;
-    trial_problem.initial_dof_values = state;
+    // Material matrices, DOF boundary topology and capacity weights are
+    // prepared once. Time-dependent source and boundary data remain evaluated
+    // at each required physical time level by the prepared step solver.
+    std::vector<double> state = detail::initial_heat_state(problem, space);
+    const auto prepared = detail::prepare_transient_heat_2d(problem, space);
+    detail::TransientHeat2DStepCache full_step_cache;
+    detail::TransientHeat2DStepCache half_step_cache;
 
     AdaptiveHeat2DResult result;
     double time = options.start_time;
@@ -127,7 +116,6 @@ AdaptiveHeat2DResult solve_adaptive_heat_2d(
             throw std::runtime_error("Adaptive time step is too small to advance floating-point time.");
         }
 
-        trial_problem.initial_dof_values = state;
         TransientHeat2DOptions fixed;
         fixed.order = options.order;
         fixed.scheme = options.scheme;
@@ -135,15 +123,17 @@ AdaptiveHeat2DResult solve_adaptive_heat_2d(
         fixed.time_step = dt;
         fixed.steps = 1U;
         fixed.solver_options = options.solver_options;
-        const TransientHeat2DResult full = solve_transient_heat_2d(
-            trial_problem, fixed
-        );
+        const TransientHeat2DResult full =
+            detail::solve_prepared_transient_heat_2d(
+                problem, space, prepared, fixed, state, full_step_cache
+            );
 
         fixed.time_step = 0.5 * dt;
         fixed.steps = 2U;
-        TransientHeat2DResult half = solve_transient_heat_2d(
-            trial_problem, fixed
-        );
+        TransientHeat2DResult half =
+            detail::solve_prepared_transient_heat_2d(
+                problem, space, prepared, fixed, state, half_step_cache
+            );
 
         const double error = normalized_step_error(
             state, full.temperature, half.temperature, options
@@ -178,6 +168,12 @@ AdaptiveHeat2DResult solve_adaptive_heat_2d(
         step = std::clamp(dt * factor, options.min_step, options.max_step);
     }
 
+    result.full_step_base_operator_builds = full_step_cache.base_operator_builds;
+    result.half_step_base_operator_builds = half_step_cache.base_operator_builds;
+    result.full_step_ic0_factor_builds =
+        full_step_cache.cached_cg.factor_builds();
+    result.half_step_ic0_factor_builds =
+        half_step_cache.cached_cg.factor_builds();
     result.temperature = std::move(state);
     result.final_time = time;
     return result;
