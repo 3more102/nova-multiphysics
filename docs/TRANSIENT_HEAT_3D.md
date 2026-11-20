@@ -29,7 +29,7 @@ theta = 1   Backward Euler
 theta = 1/2 Crank–Nicolson
 ```
 
-`F` includes volume heating, **negative** outward Neumann flux, and the Robin ambient load. The optional `problem.time_dependent_source(x,y,z,t)` adds a time-varying volumetric source to the existing static spatial and cell sources. Backward Euler samples it at the new step time; Crank–Nicolson uses the trapezoidal average of the two endpoint load vectors. Conductivity, capacity and boundary functions remain time-independent. Initial nodal values are projected to the fixed Dirichlet constraints. Each step uses symmetric elimination with identity rows on constrained nodes. The sparse constrained matrix is constructed **once** and the preceding solution warm-starts CG. Positive `C` makes the time-step system nonsingular even for a completely insulated mesh.
+`F` includes volume heating, **negative** outward Neumann flux, and Robin ambient loads. The optional `problem.time_dependent_source(x,y,z,t)` adds a time-varying volumetric source to the existing static spatial and cell sources. Backward Euler samples it at the new step time; Crank–Nicolson uses the trapezoidal average of the two endpoint load vectors. Conductivity and capacity remain time-independent; Robin transfer and ambient data may be static or time-dependent. Initial nodal values are projected to the fixed Dirichlet constraints. Each step uses symmetric elimination with identity rows on constrained nodes. The sparse constrained matrix is constructed **once** and the preceding solution warm-starts CG. Positive `C` makes the time-step system nonsingular even for a completely insulated mesh.
 
 The per-step discrete energy budget uses `M * ones` as the heat-content integration weights. Dirichlet input is calculated from the unconstrained system residual on prescribed nodes, **not** from raw P1 face flux. For constant coefficients and loads,
 
@@ -77,21 +77,24 @@ unforced conduction. Finite-value checks still apply at every quadrature point.
 
 A unit tetrahedron with three fixed vertices leaves one free temperature DOF. For the reference P1 basis, the free-node entries are M33 = 1/60 and K33 = 1/6, so the semidiscrete equation is dT/dt = -10 T. Starting from T(3) = 10, the exact value at t = 3.2 is 10 exp(-2). The regression compares time steps of 0.05 and 0.025: Backward Euler's global error ratio approaches 2, while Crank–Nicolson's approaches 4. It checks every accepted step's discrete energy residual and confirms the second-order result is more accurate.
 
-### Time-dependent Dirichlet and Neumann data
+### Time-dependent boundary data
 
-The transient API accepts time callbacks `f(x,y,z,t)` for nodal
-Dirichlet constraints, exterior Dirichlet faces and exterior Neumann face
-fluxes. Dirichlet values are imposed at the initial physical time and at each
-step endpoint. Neumann loads are integrated over the triangular face using
-the existing degree-two face quadrature.
+The transient API accepts time callbacks `f(x,y,z,t)` for nodal Dirichlet
+constraints, exterior Dirichlet faces, Neumann face fluxes, and Robin transfer
+and ambient fields. Dirichlet values are imposed at the initial physical time
+and each step endpoint. Neumann loads are integrated with the existing
+degree-two triangular-face quadrature.
 
-Backward Euler samples time-dependent Neumann flux at the new endpoint.
-Crank–Nicolson evaluates both endpoints and uses their trapezoidal average.
-Time-dependent Dirichlet values change the prescribed vector but not the
-constrained matrix pattern, so the fixed-step system and its IC(0) factor
-remain reusable. Time-dependent Neumann data change only the right-hand side.
-Robin transfer and ambient functions, conductivity and heat capacity remain
-time-independent in this increment.
+Backward Euler samples time-dependent Neumann flux and Robin data at the new
+endpoint. Crank–Nicolson evaluates both endpoints and uses trapezoidal
+integration. For Robin convection, both the transfer matrix
+`H(t) = integral(h(t) N_i N_j dS)` and ambient load
+`b(t) = integral(h(t) T_ambient(t) N_i dS)` vary with time. The new-time
+matrix enters the implicit left-hand side; the old-time matrix enters the
+Crank–Nicolson right-hand operator. Consequently, a changing transfer
+coefficient changes the constrained CSR matrix and correctly triggers an
+IC(0) factor rebuild, while a changing ambient value alone changes only the
+load. Conductivity and heat capacity remain time-independent.
 
 ## Reproduce and tests
 
@@ -110,6 +113,7 @@ ctest --test-dir build -C Release --output-on-failure
 - Heterogeneous cellwise SPD tensor conductivity with cellwise capacity and cell-only source, plus zero-source insulated equilibrium.
 - Multi-tetrahedron heterogeneous cellwise SPD tensors with uniform heating, exact heat-content growth, and invalid tensor/cell-array rejection.
 - Analytical temporal refinement verifies first-order Backward Euler and second-order Crank–Nicolson at a nonzero physical start time.
+- Time-dependent Robin transfer and ambient functions, endpoint sampling for Backward Euler, trapezoidal Crank–Nicolson integration, and energy-budget closure.
 - Rejection of nonpositive capacities, bad source/initial fields, duplicate boundary conditions and invalid time-step options.
 
 These checks verify the mathematical discretization but **do not** constitute experimental or industrial validation.
@@ -148,4 +152,4 @@ fields, Dirichlet projection, error propagation and optional history elision.
 
 ## Explicit limits and next milestone
 
-Initial 3D support uses **time-independent** conductivity, capacity and Robin functions, with optional additive time-dependent volumetric sources, Dirichlet constraints/faces and Neumann face fluxes; a constant fixed-step size; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. An experimental, separate fixed-mesh 3D adaptive timestep driver is documented in [Adaptive transient 3D heat](ADAPTIVE_HEAT_3D.md), but temperature-dependent properties, latent heat, radiation and moving meshes remain unsupported. The default result history retains every CG solution vector for API compatibility; the optional streaming mode elides them. Next: time-dependent Robin transfer/ambient functions, time-varying material properties, spatial error-driven refinement, and independent temporal-convergence benchmarks on spatially varying manufactured solutions.
+Initial 3D support uses **time-independent** conductivity and capacity, with optional time-dependent volumetric sources, Dirichlet constraints/faces, Neumann fluxes, and Robin transfer/ambient data; a constant fixed-step size; conforming straight-sided P1 tetrahedral meshes; and an in-memory C++ API. An experimental, separate fixed-mesh 3D adaptive timestep driver is documented in [Adaptive transient 3D heat](ADAPTIVE_HEAT_3D.md), but temperature-dependent properties, latent heat, radiation and moving meshes remain unsupported. The default result history retains every CG solution vector for API compatibility; the optional streaming mode elides them. Next: time-varying material properties, spatial error-driven refinement, and independent temporal-convergence benchmarks on spatially varying manufactured solutions.
