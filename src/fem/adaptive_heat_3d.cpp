@@ -152,18 +152,18 @@ AdaptiveHeat3DResult solve_adaptive_heat_3d(
 
         fixed.time_step = 0.5 * dt;
         fixed.steps = 2U;
-        const auto half = prepared.solve(state, fixed, 1U);
+        auto half = prepared.solve(state, fixed, 1U);
         const double error = normalized_step_error(
             state, full.temperature, half.temperature, options);
         const bool accepted = error <= 1.0;
         result.attempts.push_back({time, dt, error, accepted});
 
         if (accepted) {
-            state = half.temperature;
             result.diagnostics.push_back(combine_half_budgets(half.diagnostics));
-            for (const auto& solver : half.linear_solvers) {
-                result.substep_solvers.push_back(solver);
+            for (auto& solver : half.linear_solvers) {
+                result.substep_solvers.push_back(std::move(solver));
             }
+            state = std::move(half.temperature);
             ++result.accepted_steps;
             time = std::min(options.end_time, time + dt);
             if (options.on_step) {
