@@ -39,8 +39,41 @@ struct RefinedTetrahedralMesh3D {
     const std::vector<BoundaryFace3D>& boundary_faces = {}
 );
 
-// Exact P1 interpolation at the coarse nodes and new edge midpoints.
-// Requires a finite coarse nodal vector with one entry per coarse vertex.
+// Deterministic Dörfler bulk marking. Indicators must be finite and
+// nonnegative; theta must lie in (0,1]. Returns the smallest descending-
+// indicator prefix whose squared sum reaches theta times the global sum.
+// Ties are resolved by ascending element index; an all-zero field marks none.
+[[nodiscard]] std::vector<std::size_t> mark_dorfler_elements_3d(
+    std::span<const double> element_indicators,
+    double theta
+);
+
+// One-level conforming local refinement. Each marked tetrahedron contributes
+// its six edges to a global split set; every incident tetrahedron is bisected
+// along those shared edges in deterministic order. This subdivides shared
+// faces identically and introduces no hanging faces. It is not a multilevel
+// grading or mesh-quality optimization algorithm.
+[[nodiscard]] RefinedTetrahedralMesh3D refine_tetrahedra_adaptively_3d(
+    const TetrahedralMesh3D& mesh,
+    std::span<const std::size_t> marked_elements,
+    const std::vector<BoundaryFace3D>& boundary_faces = {}
+);
+
+// Exact P1 interpolation at the coarse nodes and new edge midpoints for any
+// RefinedTetrahedralMesh3D result (uniform or local).
+[[nodiscard]] std::vector<double> prolongate_p1_refined_3d(
+    const RefinedTetrahedralMesh3D& refined,
+    std::span<const double> coarse_nodal_values
+);
+
+// Replicate a scalar element-constant quantity to every child using the
+// parent-element map (uniform or local refinement).
+[[nodiscard]] std::vector<double> prolongate_cellwise_constant_refined_3d(
+    const RefinedTetrahedralMesh3D& refined,
+    std::span<const double> coarse_cell_values
+);
+
+// Backward-compatible uniform-refinement transfer API.
 [[nodiscard]] std::vector<double> prolongate_p1_uniform_3d(
     const RefinedTetrahedralMesh3D& refined,
     std::span<const double> coarse_nodal_values
