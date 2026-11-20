@@ -331,12 +331,10 @@ void prepare_step_operators(
     std::vector<Triplet> free_entries;
     std::vector<Triplet> boundary_couplings;
     if (n > free_entries.max_size() ||
-        next.lhs.non_zeros() > free_entries.max_size() - n ||
-        next.lhs.non_zeros() > boundary_couplings.max_size()) {
+        next.lhs.non_zeros() > free_entries.max_size() - n) {
         throw std::length_error("Transient 3D constrained matrix is too large.");
     }
     free_entries.reserve(next.lhs.non_zeros() + n);
-    boundary_couplings.reserve(next.lhs.non_zeros());
     next.lhs.for_each_nonzero(
         [&](std::size_t row, std::size_t column, double value) {
             if (!prepared.prescribed[row] && !prepared.prescribed[column]) {
