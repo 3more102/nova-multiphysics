@@ -89,9 +89,11 @@ transfer coefficient changes the time-level operator and triggers exact CSR
 cache invalidation; ambient-only changes affect the load. Conductivity and
 capacity remain **time-independent**.
 
-The constant time-step CSR system is reused between steps; the solver
-computes temperature corrections to avoid loss of precision for small
-updates relative to absolute temperature. Each step reports heat content,
+The constrained CSR system is reused while the time step and Robin
+transfer matrix are unchanged; a changed transfer matrix rebuilds the affected
+operator and, when necessary, its IC(0) factor. The solver computes temperature
+corrections to avoid loss of precision for small updates relative to absolute
+temperature. Each step reports heat content,
 volumetric energy, imposed flux, convection, Dirichlet reactions and the
 discrete energy-balance residual.
 
