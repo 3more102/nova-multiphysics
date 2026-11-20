@@ -106,12 +106,14 @@ struct TransientHeat3DResult {
 };
 
 // Consistent P1 thermal mass and existing validated 3D conductivity integration.
-// One time-independent system matrix is reused across all steps; CG receives a
-// warm-start state. Purely insulated meshes are permitted because positive
-// thermal mass removes the steady-state constant-mode singularity.
-// The fixed-step API is complemented by the experimental fixed-mesh adaptive
-// step-doubling API in adaptive_heat_3d.hpp; time-varying conductivity and
-// heat capacity, and phase change remain unsupported.
+// Static FEM operators are prepared once. Unchanged constrained CSR matrices
+// and IC(0) factors are reused; a changed time-dependent Robin transfer matrix
+// rebuilds the affected operator. CG receives a warm-start state. Purely
+// insulated meshes are permitted because positive thermal mass removes the
+// steady-state constant-mode singularity. The fixed-step API is complemented
+// by the experimental fixed-mesh adaptive step-doubling API in
+// adaptive_heat_3d.hpp; time-varying conductivity and heat capacity, and
+// phase change remain unsupported.
 [[nodiscard]] TransientHeat3DResult solve_transient_heat_3d(
     const TransientHeat3DProblem& problem,
     const TransientHeat3DOptions& options = {}
