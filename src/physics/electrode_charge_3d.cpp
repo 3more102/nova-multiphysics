@@ -18,6 +18,9 @@ std::vector<ElectrodeCharge3D> evaluate_electrode_charges_3d(
     const std::span<const int> electrode_ids
 ) {
     const auto& mesh = problem.mesh;
+    if (!solution.linear_solver.converged) {
+        throw std::invalid_argument("Electrode charge requires a converged electrostatic solution.");
+    }
     if (solution.potential.size() != mesh.nodes.size()) {
         throw std::invalid_argument("Electrode charge needs one potential per mesh vertex.");
     }
