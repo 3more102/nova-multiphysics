@@ -57,13 +57,20 @@ def verify(cli, mesh):
             raise AssertionError("Quality-gated solve omitted the quality report")
 
     with tempfile.TemporaryDirectory(prefix="nova-gmsh-quality-") as folder:
-        vtk = Path(folder) / "should_not_exist.vtk"
-        blocked = run(cli, mesh, *thermal, "--min-mean-ratio", "0.9",
-                      "--vtk", vtk)
-        if (blocked.returncode == 0 or
-                "quality gate failed" not in blocked.stderr or
-                "final_time" in blocked.stdout or vtk.exists()):
-            raise AssertionError("Failed pre-solve quality gate allowed thermal output")
+        # Both output modes must reject a bad mesh before publishing anything.
+        for option, destination in (
+            ("--vtk", Path(folder) / "should_not_exist.vtk"),
+            ("--vtk-series", Path(folder) / "should_not_exist.pvd"),
+        ):
+            blocked = run(cli, mesh, *thermal, "--min-mean-ratio", "0.9",
+                          option, destination)
+            if (blocked.returncode == 0 or
+                    "quality gate failed" not in blocked.stderr or
+                    "final_time" in blocked.stdout or destination.exists()):
+                raise AssertionError(
+                    f"Failed pre-solve quality gate allowed {option} output")
+        if list(Path(folder).glob("should_not_exist_*.vtk")):
+            raise AssertionError("Failed quality gate left orphan ParaView frames")
 
     for invalid in ("0", "-0.1", "1.01", "nan", "inf", "not-a-number"):
         bad = run(cli, mesh, "--check-mesh", "--min-mean-ratio", invalid)
