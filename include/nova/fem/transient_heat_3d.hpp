@@ -29,7 +29,7 @@ struct TimeDependentNeumannBoundaryFace3D {
 
 struct TimeDependentRobinBoundaryFace3D {
     BoundaryFace3D face{};
-    // Outward heat flux is h(t) * (T - T_ambient(t)); h must be nonnegative.
+    // Outward heat flux is h(x,y,z,t) * (T - T_ambient(x,y,z,t)); h >= 0.
     ScalarField3DTime transfer_coefficient;
     ScalarField3DTime ambient_value;
 };
