@@ -254,6 +254,7 @@ NOVA_TEST(adaptive_heat_3d_observer_exceptions_propagate) {
     options.max_step = 0.1;
     options.absolute_tolerance = 1.0e-8;
     options.relative_tolerance = 0.0;
+    options.solver_options.relative_tolerance = 1.0e-13;
     options.on_step = [](std::size_t index, double, const std::vector<double>&) {
         if (index == 1U) throw std::runtime_error("accepted observer aborted");
     };
