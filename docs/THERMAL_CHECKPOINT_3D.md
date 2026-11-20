@@ -7,9 +7,9 @@ the solver or the physics formulation.
 
 ## Public API
 
-\`#include "nova/io/thermal_checkpoint_3d.hpp"\`
+`#include "nova/io/thermal_checkpoint_3d.hpp"`
 
-\`\`\`cpp
+```cpp
 // The caller owns the stream, mesh, problem and time-stepping settings.
 std::ofstream checkpoint_file("thermal.restart");
 nova::io::write_transient_heat_checkpoint_3d(
@@ -25,15 +25,15 @@ const auto saved = nova::io::read_transient_heat_checkpoint_3d(
 problem.initial_temperature = saved.temperature;
 options.start_time = saved.time;
 const auto second_result = nova::fem::solve_transient_heat_3d(problem, options);
-\`\`\`
+```
 
-Include \`<fstream>\` and \`<stdexcept>\` in this example's translation unit.
+Include `<fstream>` and `<stdexcept>` in this example's translation unit.
 
 ## Format and safety guarantees
 
 Version 1 is UTF-8-compatible, whitespace-separated ASCII:
 
-\`\`\`text
+```text
 NOVA_THERMAL_CHECKPOINT_3D 1
 time <double>
 nodes <count>
@@ -43,9 +43,9 @@ elements <count>
 temperature <count>
 <T>           # one absolute temperature per node
 end
-\`\`\`
+```
 
-Numbers are written with \`std::numeric_limits<double>::max_digits10\` using
+Numbers are written with `std::numeric_limits<double>::max_digits10` using
 the classic decimal locale, allowing exact finite-double roundtrips. The
 reader compares node coordinates and tetrahedron vertex ordering **exactly**
 to the already-validated expected mesh; a similarly sized mesh with different
@@ -71,7 +71,7 @@ adaptation, project serialization, MPI or cross-platform binary formats.
 
 ## Verification
 
-\`tests/test_thermal_checkpoint_3d.cpp\` checks exact-double roundtrip,
+`tests/test_thermal_checkpoint_3d.cpp` checks exact-double roundtrip,
 stream formatting, malformed/truncated/trailing input and version rejection,
 non-finite value rejection without partial serialization, mesh mismatch
 detection (including same-size changes), and full-vs-resumed 3D heat
