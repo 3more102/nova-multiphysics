@@ -57,8 +57,11 @@ per-volume sources add to the optional uniform `--source Q`. The verification su
 under volumetric heating. [Formulation, input conventions and measurements](docs/STEADY_CONDUCTION_3D.md)
 
 Use `--jump-report` on a solved Gmsh case to inspect raw P1 normal heat-flux
-jumps across shared tetrahedral faces. This is a flux-continuity diagnostic,
-not a complete PDE error estimator or a local-conservation certificate.
+jumps across shared tetrahedral faces. The C++ API also exposes a P1 interior
+residual indicator that combines cell-source residuals with those face jumps
+for positive, elementwise-constant scalar conductivity. It omits natural-boundary
+residuals and does not trigger mesh refinement. See
+[the 3D residual-indicator formulation and limits](docs/RESIDUAL_ERROR_ESTIMATOR_3D.md).
 
 Inspect a mesh before simulation, or apply a user-selected quality gate before
 the FEM solve. NOVA reports total tetrahedral volume, minimum mean ratio,

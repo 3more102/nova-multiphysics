@@ -40,6 +40,7 @@ add_library(nova_core
     src/fem/diffusion_3d.cpp
     src/fem/p1_flux_3d.cpp
     src/fem/interior_flux_jumps_3d.cpp
+    src/fem/residual_error_estimator_3d.cpp
     src/fem/tagged_boundary_flux_3d.cpp
     src/fem/transient_heat_3d.cpp
     src/fem/adaptive_heat_3d.cpp
@@ -142,6 +143,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_cell_conduction_3d.cpp
         tests/test_p1_flux_3d.cpp
         tests/test_interior_flux_jumps_3d.cpp
+        tests/test_residual_error_estimator_3d.cpp
         tests/test_tagged_boundary_flux_3d.cpp
         tests/test_energy_balance_3d.cpp
         tests/test_conservative_face_heat_3d.cpp
