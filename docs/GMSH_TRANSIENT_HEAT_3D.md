@@ -31,20 +31,20 @@ For a single final result, use `--vtk heated_wall_final.vtk` instead of
 
 ## Per-step energy diagnostics as CSV
 
-Add \`--energy-csv budget.csv\` to save one row per **completed time step**
+Add `--energy-csv budget.csv` to save one row per **completed time step**
 (the projected initial state is not a diagnostics row). CSV columns are:
 
-\`step,time_s,heat_content_J,source_energy_J,neumann_energy_J,robin_energy_J,dirichlet_energy_J,balance_residual_J\`
+`step,time_s,heat_content_J,source_energy_J,neumann_energy_J,robin_energy_J,dirichlet_energy_J,balance_residual_J`
 
-Here \`heat_content_J\` is the end-of-step integral of \`C*T\`;
+Here `heat_content_J` is the end-of-step integral of `C*T`;
 the four exchange/source columns are **integrated energies per step**,
 not rates. Their sum should match the heat-content change up to
-\`balance_residual_J\`. The Dirichlet contribution is an algebraic FEM
+`balance_residual_J`. The Dirichlet contribution is an algebraic FEM
 reaction, not an independently reconstructed surface heat flux.
 
-The CSV export is optional and can be combined with \`--vtk\` or
-\`--vtk-series\` or used without either. Its parent directory must exist,
-its extension must be \`.csv\`, and an existing file is never intentionally
+The CSV export is optional and can be combined with `--vtk` or
+`--vtk-series` or used without either. Its parent directory must exist,
+its extension must be `.csv`, and an existing file is never intentionally
 overwritten. NOVA stages a complete CSV in a sibling temporary directory
 before publishing it. If the solve fails, no CSV is published.
 
