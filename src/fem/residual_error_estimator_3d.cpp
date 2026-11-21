@@ -89,8 +89,7 @@ constexpr std::array<GaussPoint1D, 5> gauss_legendre_5{{
     const TetrahedralMesh3D& mesh,
     const Tetrahedron3D& cell,
     const double jacobian,
-    const std::function<double(double, double, double)>& source,
-    const std::span<const NeumannResidualFace3D> natural_boundary_faces
+    const std::function<double(double, double, double)>& source
 ) {
     long double integral = 0.0L;
     for (const auto& q_u : gauss_legendre_5) {
@@ -304,7 +303,8 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     const TetrahedralMesh3D& mesh,
     const std::span<const double> nodal_values,
     const std::span<const double> element_conductivity,
-    const std::function<double(double, double, double)>& source
+    const std::function<double(double, double, double)>& source,
+    const std::span<const NeumannResidualFace3D> natural_boundary_faces
 ) {
     mesh.validate();
     if (nodal_values.size() != mesh.nodes.size()) {
