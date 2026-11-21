@@ -33,7 +33,7 @@ constexpr const char* usage =
     "       --steps N [--scheme be|cn] [--material-tensor VOL xx yy zz xy xz yz]\n"
     "       [--temperature SURF T] [--flux SURF q_out] [--convection SURF h T_inf]\n"
     "       [--source Q] [--heat-source VOL Q] [--vtk final.vtk | --vtk-series result.pvd]\n"
-    "       [--quality-report] [--min-mean-ratio q]\n"
+    "       [--energy-csv budget.csv] [--quality-report] [--min-mean-ratio q]\n"
     "   or: nova_gmsh_transient_heat_3d mesh.msh --check-mesh [--min-mean-ratio q]\n"
     "       VOL and SURF accept numeric Gmsh physical tags or matching physical names.";
 
@@ -89,6 +89,7 @@ struct Settings {
     std::optional<std::size_t> steps;
     std::optional<double> source;
     std::optional<fs::path> vtk;
+    std::optional<fs::path> energy_csv;
     std::optional<fs::path> vtk_series;
     TransientHeat3DScheme scheme{TransientHeat3DScheme::BackwardEuler};
     bool scheme_set{};
@@ -164,6 +165,11 @@ Settings read_settings(int argc, char** argv,
             const auto filename = next();
             if (filename.empty()) throw std::invalid_argument("PVD output path is empty.");
             settings.vtk_series = fs::path(filename);
+        } else if (option == "--energy-csv") {
+            if (settings.energy_csv) throw std::invalid_argument("Duplicate --energy-csv.");
+            const auto filename = next();
+            if (filename.empty()) throw std::invalid_argument("Energy CSV output path is empty.");
+            settings.energy_csv = fs::path(filename);
         } else if (option == "--quality-report") {
             if (settings.quality_report) throw std::invalid_argument("Duplicate --quality-report.");
             settings.quality_report = true;
@@ -203,6 +209,7 @@ Settings read_settings(int argc, char** argv,
             !settings.capacities.empty() || !settings.heat_sources.empty() ||
             !settings.boundaries.empty() || settings.initial || settings.dt ||
             settings.steps || settings.source || settings.vtk || settings.vtk_series ||
+             settings.energy_csv ||
             settings.scheme_set) {
             throw std::invalid_argument("--check-mesh cannot be combined with simulation options.");
         }
@@ -411,6 +418,55 @@ void write_series_collection(
     fs::rename(staged, destination);
 }
 
+void write_energy_csv(
+    const fs::path& destination,
+    const std::vector<TransientHeatStepDiagnostics3D>& diagnostics
+) {
+    fs::path temporary;
+    bool created = false;
+    for (std::size_t attempt = 0; attempt < 1000U; ++attempt) {
+        temporary = destination;
+        temporary += ".tmp." + std::to_string(attempt);
+        if (fs::create_directory(temporary)) {
+            created = true;
+            break;
+        }
+    }
+    if (!created) throw std::runtime_error("Cannot create a temporary energy CSV directory.");
+    const auto staged = temporary / "energy.csv";
+    struct Cleanup {
+        const fs::path& file;
+        const fs::path& directory;
+        ~Cleanup() {
+            std::error_code ignored;
+            fs::remove(file, ignored);
+            fs::remove(directory, ignored);
+        }
+    } cleanup{staged, temporary};
+    std::ofstream output(staged);
+    if (!output) throw std::runtime_error("Cannot open staged energy CSV.");
+    output << "step,time_s,heat_content_J,source_energy_J,neumann_energy_J,"
+              "robin_energy_J,dirichlet_energy_J,balance_residual_J\n"
+           << std::setprecision(17);
+    for (std::size_t i = 0; i < diagnostics.size(); ++i) {
+        const auto& d = diagnostics[i];
+        if (!std::isfinite(d.time) || !std::isfinite(d.heat_content) ||
+            !std::isfinite(d.source_energy) || !std::isfinite(d.neumann_energy) ||
+            !std::isfinite(d.robin_energy) || !std::isfinite(d.dirichlet_energy) ||
+            !std::isfinite(d.balance_residual)) {
+            throw std::runtime_error("Energy CSV diagnostics must be finite.");
+        }
+        output << i + 1U << ',' << d.time << ',' << d.heat_content << ','
+               << d.source_energy << ',' << d.neumann_energy << ','
+               << d.robin_energy << ',' << d.dirichlet_energy << ','
+               << d.balance_residual << '\n';
+    }
+    output.close();
+    if (!output) throw std::runtime_error("Cannot finish staged energy CSV.");
+    fs::rename(staged, destination);
+}
+
+
 std::string series_prefix(const fs::path& destination) {
     if (destination.extension() != ".pvd") {
         throw std::invalid_argument("--vtk-series requires a .pvd destination.");
@@ -508,6 +564,29 @@ int main(int argc, char** argv) {
             prefix = series_prefix(*settings.vtk_series);
             validate_series_destination(*settings.vtk_series, prefix, *settings.steps);
         }
+        if (settings.energy_csv) {
+            const auto& destination = *settings.energy_csv;
+            if (destination.extension() != ".csv") {
+                throw std::invalid_argument("--energy-csv requires a .csv destination.");
+            }
+            const fs::path parent = destination.parent_path().empty()
+                ? fs::path(".") : destination.parent_path();
+            if (!fs::is_directory(parent)) {
+                throw std::invalid_argument("Energy CSV output directory does not exist.");
+            }
+            if (fs::exists(destination)) {
+                throw std::invalid_argument("Refusing to overwrite an existing energy CSV.");
+            }
+            const auto canonical = fs::absolute(destination).lexically_normal();
+            if (canonical == fs::absolute(fs::path(argv[1])).lexically_normal() ||
+                (settings.vtk &&
+                 canonical == fs::absolute(*settings.vtk).lexically_normal()) ||
+                (settings.vtk_series &&
+                 canonical == fs::absolute(*settings.vtk_series).lexically_normal())) {
+                throw std::invalid_argument("Energy CSV output path conflicts with another file.");
+            }
+        }
+
         auto problem = bind_problem(imported, settings);
         const auto generation = make_heat_generation(imported.volume_physical_tags, settings);
         TransientHeat3DOptions options;
@@ -538,6 +617,13 @@ int main(int argc, char** argv) {
         if (settings.vtk_series) {
             write_series_collection(*settings.vtk_series, frames);
         }
+        if (settings.energy_csv) {
+            if (result.diagnostics.size() != options.steps) {
+                throw std::runtime_error("Unexpected number of thermal energy diagnostics.");
+            }
+            write_energy_csv(*settings.energy_csv, result.diagnostics);
+        }
+
         const auto [min_temp, max_temp] = std::minmax_element(
             result.temperature.begin(), result.temperature.end());
         double max_balance = 0.0;
@@ -556,6 +642,11 @@ int main(int argc, char** argv) {
         if (settings.vtk) {
             std::cout << "VTK result " << settings.vtk->string() << "\n";
         }
+        if (settings.energy_csv) {
+            std::cout << "Energy CSV " << settings.energy_csv->string()
+                      << " rows " << result.diagnostics.size() << "\n";
+        }
+
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
