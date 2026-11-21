@@ -17,7 +17,9 @@ For each tetrahedron \(K\), the implemented indicator is
 \eta_K^2 =
 h_K^2\int_K f^2\,dV
 +\frac12\sum_{F\subset\partial K\cap\Omega}
-h_F\int_F [q_h\cdot n_F]^2\,dS,
+h_F\int_F [q_h\cdot n_F]^2\,dS
++\sum_{F\subset\partial K\cap\Gamma_N^{\mathrm{selected}}}
+h_F\int_F (q_h\cdot n-g_N)^2\,dS,
 \qquad q_h=-k\nabla u_h.
 \]
 
@@ -46,10 +48,32 @@ const auto indicators = nova::fem::estimate_diffusion_residual_error_3d(
 );
 ```
 
+Pass an optional fifth argument, a vector of
+\`nova::fem::NeumannResidualFace3D\`, to evaluate natural-boundary
+flux mismatch on **explicitly selected** exterior triangles:
+
+```cpp
+std::vector<nova::fem::NeumannResidualFace3D> faces{
+    {face, [](double, double, double) { return 0.0; }} // insulated face
+};
+const auto result = nova::fem::estimate_diffusion_residual_error_3d(
+    mesh, nodal_values, element_conductivity, source, faces);
+```
+
+Outward flux is \`q_h dot n = -(k grad u_h) dot n\`, independent of
+the supplied face winding. Each selected face adds
+\`h_F * ||q_h dot n - g_N||^2_L2(F)\` to its owner's squared element
+indicator. A positive six-point degree-four triangle rule integrates this
+mismatch. Dirichlet boundaries must not be supplied; omitted natural faces
+contribute no boundary residual (they are **not** assumed insulated).
+Provide a zero callback explicitly for every insulated face to be included.
+
 The result contains:
 
 - `cell_residual_errors[K]`: \(h_K\|f\|_{L^2(K)}\).
 - `flux_jumps`: the existing per-face and per-cell interior flux-jump report.
+- `boundary_residual_errors[K]`: mismatch contribution on selected natural faces (zero in the four-argument overload).
+- `boundary_residual_faces`: facewise owner, area, diameter, and L2 mismatch diagnostics.
 - `element_errors[K]`: \(\eta_K\).
 - `total_error`: \(\sqrt{\sum_K\eta_K^2}\).
 
@@ -58,7 +82,7 @@ The result contains:
 - P1 tetrahedral fields only; the current 3D H1 space is P1.
 - Isotropic scalar conductivity, positive and constant per tetrahedron.
 - Includes cell-source residuals and interior normal-flux jumps.
-- Natural-boundary residuals (Neumann or Robin mismatch) are omitted.
+- Explicit Neumann (including insulated) boundary residuals are supported by the five-argument overload; Robin and automatically classified natural boundaries are not.
 - Within-cell conductivity gradients, anisotropic tensor conductivity,
   temperature-dependent coefficients and nonconforming interfaces are not
   represented.
@@ -71,5 +95,5 @@ The result contains:
 The automated tests check a globally affine harmonic field, the exact
 constant-source indicator on a unit tetrahedron, analytical shared-face flux
 jumps for a discontinuous P1 field and for discontinuous element conductivity,
-and rejection of invalid or non-finite inputs. See
+Neumann matching-flux, constant and spatially varying flux mismatch, reversed face winding, duplicate/interior/missing-face rejection, and rejection of invalid or non-finite inputs. See
 [`VERIFICATION_PLAN.md`](VERIFICATION_PLAN.md).
