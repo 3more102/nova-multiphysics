@@ -95,12 +95,46 @@ This first extraction path uses the same element-averaged displacement
 boundary integral as the fixed-electrode diagnostic. It is therefore an
 experimental estimate, not a discrete FEM electrode reaction or a locally
 equilibrated charge. Check reciprocity and mesh convergence before relying on
-the result. Solving unknown floating-conductor potentials from prescribed
-total charges remains future work.
+the result. A separate terminal-algebra utility for prescribed floating charges is documented
+below; a fully coupled floating-conductor FEM field solve remains future work.
 
 The parallel-plate regression returns the Maxwell matrix
 `[[2, -2], [-2, 2]] F` for `epsilon = 2 F/m`, unit area and unit gap.
 
+## Floating-electrode terminal potentials (experimental)
+
+After extracting a capacitance matrix, the *terminal-only* inverse
+`solve_floating_electrode_potentials_3d` in
+`nova/physics/floating_electrodes_3d.hpp` solves
+
+```text
+C_FF * V_F = Q_F - C_FK * V_K
+```
+
+where F indexes floating conductors with prescribed total charge Q, and K
+indexes conductors with known voltage V. Every electrode ID must be assigned
+exactly once. ID order in the input collections is arbitrary; results follow
+the capacitance matrix's ascending electrode IDs. The API returns all terminal
+voltages, estimated terminal charges from the original raw C, and the maximum
+absolute floating-charge residual. It accepts an all-floating configuration
+only when the capacitance block is nonsingular (for example, a separate
+grounded reference exists). An isolated capacitance matrix with no reference
+has a gauge nullspace, which the solver rejects rather than setting a hidden
+ground. Singular or severely ill-conditioned blocks are also rejected.
+
+For the two-terminal parallel plate benchmark with C = [[2,-2],[-2,2]] F,
+fixing the first electrode to 0 V and prescribing +20 C on the second
+returns 10 V on the second and -20 C on the first.
+
+**Limitations:** This operation is a linear algebraic terminal inference, not
+a new FEM field solve, not an independent electrostatic solution with floating
+conductor boundary constraints, and not a model of charge in the dielectric.
+As with the extracted matrix, source-free linear dielectrics and a valid
+voltage reference are assumed. No raw-flux symmetrization or inferred gauge
+is applied. Verify matrix reciprocity and mesh convergence, and independently
+re-solve the FEM potential field using the computed terminal voltages if
+spatial field quantities are required.
+
 ## Scope and limitations
 
-This is an experimental electrostatic Poisson interface, not a general Maxwell solver. It supports straight first-order tetrahedra, scalar or symmetric positive-definite tensor permittivity, optional per-cell material data, fixed potentials and prescribed normal displacement. It does not yet support floating conductor potentials, surface-charge unknowns, nonlinear dielectric response, AC or transient Maxwell equations, or a locally equilibrated displacement field. Per-cell D is a constitutive element average, not an equilibrated face flux or a Gauss-law error estimator. This prototype is not production-certified.
+This is an experimental electrostatic Poisson interface, not a general Maxwell solver. It supports straight first-order tetrahedra, scalar or symmetric positive-definite tensor permittivity, optional per-cell material data, fixed potentials and prescribed normal displacement. It does not yet implement floating conductor boundary constraints inside the FEM solve, surface-charge unknowns, nonlinear dielectric response, AC or transient Maxwell equations, or a locally equilibrated displacement field. Per-cell D is a constitutive element average, not an equilibrated face flux or a Gauss-law error estimator. This prototype is not production-certified.
