@@ -23,6 +23,14 @@ int main() {
         return 2;
     }
 
+    const auto composed = refine_tetrahedra_by_indicators_3d(
+        coarse.mesh, indicators, 0.5, coarse.boundary_faces);
+    if (composed.marked_elements != marked ||
+        composed.refinement.mesh.elements != refined.mesh.elements ||
+        composed.refinement.parent_elements != refined.parent_elements) {
+        return 7;
+    }
+
     std::vector<double> coarse_values;
     coarse_values.reserve(coarse.mesh.nodes.size());
     for (const auto& node : coarse.mesh.nodes) {
