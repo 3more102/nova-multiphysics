@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <stdexcept>
 #include <utility>
 
@@ -88,7 +89,8 @@ constexpr std::array<GaussPoint1D, 5> gauss_legendre_5{{
     const TetrahedralMesh3D& mesh,
     const Tetrahedron3D& cell,
     const double jacobian,
-    const std::function<double(double, double, double)>& source
+    const std::function<double(double, double, double)>& source,
+    const std::span<const NeumannResidualFace3D> natural_boundary_faces
 ) {
     long double integral = 0.0L;
     for (const auto& q_u : gauss_legendre_5) {
@@ -126,6 +128,174 @@ constexpr std::array<GaussPoint1D, 5> gauss_legendre_5{{
             "Residual estimator source integral is not representable.");
     }
     return integral;
+}
+
+
+struct ResidualFaceOwner3D {
+    std::size_t cell{};
+    std::size_t opposite{};
+    std::size_t occurrences{};
+};
+
+struct LongVector3D {
+    long double x{}, y{}, z{};
+};
+
+[[nodiscard]] LongVector3D vector_between(const Point3D& a, const Point3D& b) {
+    return {static_cast<long double>(b.x) - a.x,
+            static_cast<long double>(b.y) - a.y,
+            static_cast<long double>(b.z) - a.z};
+}
+
+[[nodiscard]] LongVector3D vector_cross(
+    const LongVector3D& a, const LongVector3D& b
+) {
+    return {a.y * b.z - a.z * b.y,
+            a.z * b.x - a.x * b.z,
+            a.x * b.y - a.y * b.x};
+}
+
+[[nodiscard]] long double vector_dot(
+    const LongVector3D& a, const LongVector3D& b
+) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+[[nodiscard]] double checked_boundary_value(const long double value) {
+    if (!std::isfinite(value) ||
+        std::abs(value) > static_cast<long double>(std::numeric_limits<double>::max())) {
+        throw std::overflow_error("3D natural-boundary residual is not representable.");
+    }
+    return static_cast<double>(value);
+}
+
+struct FaceQuadraturePoint3D {
+    std::array<double, 3> barycentric;
+    double normalized_weight;
+};
+
+// Positive degree-four triangle quadrature, weights normalized to sum to 1.
+constexpr std::array<FaceQuadraturePoint3D, 6> face_quadrature{{
+    {{{0.445948490915965, 0.445948490915965, 0.108103018168070}}, 0.223381589678010},
+    {{{0.445948490915965, 0.108103018168070, 0.445948490915965}}, 0.223381589678010},
+    {{{0.108103018168070, 0.445948490915965, 0.445948490915965}}, 0.223381589678010},
+    {{{0.091576213509771, 0.091576213509771, 0.816847572980459}}, 0.109951743655322},
+    {{{0.091576213509771, 0.816847572980459, 0.091576213509771}}, 0.109951743655322},
+    {{{0.816847572980459, 0.091576213509771, 0.091576213509771}}, 0.109951743655322}
+}};
+
+[[nodiscard]] std::vector<long double> integrate_neumann_residuals_3d(
+    const TetrahedralMesh3D& mesh,
+    std::span<const P1TetrahedralFlux3D> fields,
+    std::span<const NeumannResidualFace3D> natural_faces,
+    std::vector<BoundaryFluxResidualFace3D>& report
+) {
+    std::vector<long double> squared(mesh.elements.size(), 0.0L);
+    if (natural_faces.empty()) return squared;
+
+    std::map<BoundaryFace3D, ResidualFaceOwner3D> owners;
+    for (std::size_t element = 0; element < mesh.elements.size(); ++element) {
+        const auto& tet = mesh.elements[element];
+        for (std::size_t omitted = 0; omitted < 4; ++omitted) {
+            BoundaryFace3D face{};
+            std::size_t position = 0;
+            for (std::size_t vertex = 0; vertex < 4; ++vertex) {
+                if (vertex != omitted) face[position++] = tet[vertex];
+            }
+            std::sort(face.begin(), face.end());
+            const auto [it, inserted] = owners.try_emplace(
+                face, ResidualFaceOwner3D{element, tet[omitted], 1U});
+            if (!inserted) ++it->second.occurrences;
+        }
+    }
+
+    std::map<BoundaryFace3D, bool> visited;
+    report.reserve(natural_faces.size());
+    for (const auto& item : natural_faces) {
+        if (!item.outward_flux) {
+            throw std::invalid_argument(
+                "Natural-boundary residual requires an outward-flux callback.");
+        }
+        BoundaryFace3D face = item.face;
+        for (const auto vertex : face) {
+            if (vertex >= mesh.nodes.size()) {
+                throw std::out_of_range(
+                    "Natural-boundary residual references a missing vertex.");
+            }
+        }
+        std::sort(face.begin(), face.end());
+        const auto found = owners.find(face);
+        if (found == owners.end() || found->second.occurrences != 1U) {
+            throw std::invalid_argument(
+                "Natural-boundary residual face must be an exterior tetrahedral face.");
+        }
+        if (!visited.emplace(face, true).second) {
+            throw std::invalid_argument("Natural-boundary residual face is duplicated.");
+        }
+
+        const auto& a = mesh.nodes[face[0]];
+        const auto& b = mesh.nodes[face[1]];
+        const auto& c = mesh.nodes[face[2]];
+        const auto& opposite = mesh.nodes[found->second.opposite];
+        const auto ab = vector_between(a, b);
+        const auto ac = vector_between(a, c);
+        auto normal_area_twice = vector_cross(ab, ac);
+        const long double length_twice = std::hypot(
+            normal_area_twice.x, normal_area_twice.y, normal_area_twice.z);
+        const long double area = 0.5L * length_twice;
+        const long double diameter = std::max({
+            std::hypot(ab.x, ab.y, ab.z),
+            std::hypot(ac.x, ac.y, ac.z),
+            std::hypot(static_cast<long double>(c.x) - b.x,
+                       static_cast<long double>(c.y) - b.y,
+                       static_cast<long double>(c.z) - b.z)
+        });
+        if (!(area > 0.0L) || !(diameter > 0.0L) ||
+            !std::isfinite(area) || !std::isfinite(diameter)) {
+            throw std::overflow_error(
+                "Natural-boundary residual face has invalid geometry.");
+        }
+        if (vector_dot(normal_area_twice, vector_between(a, opposite)) > 0.0L) {
+            normal_area_twice.x = -normal_area_twice.x;
+            normal_area_twice.y = -normal_area_twice.y;
+            normal_area_twice.z = -normal_area_twice.z;
+        }
+        const auto& flux = fields[found->second.cell].flux;
+        const LongVector3D q{flux.x, flux.y, flux.z};
+        const long double actual_outward =
+            vector_dot(q, normal_area_twice) / length_twice;
+        long double weighted_mismatch_square = 0.0L;
+        for (const auto& qp : face_quadrature) {
+            const auto& weight = qp.barycentric;
+            const long double x = weight[0] * a.x + weight[1] * b.x + weight[2] * c.x;
+            const long double y = weight[0] * a.y + weight[1] * b.y + weight[2] * c.y;
+            const long double z = weight[0] * a.z + weight[1] * b.z + weight[2] * c.z;
+            const double prescribed = item.outward_flux(
+                checked_boundary_value(x),
+                checked_boundary_value(y),
+                checked_boundary_value(z));
+            if (!std::isfinite(prescribed)) {
+                throw std::invalid_argument(
+                    "Natural-boundary flux callback returned a non-finite value.");
+            }
+            const long double mismatch = actual_outward - prescribed;
+            weighted_mismatch_square += qp.normalized_weight * mismatch * mismatch;
+        }
+        const long double mismatch_l2_square = area * weighted_mismatch_square;
+        const long double contribution = diameter * mismatch_l2_square;
+        if (!(contribution >= 0.0L) || !std::isfinite(contribution)) {
+            throw std::overflow_error("Natural-boundary residual exceeds finite range.");
+        }
+        squared[found->second.cell] += contribution;
+        report.push_back({
+            face, found->second.cell,
+            checked_boundary_value(area),
+            checked_boundary_value(diameter),
+            checked_norm(mismatch_l2_square,
+                "Natural-boundary L2 mismatch exceeds finite range.")
+        });
+    }
+    return squared;
 }
 
 } // namespace
@@ -211,7 +381,10 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
 
     DiffusionResidualIndicators3D result;
     result.flux_jumps = evaluate_interior_flux_jumps_3d(mesh, cell_fields);
+    const auto boundary_squared = integrate_neumann_residuals_3d(
+        mesh, cell_fields, natural_boundary_faces, result.boundary_residual_faces);
     result.cell_residual_errors.resize(mesh.elements.size(), 0.0);
+    result.boundary_residual_errors.resize(mesh.elements.size(), 0.0);
     result.element_errors.resize(mesh.elements.size(), 0.0);
 
     long double total_squared = 0.0L;
@@ -220,10 +393,13 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
             static_cast<long double>(result.flux_jumps.cell_indicators[element]) *
             result.flux_jumps.cell_indicators[element];
         const long double combined_squared =
-            cell_residual_squared[element] + face_squared;
+            cell_residual_squared[element] + face_squared + boundary_squared[element];
         result.cell_residual_errors[element] = checked_norm(
             cell_residual_squared[element],
             "3D cell residual indicator exceeds the finite range.");
+        result.boundary_residual_errors[element] = checked_norm(
+            boundary_squared[element],
+            "3D boundary residual indicator exceeds the finite range.");
         result.element_errors[element] = checked_norm(
             combined_squared,
             "3D element residual indicator exceeds the finite range.");
@@ -232,6 +408,19 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     result.total_error = checked_norm(
         total_squared, "3D total residual indicator exceeds the finite range.");
     return result;
+}
+
+
+// Existing four-argument API retains its cell-and-interior-only meaning.
+DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
+    const TetrahedralMesh3D& mesh,
+    const std::span<const double> nodal_values,
+    const std::span<const double> element_conductivity,
+    const std::function<double(double, double, double)>& source
+) {
+    return estimate_diffusion_residual_error_3d(
+        mesh, nodal_values, element_conductivity, source,
+        std::span<const NeumannResidualFace3D>{});
 }
 
 } // namespace nova::fem
