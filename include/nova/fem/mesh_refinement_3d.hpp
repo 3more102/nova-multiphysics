@@ -59,6 +59,23 @@ struct RefinedTetrahedralMesh3D {
     const std::vector<BoundaryFace3D>& boundary_faces = {}
 );
 
+// One indicator-driven adaptation cycle: validate indicator count, apply
+// deterministic Dörfler marking, and perform conforming local refinement.
+// An all-zero indicator field produces an unchanged mesh. The returned
+// marked indices preserve the marking priority order for diagnostics.
+// This does not estimate errors, transfer physics models or resolve a PDE.
+struct IndicatorRefinementResult3D {
+    std::vector<std::size_t> marked_elements;
+    RefinedTetrahedralMesh3D refinement;
+};
+
+[[nodiscard]] IndicatorRefinementResult3D refine_tetrahedra_by_indicators_3d(
+    const TetrahedralMesh3D& mesh,
+    std::span<const double> element_indicators,
+    double theta,
+    const std::vector<BoundaryFace3D>& boundary_faces = {}
+);
+
 // Exact P1 interpolation at the coarse nodes and new edge midpoints for any
 // RefinedTetrahedralMesh3D result (uniform or local).
 [[nodiscard]] std::vector<double> prolongate_p1_refined_3d(
