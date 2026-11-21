@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nova/physics/electrostatics_3d.hpp"
+#include "nova/linalg/solver_types.hpp"
 
 #include <cstddef>
 #include <span>
@@ -34,6 +35,32 @@ struct ElectrodeCharge3D {
     const Electrostatics3DResult& solution,
     std::span<const fem::BoundaryFace3D> electrode_faces,
     std::span<const int> electrode_ids
+);
+
+
+struct ElectrodeBoundaryGroup3D {
+    int electrode_id{};
+    std::vector<fem::BoundaryFace3D> faces;
+};
+
+struct CapacitanceMatrix3D {
+    // Sorted electrode IDs. matrix_farads is row-major: C(i,j) is the
+    // conductor charge on electrode i for a unit voltage on electrode j.
+    std::vector<int> electrode_ids;
+    std::vector<double> matrix_farads;
+    // Raw-flux reciprocity diagnostics; these are not symmetrized.
+    double max_reciprocity_defect_farads{};
+    double max_relative_reciprocity_defect{};
+};
+
+// Extract the experimental Maxwell capacitance matrix using one unit-voltage
+// solve per electrode. Existing non-electrode potential boundaries become
+// grounded references. Free-charge and prescribed-displacement loads are
+// excluded from this linear capacitance calculation.
+[[nodiscard]] CapacitanceMatrix3D extract_capacitance_matrix_3d(
+    const Electrostatics3DProblem& dielectric_problem,
+    std::span<const ElectrodeBoundaryGroup3D> electrodes,
+    const linalg::SolverOptions& solver_options = {}
 );
 
 } // namespace nova::physics

@@ -74,6 +74,33 @@ The regression suite includes:
 
 The installed SDK consumer also solves the capacitor benchmark and verifies the fixed-electrode charge API, checking the public headers and exported link symbols outside the source tree.
 
+## Multi-terminal capacitance matrix (experimental)
+
+Use `extract_capacitance_matrix_3d` with one group of exterior triangles per
+conductor. It performs one electrostatic solve per electrode, setting that
+electrode to 1 V and every other electrode to 0 V. Existing non-electrode
+Dirichlet constraints and faces are treated as grounded references; existing
+Dirichlet faces that exactly match an electrode group are replaced by the
+basis voltage. The extraction excludes volume free charge and prescribed
+displacement loads.
+
+The returned electrode IDs are sorted. `matrix_farads` is row-major and
+`matrix_farads[i*n+j]` is the conductor charge on electrode `i` for a
+unit-voltage excitation on electrode `j`. The reported absolute and relative
+reciprocity defects measure the asymmetry between `C_ij` and `C_ji`; the
+matrix is not silently symmetrized. A single electrode requires a separate
+grounded potential reference.
+
+This first extraction path uses the same element-averaged displacement
+boundary integral as the fixed-electrode diagnostic. It is therefore an
+experimental estimate, not a discrete FEM electrode reaction or a locally
+equilibrated charge. Check reciprocity and mesh convergence before relying on
+the result. Solving unknown floating-conductor potentials from prescribed
+total charges remains future work.
+
+The parallel-plate regression returns the Maxwell matrix
+`[[2, -2], [-2, 2]] F` for `epsilon = 2 F/m`, unit area and unit gap.
+
 ## Scope and limitations
 
 This is an experimental electrostatic Poisson interface, not a general Maxwell solver. It supports straight first-order tetrahedra, scalar or symmetric positive-definite tensor permittivity, optional per-cell material data, fixed potentials and prescribed normal displacement. It does not yet support floating conductor potentials, surface-charge unknowns, nonlinear dielectric response, AC or transient Maxwell equations, or a locally equilibrated displacement field. Per-cell D is a constitutive element average, not an equilibrated face flux or a Gauss-law error estimator. This prototype is not production-certified.

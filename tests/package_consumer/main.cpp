@@ -152,6 +152,30 @@ $EndElements
         imported.volume_physical_tags[0] != 0 ||
         imported.exterior_faces.size() != 4) return 7;
 
+    // Verify the installed multi-terminal capacitance-matrix API and symbol.
+    std::vector<nova::physics::ElectrodeBoundaryGroup3D> electrode_groups{
+        {1, {}}, {2, {}}
+    };
+    for (const auto& face : box.boundary_faces) {
+        const bool left = electrostatic.mesh.nodes[face[0]].x == 0.0 &&
+            electrostatic.mesh.nodes[face[1]].x == 0.0 &&
+            electrostatic.mesh.nodes[face[2]].x == 0.0;
+        const bool right = electrostatic.mesh.nodes[face[0]].x == 1.0 &&
+            electrostatic.mesh.nodes[face[1]].x == 1.0 &&
+            electrostatic.mesh.nodes[face[2]].x == 1.0;
+        if (left) electrode_groups[0].faces.push_back(face);
+        if (right) electrode_groups[1].faces.push_back(face);
+    }
+    const auto capacitance_matrix =
+        nova::physics::extract_capacitance_matrix_3d(electrostatic, electrode_groups);
+    if (capacitance_matrix.electrode_ids != std::vector<int>{1, 2} ||
+        capacitance_matrix.matrix_farads.size() != 4 ||
+        std::abs(capacitance_matrix.matrix_farads[0] - 2.0) > 1.0e-8 ||
+        std::abs(capacitance_matrix.matrix_farads[1] + 2.0) > 1.0e-8 ||
+        std::abs(capacitance_matrix.matrix_farads[2] + 2.0) > 1.0e-8 ||
+        std::abs(capacitance_matrix.matrix_farads[3] - 2.0) > 1.0e-8 ||
+        capacitance_matrix.max_reciprocity_defect_farads > 1.0e-8) return 13;
+
     // Verify the installed SDK exports the versioned thermal checkpoint API.
     const std::vector<double> saved_temperature(box.mesh.nodes.size(), 301.25);
     std::stringstream checkpoint_stream;

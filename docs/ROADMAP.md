@@ -148,9 +148,10 @@ Implemented (experimental):
 - Scalar electrostatic Poisson equation on P1 tetrahedra with scalar or SPD tensor permittivity.
 - Spatial and additive per-cell free charge, fixed potentials, prescribed normal displacement, pure-Neumann gauge and stored-field-energy diagnostics.
 - Fixed-potential electrode charge diagnostics on validated exterior faces, using winding-independent normals and explicitly documented element-averaged displacement.
+- Experimental multi-terminal Maxwell capacitance matrix extraction through unit-voltage basis solves, with an explicit reciprocity-defect diagnostic.
 
 Remaining:
-- Floating conductor potential unknowns and multi-terminal capacitance-matrix extraction.
+- Floating conductor potential unknowns from prescribed total charge and discrete electrode-reaction charge extraction.
 - Locally equilibrated H(div) displacement recovery and Gauss-law error estimation.
 - Complex-valued algebra.
 - H(curl) function spaces.

@@ -176,9 +176,14 @@ integrates element-averaged displacement on validated prescribed-potential
 boundary faces. It reports dielectric-outward flux and oppositely signed
 conductor charge, but is not an equilibrated Gauss-law flux.
 
+An experimental [multi-terminal capacitance matrix extraction](docs/ELECTROSTATICS_3D.md#multi-terminal-capacitance-matrix-experimental)
+performs unit-voltage basis solves and reports the row-major Maxwell matrix
+plus its reciprocity defect. It uses the same approximate element-averaged
+boundary charge diagnostic, not discrete electrode reactions.
+
 The analytical suite covers a parallel-plate capacitor (C = 2 F, U = 100 J),
 an anisotropic affine field (U = 36.5 J), and an exact one-free-DOF tetrahedral
-charge benchmark. The installed SDK consumer also verifies the capacitor solution and fixed-electrode charge API.
+charge benchmark. The installed SDK consumer also verifies the capacitor solution, fixed-electrode charge API and multi-terminal capacitance matrix.
 This is an experimental electrostatic Poisson interface, not a general Maxwell
 solver; floating conductors, surface-charge unknowns, AC/transient Maxwell,
 and equilibrated displacement recovery are not implemented. See
