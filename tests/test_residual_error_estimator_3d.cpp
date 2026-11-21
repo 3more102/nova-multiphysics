@@ -1,5 +1,8 @@
 #include "test_framework.hpp"
 
+#include "nova/fem/diffusion_3d.hpp"
+#include "nova/fem/error_norms_3d.hpp"
+#include "nova/fem/mesh_refinement_3d.hpp"
 #include "nova/fem/h1_space_3d.hpp"
 #include "nova/fem/residual_error_estimator_3d.hpp"
 
@@ -151,4 +154,76 @@ NOVA_TEST(diffusion_residual_estimator_3d_rejects_invalid_inputs) {
         (void)nova::fem::estimate_diffusion_residual_error_3d(
             box.mesh, values, conductivity, zero_source);
     }));
+}
+
+
+// End-to-end regression across separate FEM solves. The estimator alone is not
+// an error bound: compare both its global indicator and independently evaluated
+// manufactured-solution errors after a geometrically conforming 1-to-8 refine.
+NOVA_TEST(diffusion_residual_estimator_3d_solve_estimate_refine_resolve_converges) {
+    using namespace nova::fem;
+
+    const auto coarse_box = make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+
+    const ExactScalarField3D exact{
+        [](double x, double y, double z) { return x*x + y*y + z*z; },
+        [](double x, double, double) { return 2.0*x; },
+        [](double, double y, double) { return 2.0*y; },
+        [](double, double, double z) { return 2.0*z; }
+    };
+    const auto source = [](double, double, double) { return -6.0; };
+
+    ScalarDiffusion3DProblem coarse;
+    coarse.mesh = coarse_box.mesh;
+    coarse.cell_diffusivity.assign(coarse.mesh.elements.size(), 1.0);
+    coarse.source = source;
+    for (const auto& face : coarse_box.boundary_faces) {
+        coarse.dirichlet_faces.push_back({face, exact.value});
+    }
+
+    nova::linalg::SolverOptions options;
+    options.relative_tolerance = 1.0e-12;
+    options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    const auto coarse_solution = solve_scalar_diffusion_3d(coarse, options);
+    NOVA_REQUIRE(coarse_solution.linear_solver.converged);
+
+    const auto coarse_indicator = estimate_diffusion_residual_error_3d(
+        coarse.mesh, coarse_solution.values, coarse.cell_diffusivity, source);
+    const auto coarse_error = compute_error_norms_3d(
+        coarse.mesh, coarse_solution.values, exact);
+    NOVA_REQUIRE(std::isfinite(coarse_indicator.total_error));
+    NOVA_REQUIRE(coarse_indicator.total_error > 0.0);
+    NOVA_REQUIRE(coarse_error.l2 > 0.0);
+    NOVA_REQUIRE(coarse_error.h1_seminorm > 0.0);
+
+    const auto refinement = refine_tetrahedra_uniformly_3d(
+        coarse.mesh, coarse_box.boundary_faces);
+    NOVA_REQUIRE(refinement.mesh.elements.size() ==
+                 8U * coarse.mesh.elements.size());
+    NOVA_REQUIRE_NEAR(
+        evaluate_mesh_quality_3d(refinement.mesh).total_volume,
+        evaluate_mesh_quality_3d(coarse.mesh).total_volume, 1.0e-12);
+
+    ScalarDiffusion3DProblem fine;
+    fine.mesh = refinement.mesh;
+    fine.cell_diffusivity = prolongate_cellwise_constant_uniform_3d(
+        refinement, coarse.cell_diffusivity);
+    fine.source = source;
+    for (const auto& face : refinement.boundary_faces) {
+        fine.dirichlet_faces.push_back({face, exact.value});
+    }
+    const auto fine_solution = solve_scalar_diffusion_3d(fine, options);
+    NOVA_REQUIRE(fine_solution.linear_solver.converged);
+    const auto fine_indicator = estimate_diffusion_residual_error_3d(
+        fine.mesh, fine_solution.values, fine.cell_diffusivity, source);
+    const auto fine_error = compute_error_norms_3d(
+        fine.mesh, fine_solution.values, exact);
+
+    NOVA_REQUIRE(fine_indicator.element_errors.size() == fine.mesh.elements.size());
+    NOVA_REQUIRE(fine_indicator.total_error > 0.0);
+    NOVA_REQUIRE(std::isfinite(fine_indicator.total_error));
+    NOVA_REQUIRE(coarse_indicator.total_error > fine_indicator.total_error);
+    NOVA_REQUIRE(coarse_error.l2 > fine_error.l2);
+    NOVA_REQUIRE(coarse_error.h1_seminorm > fine_error.h1_seminorm);
 }
