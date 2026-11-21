@@ -49,7 +49,7 @@ const auto indicators = nova::fem::estimate_diffusion_residual_error_3d(
 ```
 
 Pass an optional fifth argument, a vector of
-\`nova::fem::NeumannResidualFace3D\`, to evaluate natural-boundary
+`nova::fem::NeumannResidualFace3D`, to evaluate natural-boundary
 flux mismatch on **explicitly selected** exterior triangles:
 
 ```cpp
@@ -60,9 +60,9 @@ const auto result = nova::fem::estimate_diffusion_residual_error_3d(
     mesh, nodal_values, element_conductivity, source, faces);
 ```
 
-Outward flux is \`q_h dot n = -(k grad u_h) dot n\`, independent of
+Outward flux is `q_h dot n = -(k grad u_h) dot n`, independent of
 the supplied face winding. Each selected face adds
-\`h_F * ||q_h dot n - g_N||^2_L2(F)\` to its owner's squared element
+`h_F * ||q_h dot n - g_N||^2_L2(F)` to its owner's squared element
 indicator. A positive six-point degree-four triangle rule integrates this
 mismatch. Dirichlet boundaries must not be supplied; omitted natural faces
 contribute no boundary residual (they are **not** assumed insulated).
@@ -95,5 +95,7 @@ The result contains:
 The automated tests check a globally affine harmonic field, the exact
 constant-source indicator on a unit tetrahedron, analytical shared-face flux
 jumps for a discontinuous P1 field and for discontinuous element conductivity,
-Neumann matching-flux, constant and spatially varying flux mismatch, reversed face winding, duplicate/interior/missing-face rejection, and rejection of invalid or non-finite inputs. See
+Neumann matching-flux, constant and spatially varying flux mismatch,
+reversed face winding, duplicate/interior/missing-face rejection, and
+rejection of invalid or non-finite inputs. See
 [`VERIFICATION_PLAN.md`](VERIFICATION_PLAN.md).
