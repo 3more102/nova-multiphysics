@@ -170,7 +170,6 @@ Settings read_settings(int argc, char** argv,
             const auto filename = next();
             if (filename.empty()) throw std::invalid_argument("Energy CSV output path is empty.");
             settings.energy_csv = fs::path(filename);
-
         } else if (option == "--quality-report") {
             if (settings.quality_report) throw std::invalid_argument("Duplicate --quality-report.");
             settings.quality_report = true;
