@@ -9,8 +9,9 @@
 namespace nova::fem {
 
 // Experimental fixed-mesh temporal adaptivity for the existing P1 tetrahedral
-// solver. Time-dependent sources and Dirichlet/Neumann/Robin data are supported;
-// conductivity and heat capacity remain time-independent.
+// solver. Prescribed time-varying sources, Dirichlet/Neumann/Robin data,
+// scalar/tensor conductivity and volumetric heat capacity are supported.
+// Temperature-dependent nonlinear constitutive laws remain unsupported.
 struct AdaptiveHeat3DOptions {
     TransientHeat3DScheme scheme{TransientHeat3DScheme::CrankNicolson};
     double start_time{0.0};
