@@ -128,6 +128,7 @@ Implemented:
 - Area-weighted minimum-change reconciliation with component-scaled sparse solves and local per-cell energy-budget checks.
 - Raw P1 interior normal-flux continuity diagnostics on all shared tetrahedral faces, with per-face jumps, per-cell weighted indicators and a global indicator.
 - P1 tetrahedral interior residual indicator combining the cell-source residual with interior flux jumps for positive, elementwise-constant scalar conductivity.
+- Explicitly selected 3D natural-boundary Neumann mismatch residuals with positive triangle quadrature and exterior-face validation.
 
 Remaining:
 - Natural-boundary residual terms (Neumann/Robin mismatch) and coupling of the interior residual indicator to graded local tetrahedral refinement.
