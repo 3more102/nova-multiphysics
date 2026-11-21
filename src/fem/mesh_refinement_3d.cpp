@@ -575,6 +575,22 @@ RefinedTetrahedralMesh3D refine_tetrahedra_adaptively_3d(
     return result;
 }
 
+IndicatorRefinementResult3D refine_tetrahedra_by_indicators_3d(
+    const TetrahedralMesh3D& mesh,
+    const std::span<const double> element_indicators,
+    const double theta,
+    const std::vector<BoundaryFace3D>& boundary_faces
+) {
+    if (element_indicators.size() != mesh.elements.size()) {
+        throw std::invalid_argument(
+            "3D indicator-driven refinement requires one indicator per tetrahedron.");
+    }
+    auto marked = mark_dorfler_elements_3d(element_indicators, theta);
+    auto refinement = refine_tetrahedra_adaptively_3d(
+        mesh, marked, boundary_faces);
+    return {std::move(marked), std::move(refinement)};
+}
+
 std::vector<double> prolongate_p1_uniform_3d(
     const RefinedTetrahedralMesh3D& refined,
     const std::span<const double> coarse_nodal_values
