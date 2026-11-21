@@ -520,3 +520,71 @@ NOVA_TEST(tetra_adaptive_refinement_is_conforming_for_every_box_marking_subset) 
         }
     }
 }
+
+NOVA_TEST(tetra_indicator_driven_refinement_matches_explicit_marking) {
+    const auto coarse = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    NOVA_REQUIRE(coarse.mesh.elements.size() >= 2U);
+    std::vector<double> indicators(coarse.mesh.elements.size(), 0.0);
+    indicators[0] = 3.0;
+    indicators[1] = 4.0;
+
+    // The first ranked cell contributes 16/25 > theta=0.6.
+    const auto result = nova::fem::refine_tetrahedra_by_indicators_3d(
+        coarse.mesh, indicators, 0.6, coarse.boundary_faces);
+    const std::vector<std::size_t> expected_marking{1U};
+    NOVA_REQUIRE(result.marked_elements == expected_marking);
+    const auto explicit_refinement = nova::fem::refine_tetrahedra_adaptively_3d(
+        coarse.mesh, expected_marking, coarse.boundary_faces);
+    NOVA_REQUIRE(
+        result.refinement.mesh.elements == explicit_refinement.mesh.elements);
+    NOVA_REQUIRE(
+        result.refinement.parent_elements == explicit_refinement.parent_elements);
+    NOVA_REQUIRE(
+        result.refinement.midpoint_parent_edges ==
+        explicit_refinement.midpoint_parent_edges);
+    NOVA_REQUIRE(
+        result.refinement.boundary_faces == explicit_refinement.boundary_faces);
+    NOVA_REQUIRE(
+        result.refinement.parent_boundary_faces ==
+        explicit_refinement.parent_boundary_faces);
+
+    const auto coarse_quality = nova::fem::evaluate_mesh_quality_3d(coarse.mesh);
+    const auto fine_quality =
+        nova::fem::evaluate_mesh_quality_3d(result.refinement.mesh);
+    NOVA_REQUIRE_NEAR(
+        fine_quality.total_volume, coarse_quality.total_volume, 3.0e-13);
+}
+
+NOVA_TEST(tetra_indicator_driven_refinement_zero_and_invalid_inputs) {
+    const auto coarse = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    std::vector<double> indicators(coarse.mesh.elements.size(), 0.0);
+    const auto unchanged = nova::fem::refine_tetrahedra_by_indicators_3d(
+        coarse.mesh, indicators, 0.5, coarse.boundary_faces);
+    NOVA_REQUIRE(unchanged.marked_elements.empty());
+    NOVA_REQUIRE(unchanged.refinement.midpoint_parent_edges.empty());
+    NOVA_REQUIRE(unchanged.refinement.mesh.elements == coarse.mesh.elements);
+    NOVA_REQUIRE(unchanged.refinement.boundary_faces == coarse.boundary_faces);
+    NOVA_REQUIRE(unchanged.refinement.parent_elements.size() ==
+        coarse.mesh.elements.size());
+
+    NOVA_REQUIRE(throws_mesh_error([&] {
+        (void)nova::fem::refine_tetrahedra_by_indicators_3d(
+            coarse.mesh, std::vector<double>{1.0}, 0.5);
+    }));
+    NOVA_REQUIRE(throws_mesh_error([&] {
+        (void)nova::fem::refine_tetrahedra_by_indicators_3d(
+            coarse.mesh, indicators, 0.0);
+    }));
+    indicators[0] = -1.0;
+    NOVA_REQUIRE(throws_mesh_error([&] {
+        (void)nova::fem::refine_tetrahedra_by_indicators_3d(
+            coarse.mesh, indicators, 0.5);
+    }));
+    indicators[0] = std::numeric_limits<double>::infinity();
+    NOVA_REQUIRE(throws_mesh_error([&] {
+        (void)nova::fem::refine_tetrahedra_by_indicators_3d(
+            coarse.mesh, indicators, 0.5);
+    }));
+}
