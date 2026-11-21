@@ -29,6 +29,26 @@ written synchronously by the solver observer.
 For a single final result, use `--vtk heated_wall_final.vtk` instead of
 `--vtk-series heated_wall.pvd`.
 
+## Per-step energy diagnostics as CSV
+
+Add \`--energy-csv budget.csv\` to save one row per **completed time step**
+(the projected initial state is not a diagnostics row). CSV columns are:
+
+\`step,time_s,heat_content_J,source_energy_J,neumann_energy_J,robin_energy_J,dirichlet_energy_J,balance_residual_J\`
+
+Here \`heat_content_J\` is the end-of-step integral of \`C*T\`;
+the four exchange/source columns are **integrated energies per step**,
+not rates. Their sum should match the heat-content change up to
+\`balance_residual_J\`. The Dirichlet contribution is an algebraic FEM
+reaction, not an independently reconstructed surface heat flux.
+
+The CSV export is optional and can be combined with \`--vtk\` or
+\`--vtk-series\` or used without either. Its parent directory must exist,
+its extension must be \`.csv\`, and an existing file is never intentionally
+overwritten. NOVA stages a complete CSV in a sibling temporary directory
+before publishing it. If the solve fails, no CSV is published.
+
+
 ## Inputs and conventions
 
 - `--material VOL k`: finite positive isotropic conductivity (W/m/K) for a
@@ -55,6 +75,8 @@ For a single final result, use `--vtk heated_wall_final.vtk` instead of
   temporary sibling directory and renamed after a complete file write.
 - `--vtk-series output.pvd`: write the projected initial state and all
   completed steps as timestamped VTK frames plus a PVD collection.
+- `--energy-csv budget.csv`: write per-step integrated energy inputs, heat
+  content and discrete energy-budget residual with full numeric precision.
 
 The importer accepts first-order four-node tetrahedra and triangular exterior
 facets from Gmsh **MSH 2.2 or 4.1 ASCII**. MSH 4.1 physical groups are mapped
