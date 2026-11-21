@@ -182,9 +182,9 @@ NOVA_TEST(diffusion_residual_estimator_3d_solve_estimate_refine_resolve_converge
         coarse.dirichlet_faces.push_back({face, exact.value});
     }
 
-    linalg::SolverOptions options;
+    nova::linalg::SolverOptions options;
     options.relative_tolerance = 1.0e-12;
-    options.preconditioner = linalg::PreconditionerType::Jacobi;
+    options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
     const auto coarse_solution = solve_scalar_diffusion_3d(coarse, options);
     NOVA_REQUIRE(coarse_solution.linear_solver.converged);
 
