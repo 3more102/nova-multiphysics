@@ -139,6 +139,30 @@ child's parent, each new node's coarse edge, and each refined exterior
 boundary face's parent. Generic P1 and cellwise-constant transfer routines
 consume these maps.
 
+An optional one-cycle wrapper links the marking and refinement stages
+without changing the PDE solver:
+
+```cpp
+#include "nova/fem/mesh_refinement_3d.hpp"
+
+// indicators: one finite nonnegative estimate for every coarse tetrahedron.
+// For example, use element_errors from a compatible 3D residual estimator.
+const auto cycle = nova::fem::refine_tetrahedra_by_indicators_3d(
+    coarse_mesh, indicators, 0.6, exterior_boundary_faces);
+const auto next_temperature =
+    nova::fem::prolongate_p1_refined_3d(
+        cycle.refinement, coarse_temperature);
+const auto next_conductivity =
+    nova::fem::prolongate_cellwise_constant_refined_3d(
+        cycle.refinement, coarse_conductivity);
+// cycle.marked_elements records the selected coarse tetrahedra.
+// Validate the refined mesh and rebuild your physics before resolving.
+```
+
+An all-zero indicator vector leaves the mesh unchanged. An indicator-count
+mismatch, invalid marking fraction, or non-finite/negative indicator is rejected.
+Boundary-face parent mappings are available to carry user-owned boundary tags.
+
 These APIs are building blocks, not an automatic spatially adaptive heat
 solver. The current workflow does not yet perform repeated estimate-mark-
 refine-resolve cycles, multilevel grading, shape-quality optimization,
