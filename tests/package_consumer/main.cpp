@@ -1,5 +1,6 @@
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
+#include "nova/fem/residual_error_estimator_3d.hpp"
 #include "nova/linalg/csr_matrix.hpp"
 #include "nova/linalg/conjugate_gradient.hpp"
 #include "nova/linalg/incomplete_cholesky.hpp"
@@ -82,6 +83,27 @@ int main() {
         if (std::abs(three_d.values[i] - problem.mesh.nodes[i].x) > 1.0e-9)
             return 4;
     }
+    // Exercise the installed Neumann-boundary residual overload and link symbol.
+    std::vector<NeumannResidualFace3D> natural_faces;
+    for (const auto& face : box.boundary_faces) {
+        const bool on_y0 = problem.mesh.nodes[face[0]].y == 0.0 &&
+            problem.mesh.nodes[face[1]].y == 0.0 &&
+            problem.mesh.nodes[face[2]].y == 0.0;
+        if (on_y0) {
+            natural_faces.push_back({
+                face, [](double, double, double) { return 0.0; }
+            });
+        }
+    }
+    const std::vector<double> unit_conductivity(box.mesh.elements.size(), 1.0);
+    const auto residual = estimate_diffusion_residual_error_3d(
+        box.mesh, three_d.values, unit_conductivity,
+        [](double, double, double) { return 0.0; }, natural_faces);
+    if (natural_faces.empty() ||
+        residual.boundary_residual_faces.size() != natural_faces.size() ||
+        residual.boundary_residual_errors.size() != box.mesh.elements.size() ||
+        residual.total_error > 1.0e-8) return 14;
+
     // Exercise the installed experimental electrostatics API and exported symbol.
     nova::physics::Electrostatics3DProblem electrostatic;
     electrostatic.mesh = box.mesh;
