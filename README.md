@@ -145,6 +145,11 @@ states to ParaView `.pvd` time series:
   --heat-source 22 120 --vtk-series heated_wall.pvd
 ```
 
+Add `--energy-csv heated_wall_energy.csv` to the imported-mesh transient CLI
+to export one row per completed step with heat content, integrated source and
+boundary energies, and discrete energy-balance residual (joules). It can be
+combined with PVD or final-only VTK output and refuses an existing CSV file.
+
 The collection includes the projected initial field and every completed
 time step, with nodal temperature and per-cell material, heat-generation and
 heat-flux fields. See [Gmsh transient CLI and verification](docs/GMSH_TRANSIENT_HEAT_3D.md).
