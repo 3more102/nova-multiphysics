@@ -1,7 +1,7 @@
 #include "nova/physics/linear_elasticity_3d.hpp"
 
 #include "nova/fem/tetrahedron_h1.hpp"
-#include "constrained_diffusion.hpp"
+#include "../fem/constrained_diffusion.hpp"
 
 #include <algorithm>
 #include <array>
