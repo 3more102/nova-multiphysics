@@ -48,6 +48,7 @@ add_library(nova_core
     src/fem/conservative_face_heat_3d.cpp
     src/physics/electrostatics_3d.cpp
     src/physics/electrode_charge_3d.cpp
+    src/physics/floating_electrodes_3d.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/gmsh_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
@@ -148,6 +149,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_energy_balance_3d.cpp
         tests/test_conservative_face_heat_3d.cpp
         tests/test_electrostatics_3d.cpp
+        tests/test_floating_electrodes_3d.cpp
         tests/test_transient_heat_3d.cpp
         tests/test_adaptive_heat_3d.cpp
         tests/test_transient_heat_3d_restart.cpp
