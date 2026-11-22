@@ -8,12 +8,32 @@
 
 namespace nova::fem {
 
+// A selected natural-boundary face with prescribed outward conductive flux.
+// Include zero-flux exterior faces explicitly when their residual is wanted.
+// Dirichlet faces must not be included.
+struct NeumannResidualFace3D {
+    BoundaryFace3D face{};
+    std::function<double(double, double, double)> outward_flux;
+};
+
+struct BoundaryFluxResidualFace3D {
+    BoundaryFace3D nodes{}; // sorted exterior vertex IDs
+    std::size_t owner_cell{};
+    double area{};
+    double diameter{};
+    double mismatch_l2{}; // ||q_h dot n - g_N||_L2(F)
+};
+
 struct DiffusionResidualIndicators3D {
     // Cell-source residual contribution h_K * ||f||_{L2(K)}.
     std::vector<double> cell_residual_errors;
     // Existing interior normal-flux jump report, shared equally by adjacent cells.
     InteriorFluxJumpReport3D flux_jumps;
-    // Combined nonnegative element indicators: sqrt(cell^2 + face_jump^2).
+    // Nonnegative Neumann mismatch contribution per tetrahedron.
+    std::vector<double> boundary_residual_errors;
+    // Only supplied exterior natural faces are included in this report.
+    std::vector<BoundaryFluxResidualFace3D> boundary_residual_faces;
+    // Combined nonnegative element indicators: sqrt(cell^2 + face_jump^2 + boundary^2).
     std::vector<double> element_errors;
     // Euclidean aggregate: sqrt(sum_K eta_K^2).
     double total_error{};
@@ -23,12 +43,27 @@ struct DiffusionResidualIndicators3D {
 // Conductivity is positive and constant within each element. It combines the
 // cell-source residual with interior normal-flux jumps. Natural-boundary
 // residuals, within-cell coefficient gradients and tensor materials are
-// omitted; this is a refinement indicator, not a guaranteed error bound.
+// omitted by this four-argument overload; neither overload is a certified
+// error bound. No unlabeled or Dirichlet boundary face is automatically added.
 [[nodiscard]] DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     const TetrahedralMesh3D& mesh,
     std::span<const double> nodal_values,
     std::span<const double> element_conductivity,
     const std::function<double(double, double, double)>& source
+);
+
+// As above, but also include h_F * ||q_h dot n - g_N||^2_L2(F) for
+// explicitly selected natural exterior faces, once per owning tetrahedron.
+// Face winding is irrelevant; duplicate, interior or invalid faces are
+// rejected. A positive six-point degree-four triangle quadrature integrates
+// the prescribed boundary mismatch. Unlisted faces contribute no boundary
+// residual; include insulated faces with a zero callback as needed.
+[[nodiscard]] DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
+    const TetrahedralMesh3D& mesh,
+    std::span<const double> nodal_values,
+    std::span<const double> element_conductivity,
+    const std::function<double(double, double, double)>& source,
+    std::span<const NeumannResidualFace3D> natural_boundary_faces
 );
 
 } // namespace nova::fem

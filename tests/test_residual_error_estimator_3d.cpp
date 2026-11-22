@@ -322,3 +322,109 @@ NOVA_TEST(diffusion_residual_estimator_3d_dorfler_local_refine_and_resolve) {
     NOVA_REQUIRE(after.h1_seminorm < before.h1_seminorm);
     NOVA_REQUIRE(after.l2 < before.l2);
 }
+
+
+NOVA_TEST(diffusion_residual_estimator_3d_neumann_faces_match_outward_flux) {
+    TetrahedralMesh3D mesh;
+    mesh.nodes = {
+        {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0},
+        {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}
+    };
+    mesh.elements = {{0U, 1U, 2U, 3U}};
+    const H1FunctionSpace3D space(mesh);
+    const auto values = space.interpolate(
+        [](double x, double, double) { return x; });
+    const std::vector<double> conductivity{2.0};
+    const auto no_source = [](double, double, double) { return 0.0; };
+    using nova::fem::NeumannResidualFace3D;
+    std::vector<NeumannResidualFace3D> natural{
+        {{0U, 2U, 3U}, [](double, double, double) { return 2.0; }}
+    };
+
+    const auto exact = nova::fem::estimate_diffusion_residual_error_3d(
+        mesh, values, conductivity, no_source, natural);
+    NOVA_REQUIRE(exact.boundary_residual_faces.size() == 1U);
+    NOVA_REQUIRE(exact.boundary_residual_errors.size() == 1U);
+    NOVA_REQUIRE_NEAR(exact.boundary_residual_faces[0].area, 0.5, 1.0e-14);
+    NOVA_REQUIRE_NEAR(exact.boundary_residual_faces[0].diameter,
+        std::sqrt(2.0), 1.0e-14);
+    NOVA_REQUIRE(exact.total_error < 1.0e-12);
+
+    // Input face winding must not alter the outward normal.
+    natural[0].face = {3U, 2U, 0U};
+    const auto reversed = nova::fem::estimate_diffusion_residual_error_3d(
+        mesh, values, conductivity, no_source, natural);
+    NOVA_REQUIRE(reversed.total_error < 1.0e-12);
+
+    // g_N = 0 leaves a constant 2 W/m^2 flux mismatch on this face:
+    // eta^2 = h_F * |F| * 2^2 = 2 * sqrt(2).
+    natural[0].outward_flux =
+        [](double, double, double) { return 0.0; };
+    const auto nonzero = nova::fem::estimate_diffusion_residual_error_3d(
+        mesh, values, conductivity, no_source, natural);
+    const double expected = std::sqrt(2.0 * std::sqrt(2.0));
+    NOVA_REQUIRE_NEAR(nonzero.boundary_residual_errors[0], expected, 3.0e-14);
+    NOVA_REQUIRE_NEAR(nonzero.total_error, expected, 3.0e-14);
+    NOVA_REQUIRE_NEAR(nonzero.boundary_residual_faces[0].mismatch_l2,
+        std::sqrt(2.0), 3.0e-14);
+}
+
+NOVA_TEST(diffusion_residual_estimator_3d_integrates_varying_neumann_mismatch) {
+    TetrahedralMesh3D mesh;
+    mesh.nodes = {
+        {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0},
+        {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}
+    };
+    mesh.elements = {{0U, 1U, 2U, 3U}};
+    const std::vector<double> field(mesh.nodes.size(), 0.0);
+    const std::vector<double> conductivity{1.0};
+    const std::vector<nova::fem::NeumannResidualFace3D> natural{
+        {{0U, 2U, 3U}, [](double, double y, double) { return y; }}
+    };
+    const auto result = nova::fem::estimate_diffusion_residual_error_3d(
+        mesh, field, conductivity,
+        [](double, double, double) { return 0.0; }, natural);
+
+    // On x=0, integral_F y^2 dS = 1/12 exactly; h_F = sqrt(2).
+    const double expected = std::sqrt(std::sqrt(2.0) / 12.0);
+    NOVA_REQUIRE_NEAR(result.total_error, expected, 1.0e-13);
+    NOVA_REQUIRE_NEAR(result.boundary_residual_errors[0], expected, 1.0e-13);
+    NOVA_REQUIRE_NEAR(result.boundary_residual_faces[0].mismatch_l2,
+        std::sqrt(1.0 / 12.0), 1.0e-13);
+}
+
+NOVA_TEST(diffusion_residual_estimator_3d_rejects_invalid_natural_faces) {
+    const auto mesh = two_tetrahedra_sharing_face();
+    const std::vector<double> field(mesh.nodes.size(), 0.0);
+    const std::vector<double> conductivity(mesh.elements.size(), 1.0);
+    const auto zero_source = [](double, double, double) { return 0.0; };
+    using nova::fem::NeumannResidualFace3D;
+    const NeumannResidualFace3D boundary{
+        {0U, 1U, 2U}, [](double, double, double) { return 0.0; }};
+    const auto check = [&](const std::vector<NeumannResidualFace3D>& natural) {
+        return rejects([&] {
+            (void)nova::fem::estimate_diffusion_residual_error_3d(
+                mesh, field, conductivity, zero_source, natural);
+        });
+    };
+
+    NOVA_REQUIRE(check({boundary, boundary}));
+    NOVA_REQUIRE(check({{{1U, 2U, 3U},
+        [](double, double, double) { return 0.0; }}})); // interior
+    NOVA_REQUIRE(check({{{0U, 1U, mesh.nodes.size()},
+        [](double, double, double) { return 0.0; }}})); // missing node
+    NOVA_REQUIRE(check({{{0U, 1U, 4U},
+        [](double, double, double) { return 0.0; }}})); // nonexistent face
+    NOVA_REQUIRE(check({{{0U, 1U, 2U}, {}}})); // absent callback
+    NOVA_REQUIRE(check({{{0U, 1U, 2U},
+        [](double, double, double) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }}}));
+
+    // Backward-compatible path leaves out natural-boundary residuals.
+    const auto old = nova::fem::estimate_diffusion_residual_error_3d(
+        mesh, field, conductivity, zero_source);
+    NOVA_REQUIRE(old.boundary_residual_faces.empty());
+    NOVA_REQUIRE(old.boundary_residual_errors.size() == mesh.elements.size());
+    NOVA_REQUIRE(old.total_error < 1.0e-12);
+}
