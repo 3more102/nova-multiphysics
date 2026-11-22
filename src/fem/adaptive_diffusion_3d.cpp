@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -13,6 +14,31 @@ namespace {
 [[nodiscard]] BoundaryFace3D canonical_face(BoundaryFace3D face) {
     std::sort(face.begin(), face.end());
     return face;
+}
+
+using BoundaryEdge3D = std::array<std::size_t, 2>;
+
+[[nodiscard]] BoundaryEdge3D canonical_edge(BoundaryEdge3D edge) {
+    std::sort(edge.begin(), edge.end());
+    return edge;
+}
+
+[[nodiscard]] std::map<std::size_t, double> fixed_vertex_values(
+    const ScalarDiffusion3DProblem& problem
+) {
+    std::map<std::size_t, double> values;
+    for (const auto& condition : problem.dirichlet_constraints) {
+        values.emplace(condition.node, condition.value);
+    }
+    return values;
+}
+
+[[nodiscard]] bool entirely_fixed_face(
+    const BoundaryFace3D& face,
+    const std::map<std::size_t, double>& values
+) {
+    return values.contains(face[0]) && values.contains(face[1]) &&
+           values.contains(face[2]);
 }
 
 [[nodiscard]] std::map<BoundaryFace3D, ScalarField3D> dirichlet_map(
@@ -49,13 +75,20 @@ namespace {
 ) {
     const auto essential = dirichlet_map(problem);
     const auto neumann = neumann_map(problem);
+    const auto fixed_vertices = fixed_vertex_values(problem);
     const ScalarField3D zero = [](double, double, double) { return 0.0; };
     const ScalarField3D source = problem.source ? problem.source : zero;
     std::vector<NeumannResidualFace3D> natural;
     natural.reserve(exterior.size());
     for (const auto& face : exterior) {
         const auto key = canonical_face(face);
-        if (essential.contains(key)) continue;
+        // A P1 face with all three vertices explicitly fixed already has
+        // a prescribed trace, even without a facewise callback. Do not
+        // incorrectly estimate an insulated (zero-flux) boundary there.
+        if (essential.contains(key) ||
+            (!neumann.contains(key) && entirely_fixed_face(key, fixed_vertices))) {
+            continue;
+        }
         const auto found = neumann.find(key);
         natural.push_back({
             face,
@@ -106,6 +139,7 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
 
     const auto essential = dirichlet_map(problem);
     const auto neumann = neumann_map(problem);
+    const auto fixed_vertices = fixed_vertex_values(problem);
     const auto& refined = result.adaptation.refinement;
     result.refined_problem = problem;
     result.refined_problem.mesh = refined.mesh;
@@ -128,6 +162,30 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
             result.refined_problem.neumann_faces.push_back({child, found->second});
         }
         // Remaining faces are naturally insulated.
+    }
+
+    // A boundary face fixed only through three explicit P1 vertex values
+    // has a linear prescribed trace. Preserve it at new edge-midpoint DOFs;
+    // otherwise those nodes would become unintended natural-boundary DOFs.
+    std::set<BoundaryEdge3D> implicitly_fixed_edges;
+    for (const auto& face : exterior) {
+        const auto key = canonical_face(face);
+        if (essential.contains(key) || neumann.contains(key) ||
+            !entirely_fixed_face(key, fixed_vertices)) {
+            continue;
+        }
+        implicitly_fixed_edges.insert(canonical_edge({face[0], face[1]}));
+        implicitly_fixed_edges.insert(canonical_edge({face[0], face[2]}));
+        implicitly_fixed_edges.insert(canonical_edge({face[1], face[2]}));
+    }
+    for (std::size_t i = 0; i < refined.midpoint_parent_edges.size(); ++i) {
+        const auto edge = canonical_edge(refined.midpoint_parent_edges[i]);
+        if (!implicitly_fixed_edges.contains(edge)) continue;
+        // Both endpoints are explicit fixed nodes on a coarse boundary face.
+        const double value = 0.5 * fixed_vertices.at(edge[0]) +
+                             0.5 * fixed_vertices.at(edge[1]);
+        result.refined_problem.dirichlet_constraints.push_back({
+            problem.mesh.nodes.size() + i, value});
     }
 
     result.refined_solution =
