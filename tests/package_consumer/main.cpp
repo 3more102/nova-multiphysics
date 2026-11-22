@@ -6,6 +6,7 @@
 #include "nova/linalg/incomplete_cholesky.hpp"
 #include "nova/physics/electrostatics_3d.hpp"
 #include "nova/physics/electrode_charge_3d.hpp"
+#include "nova/physics/floating_electrodes_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/thermal_checkpoint_3d.hpp"
 
@@ -197,6 +198,18 @@ $EndElements
         std::abs(capacitance_matrix.matrix_farads[2] + 2.0) > 1.0e-8 ||
         std::abs(capacitance_matrix.matrix_farads[3] - 2.0) > 1.0e-8 ||
         capacitance_matrix.max_reciprocity_defect_farads > 1.0e-8) return 13;
+
+    // Check installed floating-electrode terminal algebra and exported symbol.
+    const auto floating_voltages =
+        nova::physics::solve_floating_electrode_potentials_3d(
+            capacitance_matrix,
+            std::vector<nova::physics::FixedElectrodePotential3D>{{1, 0.0}},
+            std::vector<nova::physics::FloatingElectrodeCharge3D>{{2, 20.0}});
+    if (floating_voltages.potential_volts.size() != 2 ||
+        std::abs(floating_voltages.potential_volts[1] - 10.0) > 1.0e-8 ||
+        std::abs(floating_voltages.estimated_charge_coulombs[0] + 20.0) > 1.0e-8 ||
+        floating_voltages.max_floating_charge_residual_coulombs > 1.0e-8)
+        return 15;
 
     // Verify the installed SDK exports the versioned thermal checkpoint API.
     const std::vector<double> saved_temperature(box.mesh.nodes.size(), 301.25);
