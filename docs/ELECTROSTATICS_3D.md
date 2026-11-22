@@ -236,6 +236,59 @@ a monolithic constrained FEM formulation with floating potential unknowns.
 External charge densities, nonzero dielectric-space charge, nonlinear
 materials, and arbitrary impressed-flux loads are not supported here.
 
+## Charge-constrained floating-conductor Schur solve (experimental)
+
+`solve_floating_conductor_schur_3d` is a **discrete P1 Schur-complement
+floating-conductor solver**, available through
+`nova/physics/floating_conductor_schur_3d.hpp`.
+
+Consider the linear 3D source-free FEM stiffness matrix, split into unconstrained
+interior degrees of freedom `i` and equipotential terminal degrees of freedom
+`e`. Eliminating the interior unknowns yields the terminal operator
+
+```text
+C = K_ee - K_ei * inverse(K_ii) * K_ie
+C_FF * V_F = Q_F - C_FK * V_K
+```
+
+NOVA obtains `C` **implicitly** through unit-terminal-voltage P1 FEM solves
+and *discrete weak-form electrode reactions*, instead of constructing a dense
+global nodal Schur matrix. After solving the small terminal system, a final
+Dirichlet P1 solve reconstructs `V`, `E`, `D`, and stored energy.
+Each returned result includes:
+
+- The **unsymmetrized** Galerkin reaction capacitance matrix and reciprocity
+  diagnostics, inferred terminal potentials, and terminal charge estimates.
+- Independently integrated weak-form electrode reaction charges.
+- Legacy element-averaged surface-displacement electrode estimates.
+- Maximum mismatch between prescribed floating charge and reconstructed FEM
+  reaction charge; maximum disagreement between weak and raw surface charges.
+
+The parallel-plate regression (`epsilon = 2 F/m`, unit area and distance,
+`V_low = 0 V`, `Q_high = +20 C`) obtains `V_high = 10 V`,
+`E = (-10,0,0) V/m`, `Q = [-20,+20] C`, and `U = 100 J`.
+Other regressions cover spatially varying permittivity, the discrete
+`sum_g(V_g*Q_g) = 2*U` identity, an independently grounded single floating
+terminal, all-fixed terminals, and singular-gauge/invalid-load rejection.
+
+**Mathematical and engineering limits:** This is a series of standard
+Galerkin FEM solves implementing an **implicit discrete Schur complement**,
+not a monolithic augmented saddle-point solve with extra unknowns. A
+specified independent voltage reference is required when the isolated
+terminal block has a constant-voltage nullspace. It accepts a linear
+permittivity representation and *no* nonempty volume-charge callback,
+per-cell free charge, or prescribed-displacement faces, as those would
+require an affine reaction-load term. Existing non-electrode Dirichlet
+constraints are grounded at zero volts (matching the capacitance basis
+solves) rather than preserving their original values. Electrode groups
+must be disjoint, complete exterior conductor face patches. Solver and
+quadrature tolerances limit the charge residual. The flux-versus-reaction
+disagreement is **not** a validated physical error bar. Independent mesh
+convergence and experimental validation remain necessary.
+
+The earlier `reconstruct_floating_electrostatic_field_3d` based on raw
+boundary flux is still available unchanged for comparisons.
+
 ## Scope and limitations
 
 This is an experimental electrostatic Poisson interface, not a general Maxwell solver. It supports straight first-order tetrahedra, scalar or symmetric positive-definite tensor permittivity, optional per-cell material data, fixed potentials and prescribed normal displacement. It does not yet implement floating conductor boundary constraints inside the FEM solve, surface-charge unknowns, nonlinear dielectric response, AC or transient Maxwell equations, or a locally equilibrated displacement field. Per-cell D is a constitutive element average, not an equilibrated face flux or a Gauss-law error estimator. This prototype is not production-certified.
