@@ -95,4 +95,21 @@ evaluate_discrete_electrode_reactions_3d(
     std::span<const int> electrode_ids
 );
 
+
+// Re-extract a capacitance matrix using the discrete P1 weak-form
+// conductor reaction (K*V)_electrode rather than the element-averaged D.n
+// surface-flux integral used by extract_capacitance_matrix_3d.
+// The same validated electrode sets, charge-free unit-voltage basis solves,
+// and optional grounded non-electrode references are used; it performs
+// ONE solve per electrode, not an additional solve for each diagnostic.
+// Symmetry follows from the Galerkin bilinear form up to linear-solver and
+// quadrature roundoff. No hidden symmetrization or gauge fixing is applied.
+// This is a discretization-consistent capacitance approximation, not a
+// certified continuum Maxwell capacitance or a floating-boundary FEM solver.
+[[nodiscard]] CapacitanceMatrix3D extract_discrete_capacitance_matrix_3d(
+    const Electrostatics3DProblem& dielectric_problem,
+    std::span<const ElectrodeBoundaryGroup3D> electrodes,
+    const linalg::SolverOptions& solver_options = {}
+);
+
 } // namespace nova::physics
