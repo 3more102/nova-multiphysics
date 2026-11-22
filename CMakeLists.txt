@@ -95,6 +95,10 @@ if(NOVA_BUILD_EXAMPLES)
     target_link_libraries(nova_diffusion_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_diffusion_3d)
 
+    add_executable(nova_adaptive_diffusion_3d examples/adaptive_diffusion_3d/main.cpp)
+    target_link_libraries(nova_adaptive_diffusion_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_adaptive_diffusion_3d)
+
     add_executable(nova_gmsh_diffusion_3d examples/gmsh_diffusion_3d/main.cpp)
     target_link_libraries(nova_gmsh_diffusion_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_gmsh_diffusion_3d)
@@ -189,6 +193,9 @@ if(NOVA_BUILD_TESTS)
     set_tests_properties(nova_source_guard_rejects_duplicate PROPERTIES WILL_FAIL TRUE)
     if(NOVA_BUILD_EXAMPLES)
         add_test(NAME nova_diffusion_3d_smoke COMMAND nova_diffusion_3d)
+        add_test(NAME nova_adaptive_diffusion_3d_smoke COMMAND nova_adaptive_diffusion_3d)
+        set_tests_properties(nova_adaptive_diffusion_3d_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "NOVA adaptive 3D diffusion demonstration")
         add_test(NAME nova_gmsh_diffusion_3d_smoke COMMAND nova_gmsh_diffusion_3d
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron.msh" 7)
         add_test(NAME nova_gmsh_named_groups_smoke COMMAND nova_gmsh_diffusion_3d
@@ -244,6 +251,10 @@ if(NOVA_BUILD_TESTS)
             PASS_REGULAR_EXPRESSION "Minimum mean ratio")
         find_package(Python3 COMPONENTS Interpreter QUIET)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME nova_adaptive_diffusion_3d_vtk_verify
+                COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_adaptive_diffusion_3d_vtk.py"
+                "$<TARGET_FILE:nova_adaptive_diffusion_3d>")
             add_test(NAME nova_tagged_wall_verification COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_tagged_conduction_3d.py"
                 "$<TARGET_FILE:nova_gmsh_diffusion_3d>"
@@ -311,7 +322,7 @@ endif()
 if(NOVA_BUILD_EXAMPLES)
     foreach(example IN ITEMS
         nova_poisson_1d nova_diffusion_2d nova_diffusion_3d
-        nova_gmsh_diffusion_3d nova_transient_heat_3d
+        nova_adaptive_diffusion_3d nova_gmsh_diffusion_3d nova_transient_heat_3d
         nova_gmsh_transient_heat_3d nova_electrostatics_3d nova_transient_heat_2d nova_transient_flux_2d
         nova_adaptive_heat_2d nova_nonlinear_diffusion_1d)
         nova_assert_unique_target_sources(${example})
