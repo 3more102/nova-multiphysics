@@ -121,3 +121,122 @@ NOVA_TEST(floating_electrodes_rejects_invalid_inputs) {
             {{10, 1.0}, {20, 1.0}});
     });
 }
+
+
+NOVA_TEST(floating_electrodes_reconstructs_3d_field_from_charge) {
+    using nova::physics::Electrostatics3DProblem;
+    using nova::physics::ElectrodeBoundaryGroup3D;
+    using nova::physics::reconstruct_floating_electrostatic_field_3d;
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    std::vector<ElectrodeBoundaryGroup3D> groups{{10, {}}, {20, {}}};
+    for (const auto& face : box.boundary_faces) {
+        const double x = problem.mesh.nodes[face[0]].x;
+        if (problem.mesh.nodes[face[1]].x == x &&
+            problem.mesh.nodes[face[2]].x == x) {
+            if (x == 0.0) groups[0].faces.push_back(face);
+            if (x == 1.0) {
+                // Ignore caller face winding when evaluating the final Q.
+                groups[1].faces.push_back({face[2], face[1], face[0]});
+            }
+        }
+    }
+    NOVA_REQUIRE(!groups[0].faces.empty() && !groups[1].faces.empty());
+    const auto result = reconstruct_floating_electrostatic_field_3d(
+        problem, groups,
+        std::vector<FixedElectrodePotential3D>{{10, 0.0}},
+        std::vector<FloatingElectrodeCharge3D>{{20, 20.0}});
+    NOVA_REQUIRE(result.field.linear_solver.converged);
+    NOVA_REQUIRE(result.capacitance.electrode_ids.size() == 2U);
+    NOVA_REQUIRE_NEAR(result.terminals.potential_volts[1], 10.0, 1.0e-8);
+    NOVA_REQUIRE(result.electrode_charges.size() == 2U);
+    NOVA_REQUIRE_NEAR(
+        result.electrode_charges[0].conductor_charge_coulombs, -20.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(
+        result.electrode_charges[1].conductor_charge_coulombs, 20.0, 1.0e-8);
+    NOVA_REQUIRE(result.max_floating_charge_mismatch_coulombs < 1.0e-8);
+    for (std::size_t i = 0; i < problem.mesh.nodes.size(); ++i) {
+        NOVA_REQUIRE_NEAR(
+            result.field.potential[i], 10.0 * problem.mesh.nodes[i].x, 1.0e-8);
+    }
+    for (const auto& field : result.field.electric_field) {
+        NOVA_REQUIRE_NEAR(field.x, -10.0, 1.0e-8);
+        NOVA_REQUIRE_NEAR(field.y, 0.0, 1.0e-8);
+        NOVA_REQUIRE_NEAR(field.z, 0.0, 1.0e-8);
+    }
+    NOVA_REQUIRE_NEAR(result.field.stored_energy_joules, 100.0, 1.0e-7);
+}
+
+NOVA_TEST(floating_electrodes_reconstructs_field_with_external_ground) {
+    using nova::physics::Electrostatics3DProblem;
+    using nova::physics::ElectrodeBoundaryGroup3D;
+    using nova::physics::reconstruct_floating_electrostatic_field_3d;
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    ElectrodeBoundaryGroup3D floating{20, {}};
+    for (const auto& face : box.boundary_faces) {
+        const double x = problem.mesh.nodes[face[0]].x;
+        if (problem.mesh.nodes[face[1]].x != x ||
+            problem.mesh.nodes[face[2]].x != x) continue;
+        if (x == 0.0) {
+            // Capacitance extraction treats every external reference as 0 V,
+            // regardless of the originally supplied Dirichlet callback.
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 7.0; }});
+        }
+        if (x == 1.0) floating.faces.push_back(face);
+    }
+    const auto result = reconstruct_floating_electrostatic_field_3d(
+        problem, std::vector<ElectrodeBoundaryGroup3D>{floating},
+        std::vector<FixedElectrodePotential3D>{},
+        std::vector<FloatingElectrodeCharge3D>{{20, 20.0}});
+    NOVA_REQUIRE(result.field.linear_solver.converged);
+    NOVA_REQUIRE_NEAR(result.terminals.potential_volts[0], 10.0, 1.0e-8);
+    NOVA_REQUIRE(result.max_floating_charge_mismatch_coulombs < 1.0e-8);
+    for (std::size_t i = 0; i < problem.mesh.nodes.size(); ++i) {
+        NOVA_REQUIRE_NEAR(
+            result.field.potential[i], 10.0 * problem.mesh.nodes[i].x, 1.0e-8);
+    }
+    NOVA_REQUIRE_NEAR(result.field.stored_energy_joules, 100.0, 1.0e-7);
+}
+
+NOVA_TEST(floating_electrodes_reconstruction_rejects_impressed_loads) {
+    using nova::physics::Electrostatics3DProblem;
+    using nova::physics::ElectrodeBoundaryGroup3D;
+    using nova::physics::reconstruct_floating_electrostatic_field_3d;
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    std::vector<ElectrodeBoundaryGroup3D> groups{{10, {}}, {20, {}}};
+    for (const auto& face : box.boundary_faces) {
+        const double x = problem.mesh.nodes[face[0]].x;
+        if (problem.mesh.nodes[face[1]].x != x ||
+            problem.mesh.nodes[face[2]].x != x) continue;
+        if (x == 0.0) groups[0].faces.push_back(face);
+        if (x == 1.0) groups[1].faces.push_back(face);
+    }
+    const auto run = [&] {
+        (void)reconstruct_floating_electrostatic_field_3d(
+            problem, groups,
+            std::vector<FixedElectrodePotential3D>{{10, 0.0}},
+            std::vector<FloatingElectrodeCharge3D>{{20, 20.0}});
+    };
+    problem.free_charge_density = [](double, double, double) { return 1.0; };
+    require_invalid(run);
+    problem.free_charge_density = {};
+    problem.cell_free_charge_density.assign(problem.mesh.elements.size(), 1.0);
+    require_invalid(run);
+    problem.cell_free_charge_density.clear();
+    problem.displacement_flux_faces.push_back({
+        box.boundary_faces.front(),
+        [](double, double, double) { return 1.0; }});
+    require_invalid(run);
+}

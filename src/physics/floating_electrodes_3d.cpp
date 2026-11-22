@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <vector>
 
@@ -168,6 +169,128 @@ FloatingElectrodePotentials3D solve_floating_electrode_potentials_3d(
                 std::max(result.max_floating_charge_residual_coulombs,
                          finite_double(std::abs(q - prescribed_charge[i])));
         }
+    }
+    return result;
+}
+
+
+ReconstructedFloatingElectrostaticField3D
+reconstruct_floating_electrostatic_field_3d(
+    const Electrostatics3DProblem& dielectric_problem,
+    const std::span<const ElectrodeBoundaryGroup3D> electrode_groups,
+    const std::span<const FixedElectrodePotential3D> fixed_electrodes,
+    const std::span<const FloatingElectrodeCharge3D> floating_electrodes,
+    const linalg::SolverOptions& solver_options
+) {
+    // Capacitance extraction intentionally removes all impressed sources.
+    // A field reconstruction from that matrix would therefore be misleading
+    // if the caller supplied charge or nonzero displacement loads.
+    if (dielectric_problem.free_charge_density ||
+        !dielectric_problem.cell_free_charge_density.empty() ||
+        !dielectric_problem.displacement_flux_faces.empty()) {
+        throw std::invalid_argument(
+            "Charge-to-field reconstruction requires a source-free dielectric "
+            "and no prescribed displacement boundary loads.");
+    }
+
+    ReconstructedFloatingElectrostaticField3D result;
+    result.capacitance = extract_capacitance_matrix_3d(
+        dielectric_problem, electrode_groups, solver_options);
+    result.terminals = solve_floating_electrode_potentials_3d(
+        result.capacitance, fixed_electrodes, floating_electrodes);
+
+    // The extractor validates the entire group partition, including
+    // distinct exterior faces and no cross-electrode shared vertices.
+    // Canonical face keys handle any input face winding.
+    std::set<fem::BoundaryFace3D> electrode_faces;
+    std::set<std::size_t> electrode_nodes;
+    std::vector<fem::BoundaryFace3D> all_faces;
+    std::vector<int> all_ids;
+    for (const auto& group : electrode_groups) {
+        for (const auto& face : group.faces) {
+            auto canonical = face;
+            std::sort(canonical.begin(), canonical.end());
+            electrode_faces.insert(canonical);
+            for (const auto node : face) electrode_nodes.insert(node);
+            all_faces.push_back(face);
+            all_ids.push_back(group.electrode_id);
+        }
+    }
+
+    Electrostatics3DProblem field_problem = dielectric_problem;
+    field_problem.potential_constraints.clear();
+    field_problem.potential_faces.clear();
+
+    // Keep non-electrode reference locations, but ground them at exactly 0 V,
+    // just as extract_capacitance_matrix_3d does for each basis solve.
+    for (const auto& condition : dielectric_problem.potential_constraints) {
+        if (!electrode_nodes.contains(condition.node)) {
+            field_problem.potential_constraints.push_back({
+                condition.node, 0.0
+            });
+        }
+    }
+    const fem::ScalarField3D zero = [](double, double, double) {
+        return 0.0;
+    };
+    for (const auto& condition : dielectric_problem.potential_faces) {
+        auto canonical = condition.face;
+        std::sort(canonical.begin(), canonical.end());
+        if (!electrode_faces.contains(canonical)) {
+            field_problem.potential_faces.push_back({
+                condition.face, zero
+            });
+        }
+    }
+
+    for (const auto& group : electrode_groups) {
+        const auto it = std::lower_bound(
+            result.terminals.electrode_ids.begin(),
+            result.terminals.electrode_ids.end(), group.electrode_id);
+        if (it == result.terminals.electrode_ids.end() ||
+            *it != group.electrode_id) {
+            throw std::logic_error("Missing inferred electrode potential.");
+        }
+        const auto index = static_cast<std::size_t>(
+            it - result.terminals.electrode_ids.begin());
+        const double volts = result.terminals.potential_volts.at(index);
+        const auto constant_volts = [volts](double, double, double) {
+            return volts;
+        };
+        for (const auto& face : group.faces) {
+            field_problem.potential_faces.push_back({
+                face, constant_volts
+            });
+        }
+    }
+
+    result.field = solve_electrostatics_3d(field_problem, solver_options);
+    if (!result.field.linear_solver.converged) {
+        throw std::runtime_error(
+            "Floating-electrode reconstructed field did not converge.");
+    }
+    result.electrode_charges = evaluate_electrode_charges_3d(
+        field_problem, result.field, all_faces, all_ids);
+    if (result.electrode_charges.size() != result.terminals.electrode_ids.size()) {
+        throw std::runtime_error("Reconstructed electrode-charge set incomplete.");
+    }
+    for (const auto& prescribed : floating_electrodes) {
+        const auto found = std::lower_bound(
+            result.electrode_charges.begin(), result.electrode_charges.end(),
+            prescribed.electrode_id,
+            [](const ElectrodeCharge3D& a, const int id) {
+                return a.electrode_id < id;
+            });
+        if (found == result.electrode_charges.end() ||
+            found->electrode_id != prescribed.electrode_id) {
+            throw std::logic_error("Missing reconstructed floating-electrode charge.");
+        }
+        const auto difference = std::abs(
+            static_cast<long double>(found->conductor_charge_coulombs) -
+            static_cast<long double>(prescribed.charge_coulombs));
+        result.max_floating_charge_mismatch_coulombs = std::max(
+            result.max_floating_charge_mismatch_coulombs,
+            finite_double(difference));
     }
     return result;
 }
