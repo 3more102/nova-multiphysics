@@ -33,4 +33,18 @@ void write_legacy_vtk_conduction_3d(
     std::span<const double> cell_heat_generation = {}
 );
 
+// Export a continuous P1 nodal scalar field alongside a discontinuous
+// elementwise scalar field, suitable for residual indicators, material
+// quantities, or other cell-local diagnostics. The cell field is indexed
+// in mesh.elements order. All cell data are validated before any bytes
+// are written, and caller stream formatting is preserved.
+void write_legacy_vtk_point_and_cell_scalar_3d(
+    std::ostream& output,
+    const fem::TetrahedralMesh3D& mesh,
+    const std::vector<double>& nodal_values,
+    std::span<const double> cell_values,
+    const std::string& point_field_name = "solution",
+    const std::string& cell_field_name = "error_indicator"
+);
+
 } // namespace nova::io

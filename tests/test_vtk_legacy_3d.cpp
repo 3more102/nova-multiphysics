@@ -131,6 +131,109 @@ NOVA_TEST(vtk3d_tagged_conduction_validates_cell_data_before_emitting_geometry) 
 }
 
 
+NOVA_TEST(vtk3d_point_and_cell_scalar_fields_preserve_association_and_precision) {
+    const auto mesh = one_tetrahedron();
+    const std::vector<double> solution{0.0, 1.0, 0.5, 0.25};
+    const std::array<double, 1> indicators{0.12345678901234566};
+    std::ostringstream output;
+    output.precision(4);
+    output << std::hex << std::fixed;
+    const auto original_flags = output.flags();
+
+    nova::io::write_legacy_vtk_point_and_cell_scalar_3d(
+        output, mesh, solution, indicators, "potential", "eta_K");
+    NOVA_REQUIRE(output.precision() == 4);
+    NOVA_REQUIRE(output.flags() == original_flags);
+
+    const std::string contents = output.str();
+    const auto point_position = contents.find(
+        "POINT_DATA 4\nSCALARS potential double 1\nLOOKUP_TABLE default\n");
+    const auto cell_position = contents.find(
+        "CELL_DATA 1\nSCALARS eta_K double 1\nLOOKUP_TABLE default\n");
+    NOVA_REQUIRE(point_position != std::string::npos);
+    NOVA_REQUIRE(cell_position != std::string::npos);
+    NOVA_REQUIRE(cell_position > point_position);
+    NOVA_REQUIRE(contents.find(
+        "CELLS 1 5\n4 0 1 2 3\nCELL_TYPES 1\n10\n") != std::string::npos);
+    const std::string marker =
+        "CELL_DATA 1\nSCALARS eta_K double 1\nLOOKUP_TABLE default\n";
+    std::istringstream reader(contents.substr(cell_position + marker.size()));
+    double indicator = 0.0;
+    NOVA_REQUIRE(static_cast<bool>(reader >> indicator));
+    NOVA_REQUIRE(indicator == indicators[0]);
+    double unexpected = 0.0;
+    NOVA_REQUIRE(!(reader >> unexpected));
+}
+
+NOVA_TEST(vtk3d_point_and_cell_scalar_prevalidates_without_partial_output) {
+    const auto mesh = one_tetrahedron();
+    const std::vector<double> solution{1., 2., 3., 4.};
+    std::ostringstream output;
+    const std::array<double, 2> too_many{0.2, 0.3};
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_point_and_cell_scalar_3d(
+            output, mesh, solution, too_many);
+    }));
+    NOVA_REQUIRE(output.str().empty());
+
+    const std::array nonfinite{std::numeric_limits<double>::infinity()};
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_point_and_cell_scalar_3d(
+            output, mesh, solution, nonfinite);
+    }));
+    NOVA_REQUIRE(output.str().empty());
+
+    const std::array<double, 1> valid{0.5};
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_point_and_cell_scalar_3d(
+            output, mesh, solution, valid, "solution", "eta\nPOINT_DATA 7");
+    }));
+    NOVA_REQUIRE(output.str().empty());
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_point_and_cell_scalar_3d(
+            output, mesh, solution, valid, "bad field", "eta_K");
+    }));
+    NOVA_REQUIRE(output.str().empty());
+    NOVA_REQUIRE(throws_as<std::invalid_argument>([&] {
+        nova::io::write_legacy_vtk_point_and_cell_scalar_3d(
+            output, mesh, std::vector<double>{1., 2.}, valid);
+    }));
+    NOVA_REQUIRE(output.str().empty());
+}
+
+
+
+NOVA_TEST(vtk3d_point_and_cell_scalar_exports_multiple_cells_in_mesh_order) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    const auto& mesh = box.mesh;
+    NOVA_REQUIRE(mesh.elements.size() == 6U);
+    const std::vector<double> nodal_values(mesh.nodes.size(), 300.0);
+    std::vector<double> cell_values;
+    cell_values.reserve(mesh.elements.size());
+    for (std::size_t i = 0; i < mesh.elements.size(); ++i) {
+        cell_values.push_back(0.125 * static_cast<double>(i + 1U));
+    }
+
+    std::ostringstream output;
+    nova::io::write_legacy_vtk_point_and_cell_scalar_3d(
+        output, mesh, nodal_values, cell_values,
+        "temperature", "element_residual");
+    const std::string marker =
+        "CELL_DATA 6\nSCALARS element_residual double 1\nLOOKUP_TABLE default\n";
+    const auto position = output.str().find(marker);
+    NOVA_REQUIRE(position != std::string::npos);
+    std::istringstream reader(output.str().substr(position + marker.size()));
+    for (const double expected : cell_values) {
+        double actual = 0.0;
+        NOVA_REQUIRE(static_cast<bool>(reader >> actual));
+        NOVA_REQUIRE(actual == expected);
+    }
+    double unexpected = 0.0;
+    NOVA_REQUIRE(!(reader >> unexpected));
+}
+
+
 NOVA_TEST(vtk3d_heat_generation_field_is_precise_optional_and_prevalidated) {
     const auto mesh = one_tetrahedron();
     const std::vector<double> temperature(4, 300.0);

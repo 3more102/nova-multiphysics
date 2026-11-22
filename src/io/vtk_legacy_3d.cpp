@@ -145,4 +145,38 @@ void write_legacy_vtk_conduction_3d(
     if (!output) throw std::runtime_error("Failed to write VTK thermal cell data.");
 }
 
+void write_legacy_vtk_point_and_cell_scalar_3d(
+    std::ostream& output,
+    const fem::TetrahedralMesh3D& mesh,
+    const std::vector<double>& nodal_values,
+    std::span<const double> cell_values,
+    const std::string& point_field_name,
+    const std::string& cell_field_name
+) {
+    if (!valid_field_name(cell_field_name)) {
+        throw std::invalid_argument("VTK cell field name must be an ASCII identifier.");
+    }
+    if (cell_values.size() != mesh.elements.size()) {
+        throw std::invalid_argument("VTK cell scalar count must equal mesh element count.");
+    }
+    for (const double value : cell_values) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument("VTK cell scalar data contains a non-finite value.");
+        }
+    }
+
+    // Validate every cell-specific input before the geometry/nodal writer
+    // emits bytes. That writer also checks the mesh, point values and name.
+    write_legacy_vtk_scalar_3d(output, mesh, nodal_values, point_field_name);
+
+    StreamFormatGuard guard(output);
+    output << "CELL_DATA " << mesh.elements.size() << '\n'
+           << "SCALARS " << cell_field_name << " double 1\n"
+           << "LOOKUP_TABLE default\n";
+    for (const double value : cell_values) output << value << '\n';
+    if (!output) {
+        throw std::runtime_error("Failed to write VTK tetrahedral cell scalar data.");
+    }
+}
+
 } // namespace nova::io

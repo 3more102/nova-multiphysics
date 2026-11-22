@@ -11,6 +11,7 @@
 #include "nova/physics/floating_conductor_schur_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/thermal_checkpoint_3d.hpp"
+#include "nova/io/vtk_legacy_3d.hpp"
 
 #include <array>
 #include <cmath>
@@ -106,6 +107,16 @@ int main() {
         residual.boundary_residual_faces.size() != natural_faces.size() ||
         residual.boundary_residual_errors.size() != box.mesh.elements.size() ||
         residual.total_error > 1.0e-8) return 14;
+
+    // Exercise the installed point+cell VTK scalar API using computed residuals.
+    std::ostringstream residual_vtk;
+    nova::io::write_legacy_vtk_point_and_cell_scalar_3d(
+        residual_vtk, box.mesh, three_d.values, residual.element_errors,
+        "diffusion", "residual_indicator");
+    if (residual_vtk.str().find(
+            "CELL_DATA " + std::to_string(box.mesh.elements.size()) +
+            "\nSCALARS residual_indicator double 1\nLOOKUP_TABLE default\n"
+        ) == std::string::npos) return 22;
 
     // Exercise installed adaptive 3D diffusion as a public linked SDK symbol.
     // A nonzero manufactured volume source guarantees a nontrivial mark/refine.
