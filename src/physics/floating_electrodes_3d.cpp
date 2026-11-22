@@ -174,6 +174,74 @@ FloatingElectrodePotentials3D solve_floating_electrode_potentials_3d(
 }
 
 
+FloatingElectrodePotentials3D
+solve_affine_floating_electrode_potentials_3d(
+    const CapacitanceMatrix3D& capacitance,
+    const std::span<const double> zero_voltage_reaction_offsets_coulombs,
+    const std::span<const FixedElectrodePotential3D> fixed_electrodes,
+    const std::span<const FloatingElectrodeCharge3D> floating_electrodes
+) {
+    const std::size_t count = capacitance.electrode_ids.size();
+    if (zero_voltage_reaction_offsets_coulombs.size() != count) {
+        throw std::invalid_argument(
+            "Affine floating-electrode offsets must match the terminal count.");
+    }
+    for (const double charge : zero_voltage_reaction_offsets_coulombs) {
+        if (!std::isfinite(charge)) {
+            throw std::invalid_argument(
+                "Affine floating-electrode offsets must be finite.");
+        }
+    }
+
+    // The homogeneous terminal matrix is unchanged by impressed sources.
+    // Solve C*V = Q_requested - Q_zero, using the existing pivot validation.
+    std::vector<FloatingElectrodeCharge3D> shifted;
+    shifted.reserve(floating_electrodes.size());
+    for (const auto& terminal : floating_electrodes) {
+        const auto found = std::lower_bound(
+            capacitance.electrode_ids.begin(), capacitance.electrode_ids.end(),
+            terminal.electrode_id);
+        if (found == capacitance.electrode_ids.end() ||
+            *found != terminal.electrode_id) {
+            throw std::invalid_argument(
+                "Unknown electrode ID in affine floating-electrode inputs.");
+        }
+        const auto index = static_cast<std::size_t>(
+            found - capacitance.electrode_ids.begin());
+        shifted.push_back({
+            terminal.electrode_id,
+            finite_double(static_cast<long double>(terminal.charge_coulombs) -
+                          zero_voltage_reaction_offsets_coulombs[index])
+        });
+    }
+
+    auto result = solve_floating_electrode_potentials_3d(
+        capacitance, fixed_electrodes, shifted);
+    for (std::size_t i = 0; i < count; ++i) {
+        result.estimated_charge_coulombs[i] = finite_double(
+            static_cast<long double>(result.estimated_charge_coulombs[i]) +
+            zero_voltage_reaction_offsets_coulombs[i]);
+    }
+
+    // Residuals are defined against the *actual* requested total charge,
+    // not the intermediate source-subtracted terminal right-hand side.
+    result.max_floating_charge_residual_coulombs = 0.0;
+    for (const auto& terminal : floating_electrodes) {
+        const auto index = static_cast<std::size_t>(
+            std::lower_bound(result.electrode_ids.begin(),
+                             result.electrode_ids.end(),
+                             terminal.electrode_id) -
+            result.electrode_ids.begin());
+        result.max_floating_charge_residual_coulombs = std::max(
+            result.max_floating_charge_residual_coulombs,
+            finite_double(std::abs(
+                static_cast<long double>(result.estimated_charge_coulombs[index]) -
+                static_cast<long double>(terminal.charge_coulombs))));
+    }
+    return result;
+}
+
+
 ReconstructedFloatingElectrostaticField3D
 reconstruct_floating_electrostatic_field_3d(
     const Electrostatics3DProblem& dielectric_problem,
