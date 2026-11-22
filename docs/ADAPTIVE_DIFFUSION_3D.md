@@ -64,3 +64,19 @@ propagation, exact coarse-vertex/edge-midpoint P1 prolongation,
 conservation of parent element conductivity values, and rejection of
 unsupported PDE coefficients and face data. The CI matrix compiles and
 runs the full suite on Ubuntu and Windows with Linux ASan/LSan/UBSan.
+
+### Independent energy-seminorm regression
+
+The manufactured wall test uses \(u_{exact}(x)=x(1-x)\), constant
+conductivity \(k=2\), source \(f=4\), zero Dirichlet values on the
+two x-plates, and insulated remaining faces. A separate test computes
+\(\sum_K k\int_K |\nabla u_{exact}-\nabla u_h|^2\,dV\) **without using
+the residual estimator**. Because the exact gradient is affine and the
+P1 gradient is constant per tetrahedron, each integral is evaluated
+exactly using the first and second tetrahedral x-coordinate moments.
+It checks that one marked conforming refinement and re-solve reduces
+this physical energy-seminorm error on the selected benchmark, and
+that total mesh volume is preserved.
+
+This verifies one manufactured case, not general estimator reliability
+or monotonic global error reduction for arbitrary data.
