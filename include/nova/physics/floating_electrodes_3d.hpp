@@ -42,4 +42,31 @@ struct FloatingElectrodePotentials3D {
     std::span<const FloatingElectrodeCharge3D> floating_electrodes
 );
 
+ 
+// Optional charge-to-field reconstruction for a charge-free linear dielectric.
+// This performs capacitance basis solves, terminal algebra, and a FINAL P1
+// electrostatic field solve with inferred constant Dirichlet electrode
+// voltages. It is not a mixed FEM saddle-point floating-conductor solver.
+// All other prescribed-potential nodes/faces become 0 V references, matching
+// extract_capacitance_matrix_3d. Nonzero volume charge and prescribed
+// displacement callbacks are rejected instead of silently discarded.
+struct ReconstructedFloatingElectrostaticField3D {
+    CapacitanceMatrix3D capacitance;
+    FloatingElectrodePotentials3D terminals;
+    Electrostatics3DResult field;
+    std::vector<ElectrodeCharge3D> electrode_charges;
+    // Maximum |Q_reconstructed_F - Q_prescribed_F| in coulombs; this raw
+    // boundary-displacement diagnostic is NOT a certified charge error.
+    double max_floating_charge_mismatch_coulombs{};
+};
+
+[[nodiscard]] ReconstructedFloatingElectrostaticField3D
+reconstruct_floating_electrostatic_field_3d(
+    const Electrostatics3DProblem& dielectric_problem,
+    std::span<const ElectrodeBoundaryGroup3D> electrode_groups,
+    std::span<const FixedElectrodePotential3D> fixed_electrodes,
+    std::span<const FloatingElectrodeCharge3D> floating_electrodes,
+    const linalg::SolverOptions& solver_options = {}
+);
+
 } // namespace nova::physics
