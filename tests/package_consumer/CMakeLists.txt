@@ -9,8 +9,12 @@ target_link_libraries(nova_package_consumer PRIVATE NOVA::Core)
 add_executable(nova_adaptive_refinement_consumer adaptive_refinement_consumer.cpp)
 target_link_libraries(nova_adaptive_refinement_consumer PRIVATE NOVA::Core)
 
+add_executable(nova_elasticity_consumer elasticity_consumer.cpp)
+target_link_libraries(nova_elasticity_consumer PRIVATE NOVA::Core)
+
 include(CTest)
 if(BUILD_TESTING)
     add_test(NAME nova_installed_package_consumer COMMAND nova_package_consumer)
+    add_test(NAME nova_installed_elasticity_consumer COMMAND nova_elasticity_consumer)
     add_test(NAME nova_installed_adaptive_refinement_consumer COMMAND nova_adaptive_refinement_consumer)
 endif()
