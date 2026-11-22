@@ -170,6 +170,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_mesh_topology_2d.cpp
         tests/test_mesh_refinement_2d.cpp
         tests/test_mesh_refinement_3d.cpp
+        tests/test_adaptive_refinement_multicycle_3d.cpp
         tests/test_nonlinear_diffusion_1d.cpp
         tests/test_h1_space_2d.cpp
     )
