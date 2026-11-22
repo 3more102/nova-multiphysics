@@ -1,3 +1,4 @@
+#include "nova/physics/electrothermal_3d.hpp"
 #include "nova/fem/adaptive_diffusion_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
@@ -86,6 +87,24 @@ int main() {
         if (std::abs(three_d.values[i] - problem.mesh.nodes[i].x) > 1.0e-9)
             return 4;
     }
+    // Exercise the installed stationary one-way electrothermal public API.
+    nova::physics::Electrothermal3DProblem electrothermal;
+    electrothermal.electrical = problem;
+    electrothermal.thermal = problem;
+    electrothermal.thermal.diffusivity =
+        [](double, double, double) { return 4.0; };
+    electrothermal.thermal.source = {};
+    for (auto& fixed : electrothermal.thermal.dirichlet_faces) {
+        fixed.value = [](double, double, double) { return 300.0; };
+    }
+    const auto coupled = nova::physics::solve_one_way_electrothermal_3d(electrothermal);
+    if (!coupled.electrical_solution.linear_solver.converged ||
+        !coupled.thermal_solution.linear_solver.converged ||
+        std::abs(coupled.total_joule_power_watts - 1.0) > 1.0e-8 ||
+        std::abs(coupled.thermal_balance.generated_heat - 1.0) > 1.0e-8 ||
+        std::abs(coupled.thermal_balance.signed_balance_defect) > 1.0e-7)
+        return 23;
+
     // Exercise the installed Neumann-boundary residual overload and link symbol.
     std::vector<NeumannResidualFace3D> natural_faces;
     for (const auto& face : box.boundary_faces) {
