@@ -311,6 +311,28 @@ not experimental validation or proof of arbitrary-geometry convergence.
 The earlier `reconstruct_floating_electrostatic_field_3d` based on raw
 boundary flux is still available unchanged for comparisons.
 
+### Anisotropic dielectric and voltage-gauge regression
+
+The `floating_schur_anisotropic_tensor_gauge_shift_patch` regression tests
+the implicit P1 Schur solver on a unit cube with uniform positive-definite
+`epsilon = diag(2,5,7)` F/m, insulating sidewalls, a left fixed electrode,
+and a right floating electrode with `Q_right=+6 C`. Both spatial-tensor
+callbacks and cellwise SPD tensor material arrays are exercised.
+
+This independent affine exact solution is `V(x)=V_left+3x` V, with
+`E=(-3,0,0)` V/m, `D=(-6,0,0)` C/m², `Q_left=-6 C`,
+`C=[[2,-2],[-2,2]]` F and `U=9 J`. Two nonzero reference voltages,
+`V_left=-3 V` and `V_left=+4 V`, verify that shifting the fixed
+terminal's voltage shifts the potential uniformly without changing the
+electric/displacement fields, charges, capacitance, or energy. The test checks
+the gauge-invariant identity `sum_g(V_g Q_g)=2U` even with a nonzero
+fixed-terminal voltage.
+
+This verifies an axis-aligned diagonal tensor with an exactly representable
+P1 field on a conforming unit cube. It does **not** validate rotated
+anisotropy, nonlinear material response, charge-loaded dielectric problems,
+or general conductor geometries.
+
 ## Scope and limitations
 
 This is an experimental electrostatic Poisson interface, not a general Maxwell solver. It supports straight first-order tetrahedra, scalar or symmetric positive-definite tensor permittivity, optional per-cell material data, fixed potentials and prescribed normal displacement. It does not yet implement floating conductor boundary constraints inside the FEM solve, surface-charge unknowns, nonlinear dielectric response, AC or transient Maxwell equations, or a locally equilibrated displacement field. Per-cell D is a constitutive element average, not an equilibrated face flux or a Gauss-law error estimator. This prototype is not production-certified.
