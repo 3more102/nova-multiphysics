@@ -43,6 +43,26 @@ struct FloatingElectrodePotentials3D {
 );
 
  
+// Solve the AFFINE terminal law Q = C * V + Q_zero, with the zero-voltage
+// reaction offsets Q_zero supplied in the same sorted electrode-ID order as
+// the capacitance matrix. Q_zero is in coulombs; C remains a capacitance
+// matrix in farads. The caller must compute these offsets consistently with
+// the same FEM material, geometry, exterior references, and impressed loads.
+//
+// This is TERMINAL ALGEBRA ONLY. It does not assemble a loaded FEM reaction
+// vector, infer Q_zero from a charge density or Neumann boundary condition,
+// or reconstruct a spatial electrostatic field. The source-free overload
+// above is unchanged and equivalent when all offsets are exactly zero.
+// Returns total estimated conductor charges C*V+Q_zero, not only C*V.
+[[nodiscard]] FloatingElectrodePotentials3D
+solve_affine_floating_electrode_potentials_3d(
+    const CapacitanceMatrix3D& capacitance,
+    std::span<const double> zero_voltage_reaction_offsets_coulombs,
+    std::span<const FixedElectrodePotential3D> fixed_electrodes,
+    std::span<const FloatingElectrodeCharge3D> floating_electrodes
+);
+
+
 // Optional charge-to-field reconstruction for a charge-free linear dielectric.
 // This performs capacitance basis solves, terminal algebra, and a FINAL P1
 // electrostatic field solve with inferred constant Dirichlet electrode
