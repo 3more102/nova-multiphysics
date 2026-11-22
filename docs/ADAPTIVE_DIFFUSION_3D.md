@@ -92,3 +92,28 @@ conductivities and verifies exact parent-to-child coefficient replication.
 It also checks that every exterior face is represented exactly once by
 Dirichlet classification or natural-boundary residual accounting on both
 coarse and refined meshes, including implicitly insulated faces.
+
+
+## Runnable manufactured-wall demo and VTK export
+
+With `NOVA_BUILD_EXAMPLES=ON`, build and run
+`nova_adaptive_diffusion_3d` to solve a unit cube with
+`u(x)=x(1-x)`, cellwise conductivity `k=2`, source `f=4`,
+Dirichlet conditions on the x-plates, and insulated other faces.
+The example prints coarse/refined mesh sizes, marked-element count,
+residual indicators, minimum mesh mean ratio, and an independent exact
+energy-seminorm error computed using tetrahedral x-moments.
+
+Optional ParaView export:
+
+```sh
+nova_adaptive_diffusion_3d --vtk coarse.vtk refined.vtk
+```
+
+Both files contain a first-order tetrahedral unstructured grid and the
+nodal `temperature` field. A standard-library-only Python CTest verifier
+runs the executable, parses both exported VTK files, checks mesh connectivity,
+finite data, unit-cube volume conservation, retained Dirichlet values and
+the increase in resolution. The demo fails if the independently measured
+manufactured energy error does not decrease. This is a representative
+verification case, not a guarantee for arbitrary adaptive refinements.
