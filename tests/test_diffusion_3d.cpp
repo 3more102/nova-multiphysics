@@ -4,6 +4,7 @@
 #include "nova/fem/p1_flux_3d.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <stdexcept>
@@ -593,4 +594,84 @@ NOVA_TEST(diffusion_3d_two_layer_exact_transmission_and_energy) {
         NOVA_REQUIRE_NEAR(stored_energy, 3.0 / 16.0, 1.0e-8);
         NOVA_REQUIRE_NEAR(2.0 * stored_energy, exact(1.0), 1.0e-8);
     }
+}
+
+
+// Separate source-loaded interface benchmark, not the exact-P1 patch test:
+// for k=2 on the left, k=4 on the right, -div(k grad u)=4,
+// u(0)=u(1)=0, and insulated sidewalls, flux continuity fixes:
+//   u_left(x)  = 5*x/6 - x*x
+//   u_right(x) = 1/6 + 5*(x-1/2)/12 - (x*x-1/4)/2.
+// The H1 energy-seminorm error is evaluated by exact tetrahedron moments,
+// independently of NOVA's residual estimator or numerical quadrature.
+NOVA_TEST(diffusion_3d_two_layer_manufactured_source_energy_convergence) {
+    constexpr std::array<std::size_t, 3> resolutions{2U, 4U, 8U};
+    std::array<double, 3> energy_error_squared{};
+
+    for (std::size_t level = 0; level < resolutions.size(); ++level) {
+        const auto n = resolutions[level];
+        const auto box = nova::fem::make_box_mesh_3d(
+            0.0, 1.0, 0.0, 1.0, 0.0, 1.0, n, n, n);
+        ScalarDiffusion3DProblem problem;
+        problem.mesh = box.mesh;
+        problem.source = [](double, double, double) { return 4.0; };
+
+        for (const auto& cell : problem.mesh.elements) {
+            double centroid_x = 0.0;
+            for (const auto node : cell) {
+                centroid_x += problem.mesh.nodes[node].x / 4.0;
+            }
+            problem.cell_diffusivity.push_back(
+                centroid_x < 0.5 ? 2.0 : 4.0);
+        }
+        for (const BoundaryFace3D& face : box.boundary_faces) {
+            if (face_on_x(problem.mesh, face, 0.0) ||
+                face_on_x(problem.mesh, face, 1.0)) {
+                problem.dirichlet_faces.push_back({
+                    face, [](double, double, double) { return 0.0; }});
+            }
+        }
+
+        const auto result = nova::fem::solve_scalar_diffusion_3d(problem);
+        NOVA_REQUIRE(result.linear_solver.converged);
+        const auto fluxes = nova::fem::evaluate_p1_tetrahedral_flux_3d(
+            problem, result.values);
+        const auto quality = nova::fem::evaluate_mesh_quality_3d(problem.mesh);
+
+        double error_squared = 0.0;
+        for (std::size_t i = 0; i < problem.mesh.elements.size(); ++i) {
+            double sum_x = 0.0;
+            double sum_x_squared = 0.0;
+            for (const auto node : problem.mesh.elements[i]) {
+                const double x = problem.mesh.nodes[node].x;
+                sum_x += x;
+                sum_x_squared += x * x;
+            }
+            const double mean_x = sum_x / 4.0;
+            const double mean_x_squared =
+                (sum_x * sum_x + sum_x_squared) / 20.0;
+            const bool left = mean_x < 0.5;
+            const double a = left ? -2.0 : -1.0;
+            const double b = left ? 5.0 / 6.0 : 5.0 / 12.0;
+            const double k = left ? 2.0 : 4.0;
+            const auto& gradient = fluxes[i].gradient;
+            const double delta = b - gradient.x;
+            const double mean_squared_gradient_error =
+                delta * delta + 2.0 * a * delta * mean_x +
+                a * a * mean_x_squared +
+                gradient.y * gradient.y + gradient.z * gradient.z;
+            error_squared += k * quality.elements[i].volume *
+                mean_squared_gradient_error;
+        }
+        NOVA_REQUIRE(std::isfinite(error_squared));
+        NOVA_REQUIRE(error_squared > 0.0);
+        NOVA_REQUIRE_NEAR(quality.total_volume, 1.0, 1.0e-12);
+        energy_error_squared[level] = error_squared;
+    }
+
+    // Genuine continuum convergence, not just a shrinking self-estimate.
+    NOVA_REQUIRE(energy_error_squared[0] > energy_error_squared[1]);
+    NOVA_REQUIRE(energy_error_squared[1] > energy_error_squared[2]);
+    NOVA_REQUIRE(energy_error_squared[0] / energy_error_squared[1] > 1.5);
+    NOVA_REQUIRE(energy_error_squared[1] / energy_error_squared[2] > 1.5);
 }
