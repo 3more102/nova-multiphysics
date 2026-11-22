@@ -68,6 +68,22 @@ mismatch. Dirichlet boundaries must not be supplied; omitted natural faces
 contribute no boundary residual (they are **not** assumed insulated).
 Provide a zero callback explicitly for every insulated face to be included.
 
+## Robin boundary residuals
+
+The six-argument overload additionally accepts a vector of
+`nova::fem::RobinResidualFace3D` (face, transfer coefficient `h`,
+ambient field `u_infinity`). For the P1 face trace `u_h`, the implemented
+Robin term is `h_F * ||q_h dot n - h(x)*(u_h(x)-u_infinity(x))||^2_L2(F)`.
+The trace is interpolated from the three face vertices at each quadrature
+point; it is **not** substituted by a centroid or vertex-only approximation.
+
+`h` must be finite and nonnegative at every sampled point, and the
+ambient callback must be finite. Any missing callback, duplicate face within
+one set, repeated face across Neumann and Robin sets, nonexterior face, or
+nonrepresentable residual is rejected. The existing four- and five-argument
+overloads remain unchanged. The face report's `kind` field identifies
+Neumann versus Robin residuals.
+
 The result contains:
 
 - `cell_residual_errors[K]`: \(h_K\|f\|_{L^2(K)}\).
@@ -82,7 +98,7 @@ The result contains:
 - P1 tetrahedral fields only; the current 3D H1 space is P1.
 - Isotropic scalar conductivity, positive and constant per tetrahedron.
 - Includes cell-source residuals and interior normal-flux jumps.
-- Explicit Neumann (including insulated) boundary residuals are supported by the five-argument overload; Robin and automatically classified natural boundaries are not.
+- Explicit Neumann (including insulated) boundary residuals are supported by the five-argument overload; the six-argument overload additionally supports Robin residuals. Natural boundaries are not automatically classified.
 - Within-cell conductivity gradients, anisotropic tensor conductivity,
   temperature-dependent coefficients and nonconforming interfaces are not
   represented.
@@ -95,7 +111,7 @@ The result contains:
 The automated tests check a globally affine harmonic field, the exact
 constant-source indicator on a unit tetrahedron, analytical shared-face flux
 jumps for a discontinuous P1 field and for discontinuous element conductivity,
-Neumann matching-flux, constant and spatially varying flux mismatch,
+Neumann matching-flux, Robin matching and mismatched flux, invalid Robin callbacks, overlapping natural face rejection, constant and spatially varying flux mismatch,
 reversed face winding, duplicate/interior/missing-face rejection, and
 rejection of invalid or non-finite inputs. See
 [`VERIFICATION_PLAN.md`](VERIFICATION_PLAN.md).
