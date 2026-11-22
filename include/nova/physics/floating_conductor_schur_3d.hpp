@@ -7,22 +7,30 @@
 
 namespace nova::physics {
 
-// Experimental P1 Schur-complement elimination for SOURCE-FREE, LINEAR
-// floating conductors. Unit-electrode Dirichlet FEM solves implicitly
-// eliminate all free interior nodal unknowns to form the discrete terminal
-// operator C = K_ee - K_ei K_ii^{-1} K_ie. Known terminal potentials and
-// prescribed floating terminal charges solve C_FF V_F = Q_F - C_FK V_K.
-// A final FEM solve at those potentials returns spatial E and D fields.
+// Experimental 3D P1 floating-conductor solve for linear dielectrics.
+// Unit-electrode Dirichlet FEM solves implicitly eliminate interior unknowns,
+// producing a discrete Schur terminal matrix C = K_ee-K_ei*K_ii^{-1}*K_ie.
+// With impressed volume free charge or outward Neumann displacement, one
+// additional zero-terminal-voltage FEM solve obtains the induced weak reaction
+// charge q0. Unknown terminal voltages then obey
+//   C_FF V_F = Q_F - q0_F - C_FK V_K.
+// A final loaded FEM solve reconstructs spatial E and D fields.
 //
-// This is a discrete Schur complement assembled through P1 basis solves,
-// not an explicitly assembled mixed/saddle-point solver. Ground references
-// external to electrode groups are set to zero volts, matching the
-// capacitance extraction API. Nonempty volume-charge callbacks, cell
-// charges, or prescribed displacement-flux faces are rejected.
-// A floating conductor with no voltage reference is rejected if its
-// Schur block has a gauge nullspace.
+// External reference constraints/faces are grounded at 0 V, matching the
+// capacitance basis solves; original nonzero external Dirichlet values are
+// NOT preserved. The terminal matrix remains the SOURCE-FREE response;
+// reported terminal charges are C*V+q0, not C*V alone. The raw boundary-flux
+// estimate is not equilibrated and may disagree with loaded weak reactions.
+// A gauge-singular floating block is rejected. This is an implicit discrete
+// Schur workflow, not a monolithic saddle-point formulation.
 struct SchurFloatingConductor3DResult {
     CapacitanceMatrix3D discrete_capacitance;
+    // Sorted by discrete_capacitance.electrode_ids; charges from impressed
+    // loads with ALL electrode voltages held at zero [C].
+    // Exactly zero for source-free models (no offset solve).
+    std::vector<double> induced_terminal_charges_coulombs;
+    // Estimated charges include q0, and floating residuals refer to the
+    // original requested physical charges rather than shifted RHS charges.
     FloatingElectrodePotentials3D terminals;
     Electrostatics3DResult field;
     std::vector<DiscreteElectrodeReaction3D> discrete_reactions;
