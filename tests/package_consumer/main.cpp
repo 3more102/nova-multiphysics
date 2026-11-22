@@ -211,6 +211,19 @@ $EndElements
         floating_voltages.max_floating_charge_residual_coulombs > 1.0e-8)
         return 15;
 
+    // Installed SDK symbol: terminal inference followed by a new FEM field solve.
+    const auto reconstructed =
+        nova::physics::reconstruct_floating_electrostatic_field_3d(
+            electrostatic, electrode_groups,
+            std::vector<nova::physics::FixedElectrodePotential3D>{{1, 0.0}},
+            std::vector<nova::physics::FloatingElectrodeCharge3D>{{2, 20.0}});
+    if (!reconstructed.field.linear_solver.converged ||
+        reconstructed.field.potential.size() != box.mesh.nodes.size() ||
+        reconstructed.electrode_charges.size() != 2 ||
+        reconstructed.max_floating_charge_mismatch_coulombs > 1.0e-8 ||
+        std::abs(reconstructed.field.stored_energy_joules - 100.0) > 1.0e-7)
+        return 16;
+
     // Verify the installed SDK exports the versioned thermal checkpoint API.
     const std::vector<double> saved_temperature(box.mesh.nodes.size(), 301.25);
     std::stringstream checkpoint_stream;
