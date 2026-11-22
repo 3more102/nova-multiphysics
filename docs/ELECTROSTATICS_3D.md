@@ -271,6 +271,25 @@ Other regressions cover spatially varying permittivity, the discrete
 `sum_g(V_g*Q_g) = 2*U` identity, an independently grounded single floating
 terminal, all-fixed terminals, and singular-gauge/invalid-load rejection.
 
+### Floating-terminal linearity and reference-invariance checks
+
+The `floating_schur_reference_voltage_shift_and_electrode_permutation`
+regression reverses electrode-group input order while shifting the reference
+potential from 0 to +4 V at constant floating terminal charge, using a
+spatially variable positive dielectric. It checks that the returned sorted
+terminal IDs and discrete capacitance matrix remain the same, every nodal
+potential shifts by +4 V, and electric field, displacement, weak-form
+electrode charges, and stored energy remain unchanged.
+
+The `floating_schur_charge_sign_reverses_fields_not_energy` regression
+compares +3 C, -3 C, and zero charge at fixed 0 V reference. It checks that
+terminal voltage, nodal potentials, electric field, displacement, and weak
+reactions change sign between equal-and-opposite charge states, whereas
+stored energy is even in charge and vanishes for zero charge. These are
+source-free linear FEM identity tests, not independent experimental
+accuracy claims. Exact-head Linux, Windows, and sanitizer CI must pass
+before integration.
+
 **Mathematical and engineering limits:** This is a series of standard
 Galerkin FEM solves implementing an **implicit discrete Schur complement**,
 not a monolithic augmented saddle-point solve with extra unknowns. A
