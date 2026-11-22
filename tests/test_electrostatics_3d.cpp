@@ -527,3 +527,69 @@ NOVA_TEST(electrostatics_3d_discrete_reaction_rejects_invalid_inputs) {
     with_charge.cell_free_charge_density.assign(problem.mesh.elements.size(), 1.0);
     NOVA_REQUIRE(rejects(with_charge, low, {1, 1}));
 }
+
+
+NOVA_TEST(electrostatics_3d_discrete_capacitance_matrix) {
+    using nova::physics::ElectrodeBoundaryGroup3D;
+    using nova::physics::extract_capacitance_matrix_3d;
+    using nova::physics::extract_discrete_capacitance_matrix_3d;
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    std::vector<ElectrodeBoundaryGroup3D> electrodes{{10, {}}, {20, {}}};
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(problem.mesh, face, 0.0))
+            electrodes[0].faces.push_back(face);
+        else if (on_x(problem.mesh, face, 1.0))
+            electrodes[1].faces.push_back({face[2], face[1], face[0]});
+    }
+    const auto raw = extract_capacitance_matrix_3d(problem, electrodes);
+    const auto discrete = extract_discrete_capacitance_matrix_3d(problem, electrodes);
+    NOVA_REQUIRE(discrete.electrode_ids == std::vector<int>({10, 20}));
+    NOVA_REQUIRE(discrete.matrix_farads.size() == 4U);
+    for (std::size_t i = 0; i < 4U; ++i) {
+        const double expected = (i == 0U || i == 3U) ? 2.0 : -2.0;
+        NOVA_REQUIRE_NEAR(discrete.matrix_farads[i], expected, 1.0e-8);
+        NOVA_REQUIRE_NEAR(raw.matrix_farads[i], expected, 1.0e-8);
+    }
+    NOVA_REQUIRE(discrete.max_reciprocity_defect_farads < 1.0e-8);
+    NOVA_REQUIRE(discrete.max_relative_reciprocity_defect < 1.0e-8);
+
+    // Constant potential on all electrodes produces zero displacement and
+    // zero discrete reaction, hence each capacitance-matrix row sums to zero.
+    NOVA_REQUIRE_NEAR(
+        discrete.matrix_farads[0] + discrete.matrix_farads[1], 0.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(
+        discrete.matrix_farads[2] + discrete.matrix_farads[3], 0.0, 1.0e-8);
+}
+
+NOVA_TEST(electrostatics_3d_discrete_capacitance_variable_dielectric_reciprocity) {
+    using nova::physics::ElectrodeBoundaryGroup3D;
+    using nova::physics::extract_discrete_capacitance_matrix_3d;
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 3U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double x, double y, double) {
+        return 1.0 + x*x + 0.25*y;
+    };
+    std::vector<ElectrodeBoundaryGroup3D> electrodes{{10, {}}, {20, {}}};
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(problem.mesh, face, 0.0))
+            electrodes[0].faces.push_back(face);
+        else if (on_x(problem.mesh, face, 1.0))
+            electrodes[1].faces.push_back(face);
+    }
+    const auto c = extract_discrete_capacitance_matrix_3d(problem, electrodes);
+    NOVA_REQUIRE(c.matrix_farads.size() == 4U);
+    NOVA_REQUIRE(c.matrix_farads[0] > 0.0);
+    NOVA_REQUIRE(c.matrix_farads[3] > 0.0);
+    NOVA_REQUIRE(c.matrix_farads[1] < 0.0);
+    NOVA_REQUIRE(c.matrix_farads[2] < 0.0);
+    NOVA_REQUIRE_NEAR(c.matrix_farads[1], c.matrix_farads[2], 2.0e-8);
+    NOVA_REQUIRE(c.max_reciprocity_defect_farads < 2.0e-8);
+    NOVA_REQUIRE_NEAR(c.matrix_farads[0] + c.matrix_farads[1], 0.0, 2.0e-8);
+    NOVA_REQUIRE_NEAR(c.matrix_farads[2] + c.matrix_farads[3], 0.0, 2.0e-8);
+}
