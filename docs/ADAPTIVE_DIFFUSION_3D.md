@@ -80,3 +80,9 @@ that total mesh volume is preserved.
 
 This verifies one manufactured case, not general estimator reliability
 or monotonic global error reduction for arbitrary data.
+
+The heterogeneous-material regression assigns four distinct cellwise
+conductivities and verifies exact parent-to-child coefficient replication.
+It also checks that every exterior face is represented exactly once by
+Dirichlet classification or natural-boundary residual accounting on both
+coarse and refined meshes, including implicitly insulated faces.
