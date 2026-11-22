@@ -2,6 +2,7 @@
 
 #include "nova/physics/floating_conductor_schur_3d.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
