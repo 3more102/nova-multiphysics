@@ -262,6 +262,22 @@ $EndElements
         std::abs(schur.field.stored_energy_joules - 100.0) > 1.0e-7)
         return 19;
 
+    // Verify the newly installed affine-load Schur API and its Q0 diagnostic.
+    auto loaded_electrostatic = electrostatic;
+    loaded_electrostatic.free_charge_density =
+        [](double, double, double) { return 2.0; };
+    const auto loaded_schur = nova::physics::solve_floating_conductor_schur_3d(
+        loaded_electrostatic, electrode_groups,
+        std::vector<nova::physics::FixedElectrodePotential3D>{{1, 0.0}},
+        std::vector<nova::physics::FloatingElectrodeCharge3D>{{2, 0.0}});
+    if (!loaded_schur.field.linear_solver.converged ||
+        loaded_schur.load_offset_charge_coulombs.size() != 2U ||
+        std::abs(loaded_schur.load_offset_charge_coulombs[1]) < 0.01 ||
+        std::abs(loaded_schur.terminals.potential_volts[1] - 0.5) > 0.1 ||
+        std::abs(loaded_schur.discrete_reactions[1].reaction_charge_coulombs) > 1.0e-7 ||
+        std::abs(loaded_schur.discrete_reactions[0].reaction_charge_coulombs + 2.0) > 1.0e-7)
+        return 20;
+
     // Verify the installed SDK exports the versioned thermal checkpoint API.
     const std::vector<double> saved_temperature(box.mesh.nodes.size(), 301.25);
     std::stringstream checkpoint_stream;
