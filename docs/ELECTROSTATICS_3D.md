@@ -286,6 +286,37 @@ quadrature tolerances limit the charge residual. The flux-versus-reaction
 disagreement is **not** a validated physical error bar. Independent mesh
 convergence and experimental validation remain necessary.
 
+### Affine terminal algebra for independently computed impressed loads
+
+The public terminal-only helper
+`solve_affine_floating_electrode_potentials_3d` extends the **small
+terminal algebra**, not the spatial FEM Schur solver, to the model
+
+```text
+Q_terminal = C * V_terminal + Q_zero
+C_FF * V_F = (Q_requested - Q_zero)_F - C_FK * V_K
+```
+
+`Q_zero` is the vector of **total conductor reaction charges** (in C)
+for the separately computed *zero-terminal-voltage loaded problem*,
+ordered exactly like `CapacitanceMatrix3D::electrode_ids`.
+This vector includes source/Neumann contributions to the weak reaction:
+it is **not** simply a cell free-charge integral, and cannot be obtained
+from the source-free `evaluate_discrete_electrode_reactions_3d` routine.
+The capacitance matrix must come from the same geometry, material model
+and grounding convention. Input lengths, finite offsets, electrode IDs
+and terminal-matrix singularity are checked. The output reports the
+total estimated charges `C*V + Q_zero` and physical requested-charge
+residuals.
+
+The function does **not** automatically evaluate `Q_zero`, reassemble
+loaded nodal reactions, or solve a source-loaded spatial field. Consequently,
+`solve_floating_conductor_schur_3d` still rejects impressed volume charge
+and prescribed electric-displacement loads. Passing arbitrary offsets
+without a load-consistent FEM reaction calculation is not a valid physical
+floating-conductor simulation. Unit tests verify the terminal algebra
+independently and the installed SDK consumer invokes the exported symbol.
+
 ### Analytical mesh-convergence check: graded dielectric
 
 The `floating_schur_dielectric_capacitor_mesh_convergence` regression checks
