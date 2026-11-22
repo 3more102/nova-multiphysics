@@ -233,6 +233,18 @@ $EndElements
         floating_voltages.max_floating_charge_residual_coulombs > 1.0e-8)
         return 15;
 
+    // Installed SDK symbol: Q = C*V + Q_zero without altering FEM data.
+    const auto affine = nova::physics::solve_affine_floating_electrode_potentials_3d(
+        capacitance_matrix, std::vector<double>{-1.0, 3.0},
+        std::vector<nova::physics::FixedElectrodePotential3D>{{1, 0.0}},
+        std::vector<nova::physics::FloatingElectrodeCharge3D>{{2, 23.0}});
+    if (affine.electrode_ids != std::vector<int>({1, 2}) ||
+        std::abs(affine.potential_volts[1] - 10.0) > 1.0e-8 ||
+        std::abs(affine.estimated_charge_coulombs[0] + 21.0) > 1.0e-8 ||
+        std::abs(affine.estimated_charge_coulombs[1] - 23.0) > 1.0e-8 ||
+        affine.max_floating_charge_residual_coulombs > 1.0e-8)
+        return 20;
+
     // Installed SDK symbol: terminal inference followed by a new FEM field solve.
     const auto reconstructed =
         nova::physics::reconstruct_floating_electrostatic_field_3d(
