@@ -428,3 +428,157 @@ NOVA_TEST(diffusion_residual_estimator_3d_rejects_invalid_natural_faces) {
     NOVA_REQUIRE(old.boundary_residual_errors.size() == mesh.elements.size());
     NOVA_REQUIRE(old.total_error < 1.0e-12);
 }
+
+
+NOVA_TEST(diffusion_residual_estimator_3d_robin_matches_affine_field) {
+    using namespace nova::fem;
+    // Exact P1 field u=1+x, k=2, q=(-2,0,0).
+    // On x=0, q.n=+2 (Neumann); on x=1, q.n=-2 =
+    // h*(u-ambient)=2*(2-3) (Robin).
+    const auto box = make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    const auto values = H1FunctionSpace3D(box.mesh).interpolate(
+        [](double x, double, double) { return 1.0 + x; });
+    std::vector<NeumannResidualFace3D> neumann;
+    std::vector<RobinResidualFace3D> robin;
+    for (const auto& face : box.boundary_faces) {
+        const double x = box.mesh.nodes[face[0]].x;
+        if (box.mesh.nodes[face[1]].x != x ||
+            box.mesh.nodes[face[2]].x != x) {
+            continue;
+        }
+        if (x == 0.0) {
+            neumann.push_back({face, [](double, double, double) { return 2.0; }});
+        } else if (x == 1.0) {
+            robin.push_back({
+                face,
+                [](double, double, double) { return 2.0; },
+                [](double, double, double) { return 3.0; }
+            });
+        }
+    }
+    NOVA_REQUIRE(!neumann.empty());
+    NOVA_REQUIRE(!robin.empty());
+    const std::vector<double> conductivity(box.mesh.elements.size(), 2.0);
+    const auto result = estimate_diffusion_residual_error_3d(
+        box.mesh, values, conductivity,
+        [](double, double, double) { return 0.0; },
+        neumann, robin);
+    NOVA_REQUIRE(result.total_error < 1.0e-12);
+    NOVA_REQUIRE(result.boundary_residual_faces.size() ==
+                 neumann.size() + robin.size());
+    std::size_t robin_count = 0U;
+    for (const auto& item : result.boundary_residual_faces) {
+        NOVA_REQUIRE(item.mismatch_l2 < 1.0e-12);
+        if (item.kind == BoundaryResidualKind3D::Robin) ++robin_count;
+    }
+    NOVA_REQUIRE(robin_count == robin.size());
+}
+
+NOVA_TEST(diffusion_residual_estimator_3d_robin_detects_wrong_ambient) {
+    using namespace nova::fem;
+    const auto box = make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    const auto values = H1FunctionSpace3D(box.mesh).interpolate(
+        [](double x, double, double) { return 1.0 + x; });
+    std::vector<RobinResidualFace3D> robin;
+    for (const auto& face : box.boundary_faces) {
+        if (box.mesh.nodes[face[0]].x == 1.0 &&
+            box.mesh.nodes[face[1]].x == 1.0 &&
+            box.mesh.nodes[face[2]].x == 1.0) {
+            robin.push_back({
+                face,
+                [](double, double, double) { return 2.0; },
+                [](double, double, double) { return 0.0; }
+            });
+        }
+    }
+    const std::vector<double> conductivity(box.mesh.elements.size(), 2.0);
+    const auto result = estimate_diffusion_residual_error_3d(
+        box.mesh, values, conductivity,
+        [](double, double, double) { return 0.0; },
+        std::vector<NeumannResidualFace3D>{}, robin);
+    // q.n=-2 but h*(u-ambient)=4 over the unit-area x=1 plate.
+    NOVA_REQUIRE(result.total_error > 6.0);
+    NOVA_REQUIRE(result.boundary_residual_faces.size() == robin.size());
+    for (const auto& item : result.boundary_residual_faces) {
+        NOVA_REQUIRE(item.kind == BoundaryResidualKind3D::Robin);
+        NOVA_REQUIRE(item.mismatch_l2 > 0.0);
+    }
+}
+
+NOVA_TEST(diffusion_residual_estimator_3d_robin_rejects_invalid_and_overlapping_faces) {
+    using namespace nova::fem;
+    const auto box = make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    const auto values = H1FunctionSpace3D(box.mesh).interpolate(
+        [](double x, double, double) { return x; });
+    const std::vector<double> conductivity(box.mesh.elements.size(), 2.0);
+    const auto face = box.boundary_faces.front();
+    const auto zero = [](double, double, double) { return 0.0; };
+    const auto unit = [](double, double, double) { return 1.0; };
+    const auto evaluate = [&](const std::vector<NeumannResidualFace3D>& neumann,
+                              const std::vector<RobinResidualFace3D>& robin) {
+        return estimate_diffusion_residual_error_3d(
+            box.mesh, values, conductivity, zero, neumann, robin);
+    };
+    NOVA_REQUIRE(rejects([&] {
+        (void)evaluate({}, {{face, {}, zero}});
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        (void)evaluate({}, {{face, unit, {}}});
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        (void)evaluate({}, {{face,
+            [](double, double, double) { return -1.0; }, zero}});
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        (void)evaluate({}, {{face, unit,
+            [](double, double, double) {
+                return std::numeric_limits<double>::infinity();
+            }}});
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        (void)evaluate({}, {{face, unit, zero}, {face, unit, zero}});
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        (void)evaluate({{face, zero}}, {{face, unit, zero}});
+    }));
+}
+
+
+NOVA_TEST(diffusion_residual_estimator_3d_robin_spatial_trace_degree_four_integral) {
+    using namespace nova::fem;
+    // u=x+y is an exact global P1 field; q=(-1,-1,0) for k=1.
+    // On x=1, h(y)=1+y and ambient=0 yield
+    // (q.n-h*u_h)^2 = (-2-2y-y*y)^2.
+    // Its exact integral over the unit plate is 178/15. This tests
+    // facewise P1 interpolation AND spatial Robin coefficients, not merely
+    // a constant trace / centroid approximation.
+    const auto box = make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    const auto values = H1FunctionSpace3D(box.mesh).interpolate(
+        [](double x, double y, double) { return x + y; });
+    std::vector<RobinResidualFace3D> robin;
+    for (const auto& face : box.boundary_faces) {
+        if (box.mesh.nodes[face[0]].x == 1.0 &&
+            box.mesh.nodes[face[1]].x == 1.0 &&
+            box.mesh.nodes[face[2]].x == 1.0) {
+            robin.push_back({
+                face,
+                [](double, double y, double) { return 1.0 + y; },
+                [](double, double, double) { return 0.0; }
+            });
+        }
+    }
+    const std::vector<double> conductivity(box.mesh.elements.size(), 1.0);
+    const auto result = estimate_diffusion_residual_error_3d(
+        box.mesh, values, conductivity,
+        [](double, double, double) { return 0.0; },
+        std::vector<NeumannResidualFace3D>{}, robin);
+    NOVA_REQUIRE(robin.size() == 2U);
+    // Both triangular half-plate faces have diameter sqrt(2).
+    NOVA_REQUIRE_NEAR(
+        result.total_error,
+        std::sqrt(std::sqrt(2.0) * (178.0 / 15.0)), 1.0e-11);
+}

@@ -16,12 +16,22 @@ struct NeumannResidualFace3D {
     std::function<double(double, double, double)> outward_flux;
 };
 
+// Robin natural face: q.n = h(x) * (u_h(x) - ambient(x)).
+struct RobinResidualFace3D {
+    BoundaryFace3D face{};
+    std::function<double(double, double, double)> transfer_coefficient;
+    std::function<double(double, double, double)> ambient_value;
+};
+
+enum class BoundaryResidualKind3D { Neumann, Robin };
+
 struct BoundaryFluxResidualFace3D {
     BoundaryFace3D nodes{}; // sorted exterior vertex IDs
     std::size_t owner_cell{};
     double area{};
     double diameter{};
-    double mismatch_l2{}; // ||q_h dot n - g_N||_L2(F)
+    double mismatch_l2{}; // L2 mismatch to the selected natural BC
+    BoundaryResidualKind3D kind{BoundaryResidualKind3D::Neumann};
 };
 
 struct DiffusionResidualIndicators3D {
@@ -64,6 +74,18 @@ struct DiffusionResidualIndicators3D {
     std::span<const double> element_conductivity,
     const std::function<double(double, double, double)>& source,
     std::span<const NeumannResidualFace3D> natural_boundary_faces
+);
+
+// Includes disjoint explicit Neumann and Robin exterior faces; Robin flux is
+// evaluated from the P1 trace at each face quadrature point. Omitted exterior
+// faces are NOT automatically classified as insulated.
+[[nodiscard]] DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
+    const TetrahedralMesh3D& mesh,
+    std::span<const double> nodal_values,
+    std::span<const double> element_conductivity,
+    const std::function<double(double, double, double)>& source,
+    std::span<const NeumannResidualFace3D> neumann_boundary_faces,
+    std::span<const RobinResidualFace3D> robin_boundary_faces
 );
 
 } // namespace nova::fem
