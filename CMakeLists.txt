@@ -142,6 +142,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_mesh_topology_3d.cpp
         tests/test_h1_space_3d.cpp
         tests/test_diffusion_3d.cpp
+        tests/test_diffusion_two_layer_3d.cpp
         tests/test_cell_conduction_3d.cpp
         tests/test_p1_flux_3d.cpp
         tests/test_interior_flux_jumps_3d.cpp
