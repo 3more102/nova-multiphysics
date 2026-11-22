@@ -593,3 +593,78 @@ NOVA_TEST(electrostatics_3d_discrete_capacitance_variable_dielectric_reciprocity
     NOVA_REQUIRE_NEAR(c.matrix_farads[0] + c.matrix_farads[1], 0.0, 2.0e-8);
     NOVA_REQUIRE_NEAR(c.matrix_farads[2] + c.matrix_farads[3], 0.0, 2.0e-8);
 }
+
+
+// Manufactured affine electrostatics patch with nonzero free charge AND
+// prescribed normal displacement.  On the unit cube, epsilon(x)=2+x F/m,
+// V(x)=x V, rho_free=-div(epsilon*grad V)=-1 C/m^3, and
+// D.n=-3 C/m^2 at x=1.  The grounded x=0 face has V=0 and the sidewalls
+// are naturally insulated.  Exact V is representable in the P1 space.
+// The continuum field and stored energy are E=(-1,0,0) V/m,
+// D=(-(2+x),0,0) C/m^2 and U=(1/2)*integral(2+x) dV=1.25 J.
+// This directly checks the sign of the Neumann load and additive source
+// assembly, without relying on electrode Schur-reaction calculations.
+NOVA_TEST(electrostatics_3d_manufactured_affine_charge_neumann_patch) {
+    for (const auto n : {2U, 4U}) {
+        const auto box = nova::fem::make_box_mesh_3d(
+            0.0, 1.0, 0.0, 1.0, 0.0, 1.0, n, n, n);
+        for (int source_mode = 0; source_mode < 3; ++source_mode) {
+            Electrostatics3DProblem p;
+            p.mesh = box.mesh;
+            p.permittivity = [](double x, double, double) {
+                return 2.0 + x;
+            };
+            if (source_mode != 2) {
+                const double spatial_charge = source_mode == 0 ? -1.0 : -0.25;
+                p.free_charge_density =
+                    [spatial_charge](double, double, double) {
+                        return spatial_charge;
+                    };
+            }
+            if (source_mode != 0) {
+                const double cell_charge = source_mode == 1 ? -0.75 : -1.0;
+                p.cell_free_charge_density.assign(
+                    p.mesh.elements.size(), cell_charge);
+            }
+
+            for (const auto& face : box.boundary_faces) {
+                if (on_x(p.mesh, face, 0.0)) {
+                    p.potential_faces.push_back({
+                        face, [](double, double, double) { return 0.0; }
+                    });
+                } else if (on_x(p.mesh, face, 1.0)) {
+                    p.displacement_flux_faces.push_back({
+                        face, [](double, double, double) { return -3.0; }
+                    });
+                }
+            }
+            NOVA_REQUIRE(!p.potential_faces.empty());
+            NOVA_REQUIRE(!p.displacement_flux_faces.empty());
+
+            const auto solved = solve_electrostatics_3d(p);
+            NOVA_REQUIRE(solved.linear_solver.converged);
+            NOVA_REQUIRE(solved.potential.size() == p.mesh.nodes.size());
+            NOVA_REQUIRE(solved.electric_field.size() == p.mesh.elements.size());
+            NOVA_REQUIRE(solved.displacement.size() == p.mesh.elements.size());
+            for (std::size_t node = 0; node < p.mesh.nodes.size(); ++node) {
+                NOVA_REQUIRE_NEAR(
+                    solved.potential[node], p.mesh.nodes[node].x, 2.0e-7);
+            }
+            for (std::size_t cell = 0; cell < p.mesh.elements.size(); ++cell) {
+                double centroid_x = 0.0;
+                for (const auto node : p.mesh.elements[cell]) {
+                    centroid_x += 0.25 * p.mesh.nodes[node].x;
+                }
+                const auto& e = solved.electric_field[cell];
+                const auto& d = solved.displacement[cell];
+                NOVA_REQUIRE_NEAR(e.x, -1.0, 2.0e-7);
+                NOVA_REQUIRE_NEAR(e.y, 0.0, 2.0e-7);
+                NOVA_REQUIRE_NEAR(e.z, 0.0, 2.0e-7);
+                NOVA_REQUIRE_NEAR(d.x, -(2.0 + centroid_x), 3.0e-7);
+                NOVA_REQUIRE_NEAR(d.y, 0.0, 3.0e-7);
+                NOVA_REQUIRE_NEAR(d.z, 0.0, 3.0e-7);
+            }
+            NOVA_REQUIRE_NEAR(solved.stored_energy_joules, 1.25, 2.0e-7);
+        }
+    }
+}
