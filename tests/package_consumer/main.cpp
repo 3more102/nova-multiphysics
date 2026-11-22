@@ -1,3 +1,4 @@
+#include "nova/fem/adaptive_diffusion_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
 #include "nova/fem/residual_error_estimator_3d.hpp"
@@ -105,6 +106,28 @@ int main() {
         residual.boundary_residual_faces.size() != natural_faces.size() ||
         residual.boundary_residual_errors.size() != box.mesh.elements.size() ||
         residual.total_error > 1.0e-8) return 14;
+
+    // Exercise installed adaptive 3D diffusion as a public linked SDK symbol.
+    // A nonzero manufactured volume source guarantees a nontrivial mark/refine.
+    ScalarDiffusion3DProblem adaptive_problem = problem;
+    adaptive_problem.diffusivity = {};
+    adaptive_problem.cell_diffusivity = unit_conductivity;
+    adaptive_problem.source = [](double, double, double) { return 2.0; };
+    for (auto& condition : adaptive_problem.dirichlet_faces) {
+        condition.value = [](double, double, double) { return 0.0; };
+    }
+    const auto adaptive =
+        solve_adaptive_diffusion_step_3d(adaptive_problem, 0.5);
+    if (!adaptive.coarse_solution.linear_solver.converged ||
+        !adaptive.refined_solution.linear_solver.converged ||
+        adaptive.adaptation.marked_elements.empty() ||
+        adaptive.refined_problem.mesh.nodes.size() <=
+            adaptive_problem.mesh.nodes.size() ||
+        adaptive.transferred_p1_values.size() !=
+            adaptive.refined_problem.mesh.nodes.size() ||
+        adaptive.refined_indicators.element_errors.size() !=
+            adaptive.refined_problem.mesh.elements.size() ||
+        !std::isfinite(adaptive.refined_indicators.total_error)) return 20;
 
     // Exercise the installed experimental electrostatics API and exported symbol.
     nova::physics::Electrostatics3DProblem electrostatic;
