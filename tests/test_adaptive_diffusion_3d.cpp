@@ -169,3 +169,62 @@ NOVA_TEST(adaptive_diffusion_3d_rejects_unrepresented_physics) {
         (void)nova::fem::solve_adaptive_diffusion_step_3d(modified, 0.5);
     }));
 }
+
+
+NOVA_TEST(adaptive_diffusion_3d_re_evaluates_spatial_boundary_values_after_refinement) {
+    // Manufactured solution u=x(1-x)+y^2/4, isotropic K=2:
+    // -div(K grad u)=3; on x=0,1 u=y^2/4; on y=1 outward
+    // flux=-1; y=0 and z-normal surfaces are insulated.
+    // A fine boundary midpoint must use the callback's actual value,
+    // rather than interpolation of the coarse boundary nodal values.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    nova::fem::ScalarDiffusion3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.cell_diffusivity.assign(box.mesh.elements.size(), 2.0);
+    problem.source = [](double, double, double) { return 3.0; };
+    for (const auto& face : box.boundary_faces) {
+        if (is_x_plate(box.mesh, face, 0.0) ||
+            is_x_plate(box.mesh, face, 1.0)) {
+            problem.dirichlet_faces.push_back({
+                face, [](double, double y, double) { return 0.25 * y * y; }});
+        } else if (box.mesh.nodes[face[0]].y == 1.0 &&
+                   box.mesh.nodes[face[1]].y == 1.0 &&
+                   box.mesh.nodes[face[2]].y == 1.0) {
+            problem.neumann_faces.push_back({
+                face, [](double, double, double) { return -1.0; }});
+        }
+    }
+
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(
+        problem, 1.0);
+    NOVA_REQUIRE(result.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.refined_solution.linear_solver.converged);
+    NOVA_REQUIRE(!result.adaptation.marked_elements.empty());
+    NOVA_REQUIRE(result.refined_problem.dirichlet_faces.size() >
+                 problem.dirichlet_faces.size());
+    NOVA_REQUIRE(result.refined_problem.neumann_faces.size() >
+                 problem.neumann_faces.size());
+
+    bool new_dirichlet_vertex = false;
+    bool coarse_interpolation_differs = false;
+    for (std::size_t i = problem.mesh.nodes.size();
+         i < result.refined_problem.mesh.nodes.size(); ++i) {
+        const auto& p = result.refined_problem.mesh.nodes[i];
+        if (p.x != 0.0 && p.x != 1.0) continue;
+        new_dirichlet_vertex = true;
+        const double exact_boundary = 0.25 * p.y * p.y;
+        NOVA_REQUIRE_NEAR(result.refined_solution.values[i],
+                          exact_boundary, 1.0e-8);
+        if (std::abs(result.transferred_p1_values[i] -
+                     exact_boundary) > 1.0e-5) {
+            coarse_interpolation_differs = true;
+        }
+    }
+    NOVA_REQUIRE(new_dirichlet_vertex);
+    NOVA_REQUIRE(coarse_interpolation_differs);
+    for (const auto& condition : result.refined_problem.neumann_faces) {
+        NOVA_REQUIRE_NEAR(condition.outward_flux(0.5, 1.0, 0.5),
+                          -1.0, 1.0e-14);
+    }
+}
