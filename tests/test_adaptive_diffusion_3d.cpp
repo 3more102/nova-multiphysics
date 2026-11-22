@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 
 #include "nova/fem/adaptive_diffusion_3d.hpp"
+#include "nova/fem/error_norms_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -168,4 +169,72 @@ NOVA_TEST(adaptive_diffusion_3d_rejects_unrepresented_physics) {
     NOVA_REQUIRE(rejects([&] {
         (void)nova::fem::solve_adaptive_diffusion_step_3d(modified, 0.5);
     }));
+}
+
+
+NOVA_TEST(adaptive_diffusion_3d_manufactured_wall_reduces_independent_l2_and_h1_error) {
+    // -div(2 grad u)=4 on the unit cube with u=0 at x=0,1 and
+    // zero flux elsewhere has the exact solution u=x(1-x).
+    // theta=1 marks all nonzero indicators for this smooth benchmark;
+    // this verifies one global adaptive step, not monotonicity in general.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const auto problem = make_wall(box, 4.0);
+    const nova::fem::ExactScalarField3D exact{
+        [](double x, double, double) { return x * (1.0 - x); },
+        [](double x, double, double) { return 1.0 - 2.0 * x; },
+        [](double, double, double) { return 0.0; },
+        [](double, double, double) { return 0.0; }
+    };
+
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(
+        problem, 1.0);
+    NOVA_REQUIRE(result.adaptation.marked_elements.size() ==
+                 problem.mesh.elements.size());
+    const auto coarse = nova::fem::compute_error_norms_3d(
+        problem.mesh, result.coarse_solution.values, exact);
+    const auto refined = nova::fem::compute_error_norms_3d(
+        result.refined_problem.mesh, result.refined_solution.values, exact);
+    NOVA_REQUIRE(coarse.l2 > 0.0);
+    NOVA_REQUIRE(coarse.h1_seminorm > 0.0);
+    NOVA_REQUIRE(refined.l2 < 0.9 * coarse.l2);
+    NOVA_REQUIRE(refined.h1_seminorm < 0.9 * coarse.h1_seminorm);
+}
+
+NOVA_TEST(adaptive_diffusion_3d_reevaluates_nonconstant_dirichlet_faces_on_new_nodes) {
+    // The exact u=x^2+y^2+z^2 solves -Delta u=-6. A curved
+    // prescribed boundary field must be sampled at NEW P1 boundary
+    // nodes, rather than interpolated from old boundary vertices.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const auto exact = [](double x, double y, double z) {
+        return x*x + y*y + z*z;
+    };
+    nova::fem::ScalarDiffusion3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.cell_diffusivity.assign(box.mesh.elements.size(), 1.0);
+    problem.source = [](double, double, double) { return -6.0; };
+    for (const auto& face : box.boundary_faces) {
+        problem.dirichlet_faces.push_back({face, exact});
+    }
+
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(
+        problem, 0.5);
+    NOVA_REQUIRE(!result.adaptation.marked_elements.empty());
+    NOVA_REQUIRE(result.refined_problem.dirichlet_faces.size() >
+                 problem.dirichlet_faces.size());
+    bool saw_new_boundary_vertex = false;
+    for (const auto& condition : result.refined_problem.dirichlet_faces) {
+        for (const auto node : condition.face) {
+            const auto& p = result.refined_problem.mesh.nodes[node];
+            NOVA_REQUIRE_NEAR(condition.value(p.x, p.y, p.z),
+                              exact(p.x, p.y, p.z), 1.0e-14);
+            NOVA_REQUIRE_NEAR(result.refined_solution.values[node],
+                              exact(p.x, p.y, p.z), 1.0e-8);
+            if (node >= problem.mesh.nodes.size()) {
+                saw_new_boundary_vertex = true;
+            }
+        }
+    }
+    NOVA_REQUIRE(saw_new_boundary_vertex);
 }
