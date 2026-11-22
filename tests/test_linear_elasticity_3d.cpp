@@ -3,8 +3,10 @@
 #include "nova/physics/linear_elasticity_3d.hpp"
 
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <set>
+#include <utility>
 #include <vector>
 
 namespace {
