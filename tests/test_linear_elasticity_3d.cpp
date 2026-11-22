@@ -214,3 +214,96 @@ NOVA_TEST(elasticity_3d_rejects_missing_materials_bad_anchors_and_faces) {
         std::numeric_limits<double>::quiet_NaN();
     NOVA_REQUIRE(rejects([&] { return solve_linear_elasticity_3d(bad); }));
 }
+
+
+NOVA_TEST(elasticity_3d_uniform_thermal_expansion_is_stress_free) {
+    const auto box = make_box_mesh_3d(
+        0.0,1.0,0.0,1.0,0.0,1.0,2U,2U,2U);
+    auto problem = make_model(box, 1200.0, 0.25);
+    problem.cell_thermal_expansion_per_kelvin.assign(
+        problem.mesh.elements.size(), 0.002);
+    problem.cell_temperature_change_kelvin.assign(
+        problem.mesh.elements.size(), 5.0); // alpha * deltaT = 0.01
+    const auto free_dilation = [](const Point3D& p) -> ElasticVector3D {
+        return {0.01*p.x, 0.01*p.y, 0.01*p.z};
+    };
+    fix_exterior(problem, box.boundary_faces, free_dilation);
+    const auto solved = solve_linear_elasticity_3d(problem);
+    NOVA_REQUIRE(solved.linear_solver.converged);
+    for (std::size_t n=0; n<problem.mesh.nodes.size(); ++n) {
+        const auto expected = free_dilation(problem.mesh.nodes[n]);
+        for (std::size_t c=0; c<3U; ++c) {
+            NOVA_REQUIRE_NEAR(solved.displacement[n][c], expected[c], 1.0e-8);
+        }
+    }
+    for (std::size_t e=0; e<solved.cell_stress.size(); ++e) {
+        const auto& total_strain = solved.cell_strain[e];
+        for (std::size_t c=0; c<3U; ++c) {
+            NOVA_REQUIRE_NEAR(total_strain[c], 0.01, 1.0e-8);
+        }
+        for (std::size_t c=3; c<6U; ++c) {
+            NOVA_REQUIRE_NEAR(total_strain[c], 0.0, 1.0e-8);
+        }
+        for (const double stress : solved.cell_stress[e]) {
+            NOVA_REQUIRE_NEAR(stress, 0.0, 1.0e-5);
+        }
+    }
+    NOVA_REQUIRE_NEAR(solved.strain_energy_joules, 0.0, 1.0e-8);
+}
+
+NOVA_TEST(elasticity_3d_fully_clamped_thermal_stress_and_stored_energy) {
+    const auto box = make_box_mesh_3d(
+        0.0,1.0,0.0,1.0,0.0,1.0,2U,2U,2U);
+    auto problem = make_model(box, 1200.0, 0.25);
+    problem.cell_thermal_expansion_per_kelvin.assign(
+        problem.mesh.elements.size(), 0.002);
+    problem.cell_temperature_change_kelvin.assign(
+        problem.mesh.elements.size(), 5.0);
+    // E=1200, nu=0.25 => lambda=mu=480, 3*lambda+2*mu=2400.
+    // Clamped alpha*deltaT=0.01 gives sigma_ii=-24 Pa and U=0.36 J.
+    for (std::size_t node=0; node<problem.mesh.nodes.size(); ++node) {
+        problem.prescribed_displacements.push_back({node,{0.0,0.0,0.0}});
+    }
+    const auto solved = solve_linear_elasticity_3d(problem);
+    NOVA_REQUIRE(solved.linear_solver.converged);
+    for (const auto& u : solved.displacement) {
+        for (const double component : u) {
+            NOVA_REQUIRE_NEAR(component, 0.0, 1.0e-12);
+        }
+    }
+    for (std::size_t e=0; e<solved.cell_stress.size(); ++e) {
+        for (std::size_t c=0; c<6U; ++c) {
+            NOVA_REQUIRE_NEAR(solved.cell_strain[e][c], 0.0, 1.0e-12);
+            NOVA_REQUIRE_NEAR(solved.cell_stress[e][c],
+                              c<3U ? -24.0 : 0.0, 1.0e-8);
+        }
+    }
+    NOVA_REQUIRE_NEAR(solved.strain_energy_joules, 0.36, 1.0e-9);
+}
+
+NOVA_TEST(elasticity_3d_rejects_malformed_or_nonfinite_thermal_inputs) {
+    const auto box = make_box_mesh_3d(
+        0.0,1.0,0.0,1.0,0.0,1.0,1U,1U,1U);
+    auto problem = make_model(box, 1200.0, 0.25);
+    const auto zero = [](const Point3D&) -> ElasticVector3D {
+        return {0.0,0.0,0.0};
+    };
+    fix_exterior(problem, box.boundary_faces, zero);
+    const auto cell_count = problem.mesh.elements.size();
+    problem.cell_thermal_expansion_per_kelvin.assign(cell_count, 0.002);
+    NOVA_REQUIRE(rejects([&] { return solve_linear_elasticity_3d(problem); }));
+    problem.cell_temperature_change_kelvin.assign(cell_count - 1U, 5.0);
+    NOVA_REQUIRE(rejects([&] { return solve_linear_elasticity_3d(problem); }));
+    problem.cell_temperature_change_kelvin.assign(cell_count, 5.0);
+    problem.cell_thermal_expansion_per_kelvin[0] =
+        std::numeric_limits<double>::quiet_NaN();
+    NOVA_REQUIRE(rejects([&] { return solve_linear_elasticity_3d(problem); }));
+    problem.cell_thermal_expansion_per_kelvin[0] =
+        std::numeric_limits<double>::max();
+    NOVA_REQUIRE(rejects([&] { return solve_linear_elasticity_3d(problem); }));
+    // Zero thermal strain must exactly preserve the source-free path.
+    problem.cell_thermal_expansion_per_kelvin.assign(cell_count, 0.0);
+    const auto solved = solve_linear_elasticity_3d(problem);
+    NOVA_REQUIRE(solved.linear_solver.converged);
+    NOVA_REQUIRE_NEAR(solved.strain_energy_joules, 0.0, 1.0e-12);
+}

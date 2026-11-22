@@ -36,5 +36,24 @@ int main() {
     for (const auto& stress : solved.cell_stress) {
         if (std::abs(stress[0] - 10.0) > 1.0e-6) return 3;
     }
+    // Independently exercise the installed public thermoelastic API.
+    problem.face_tractions.clear();
+    problem.prescribed_displacements.clear();
+    problem.cell_materials.assign(box.mesh.elements.size(), {1200.0, 0.25});
+    problem.cell_thermal_expansion_per_kelvin.assign(
+        box.mesh.elements.size(), 0.002);
+    problem.cell_temperature_change_kelvin.assign(
+        box.mesh.elements.size(), 5.0);
+    for (std::size_t node=0; node<box.mesh.nodes.size(); ++node) {
+        problem.prescribed_displacements.push_back({node,{0.0,0.0,0.0}});
+    }
+    const auto thermal = solve_linear_elasticity_3d(problem);
+    if (!thermal.linear_solver.converged ||
+        std::abs(thermal.strain_energy_joules - 0.36) > 1.0e-9) return 4;
+    for (const auto& stress : thermal.cell_stress) {
+        for (std::size_t c=0; c<3U; ++c) {
+            if (std::abs(stress[c] + 24.0) > 1.0e-8) return 5;
+        }
+    }
     return 0;
 }
