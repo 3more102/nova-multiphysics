@@ -521,10 +521,10 @@ NOVA_TEST(electrostatics_3d_discrete_reaction_rejects_invalid_inputs) {
     NOVA_REQUIRE(rejects(problem, {{0U, 1U, 2U}}, {1})); // No such selected exterior face is guaranteed.
     auto with_charge = problem;
     with_charge.free_charge_density =
-        [](double, double, double) { return 1.0; };
+        [](double, double, double) { return std::numeric_limits<double>::quiet_NaN(); };
     NOVA_REQUIRE(rejects(with_charge, low, {1, 1}));
     with_charge.free_charge_density = {};
-    with_charge.cell_free_charge_density.assign(problem.mesh.elements.size(), 1.0);
+    with_charge.cell_free_charge_density = {1.0};
     NOVA_REQUIRE(rejects(with_charge, low, {1, 1}));
 }
 
@@ -592,4 +592,39 @@ NOVA_TEST(electrostatics_3d_discrete_capacitance_variable_dielectric_reciprocity
     NOVA_REQUIRE(c.max_reciprocity_defect_farads < 2.0e-8);
     NOVA_REQUIRE_NEAR(c.matrix_farads[0] + c.matrix_farads[1], 0.0, 2.0e-8);
     NOVA_REQUIRE_NEAR(c.matrix_farads[2] + c.matrix_farads[3], 0.0, 2.0e-8);
+}
+
+NOVA_TEST(electrostatics_3d_loaded_discrete_reaction_poisson_balance) {
+    // Two grounded unit-area plates, rho_free=2 C/m^3, epsilon=1 F/m.
+    // Exact continuum V=x*(1-x), so Q_left=Q_right=-1 C.
+    // The loaded Galerkin reactions must also satisfy sum(Q)=-2 C
+    // on the discrete mesh, unlike uncorrected K*V reactions.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 3U, 3U, 3U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 1.0; };
+    problem.free_charge_density = [](double, double, double) { return 1.0; };
+    problem.cell_free_charge_density.assign(problem.mesh.elements.size(), 1.0);
+    std::vector<nova::fem::BoundaryFace3D> selected_faces;
+    std::vector<int> selected_ids;
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(problem.mesh, face, 0.0) ||
+            on_x(problem.mesh, face, 1.0)) {
+            const int id = on_x(problem.mesh, face, 0.0) ? 10 : 20;
+            selected_faces.push_back(face);
+            selected_ids.push_back(id);
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 0.0; }});
+        }
+    }
+    const auto solved = solve_electrostatics_3d(problem);
+    NOVA_REQUIRE(solved.linear_solver.converged);
+    const auto reactions = nova::physics::evaluate_discrete_electrode_reactions_3d(
+        problem, solved, selected_faces, selected_ids);
+    NOVA_REQUIRE(reactions.size() == 2U);
+    NOVA_REQUIRE_NEAR(reactions[0].reaction_charge_coulombs, -1.0, 0.06);
+    NOVA_REQUIRE_NEAR(reactions[1].reaction_charge_coulombs, -1.0, 0.06);
+    NOVA_REQUIRE_NEAR(reactions[0].reaction_charge_coulombs +
+                      reactions[1].reaction_charge_coulombs, -2.0, 1.0e-7);
 }
