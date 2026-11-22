@@ -38,6 +38,12 @@ original problem and solution without a redundant second linear solve.
 - Positive scalar **cellwise constant conductivity** only.
 - An optional spatial source callback, or an absent (zero) source.
 - Per-vertex Dirichlet constraints and facewise Dirichlet functions.
+  A boundary triangle whose three nodes are explicitly constrained (and
+  which has no separately prescribed face flux) has a fully prescribed P1
+  trace. Its natural-boundary residual is excluded, and any new edge-midpoint
+  DOFs on such triangles receive the linear midpoint value of their two
+  prescribed parents. A face with only some constrained vertices remains a
+  pointwise-constraint case and is not reclassified as fully Dirichlet.
 - Selected Neumann outward flux functions.
 - All remaining exterior faces insulated, with their zero-flux mismatch
   included explicitly in each estimator.
@@ -58,7 +64,7 @@ benchmarks and larger-mesh performance tests remain required.
 
 ## Verification
 
-The regressions exercise a source-loaded wall with analytic quadratic
+The regressions additionally verify nonlinear spatial face callbacks on refined nodes, exclude artificial flux residuals on fully vertex-constrained faces, and preserve the interpolated P1 trace for vertex-only boundary constraints. The regressions exercise a source-loaded wall with analytic quadratic
 profile, zero-error/no-refinement behavior, facewise Neumann flux
 propagation, exact coarse-vertex/edge-midpoint P1 prolongation,
 conservation of parent element conductivity values, and rejection of
