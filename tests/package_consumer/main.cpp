@@ -7,6 +7,7 @@
 #include "nova/physics/electrostatics_3d.hpp"
 #include "nova/physics/electrode_charge_3d.hpp"
 #include "nova/physics/floating_electrodes_3d.hpp"
+#include "nova/physics/floating_conductor_schur_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/thermal_checkpoint_3d.hpp"
 
@@ -244,6 +245,22 @@ $EndElements
         reconstructed.max_floating_charge_mismatch_coulombs > 1.0e-8 ||
         std::abs(reconstructed.field.stored_energy_joules - 100.0) > 1.0e-7)
         return 16;
+
+    // Installed discrete Schur system: Q_high=20 C -> V_high=10 V
+    // -> one reconstructed FEM field and consistent Galerkin electrode Q.
+    const auto schur = nova::physics::solve_floating_conductor_schur_3d(
+        electrostatic, electrode_groups,
+        std::vector<nova::physics::FixedElectrodePotential3D>{{1, 0.0}},
+        std::vector<nova::physics::FloatingElectrodeCharge3D>{{2, 20.0}});
+    if (!schur.field.linear_solver.converged ||
+        schur.discrete_reactions.size() != 2 ||
+        schur.boundary_flux_charges.size() != 2 ||
+        std::abs(schur.terminals.potential_volts[1] - 10.0) > 1.0e-8 ||
+        std::abs(schur.discrete_reactions[1].reaction_charge_coulombs -
+                 20.0) > 1.0e-8 ||
+        schur.max_floating_reaction_mismatch_coulombs > 1.0e-8 ||
+        std::abs(schur.field.stored_energy_joules - 100.0) > 1.0e-7)
+        return 19;
 
     // Verify the installed SDK exports the versioned thermal checkpoint API.
     const std::vector<double> saved_temperature(box.mesh.nodes.size(), 301.25);
