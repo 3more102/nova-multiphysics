@@ -183,14 +183,31 @@ constexpr std::array<FaceQuadraturePoint3D, 6> face_quadrature{{
     {{{0.816847572980459, 0.091576213509771, 0.091576213509771}}, 0.109951743655322}
 }};
 
-[[nodiscard]] std::vector<long double> integrate_neumann_residuals_3d(
+struct SelectedNaturalFace3D {
+    BoundaryFace3D face{};
+    const NeumannResidualFace3D* neumann{};
+    const RobinResidualFace3D* robin{};
+};
+
+[[nodiscard]] std::vector<long double> integrate_natural_residuals_3d(
     const TetrahedralMesh3D& mesh,
     std::span<const P1TetrahedralFlux3D> fields,
     std::span<const NeumannResidualFace3D> natural_faces,
+    std::span<const RobinResidualFace3D> robin_faces,
+    std::span<const double> nodal_values,
     std::vector<BoundaryFluxResidualFace3D>& report
 ) {
     std::vector<long double> squared(mesh.elements.size(), 0.0L);
-    if (natural_faces.empty()) return squared;
+    if (natural_faces.empty() && robin_faces.empty()) return squared;
+
+    std::vector<SelectedNaturalFace3D> selected_faces;
+    selected_faces.reserve(natural_faces.size() + robin_faces.size());
+    for (const auto& face : natural_faces) {
+        selected_faces.push_back({face.face, &face, nullptr});
+    }
+    for (const auto& face : robin_faces) {
+        selected_faces.push_back({face.face, nullptr, &face});
+    }
 
     std::map<BoundaryFace3D, ResidualFaceOwner3D> owners;
     for (std::size_t element = 0; element < mesh.elements.size(); ++element) {
@@ -209,13 +226,18 @@ constexpr std::array<FaceQuadraturePoint3D, 6> face_quadrature{{
     }
 
     std::map<BoundaryFace3D, bool> visited;
-    report.reserve(natural_faces.size());
-    for (const auto& item : natural_faces) {
-        if (!item.outward_flux) {
+    report.reserve(selected_faces.size());
+    for (const auto& selected : selected_faces) {
+        if (selected.neumann && !selected.neumann->outward_flux) {
             throw std::invalid_argument(
                 "Natural-boundary residual requires an outward-flux callback.");
         }
-        BoundaryFace3D face = item.face;
+        if (selected.robin &&
+            (!selected.robin->transfer_coefficient || !selected.robin->ambient_value)) {
+            throw std::invalid_argument(
+                "Robin residual requires transfer and ambient callbacks.");
+        }
+        BoundaryFace3D face = selected.face;
         for (const auto vertex : face) {
             if (vertex >= mesh.nodes.size()) {
                 throw std::out_of_range(
@@ -269,13 +291,32 @@ constexpr std::array<FaceQuadraturePoint3D, 6> face_quadrature{{
             const long double x = weight[0] * a.x + weight[1] * b.x + weight[2] * c.x;
             const long double y = weight[0] * a.y + weight[1] * b.y + weight[2] * c.y;
             const long double z = weight[0] * a.z + weight[1] * b.z + weight[2] * c.z;
-            const double prescribed = item.outward_flux(
-                checked_boundary_value(x),
-                checked_boundary_value(y),
-                checked_boundary_value(z));
-            if (!std::isfinite(prescribed)) {
-                throw std::invalid_argument(
-                    "Natural-boundary flux callback returned a non-finite value.");
+            const double px = checked_boundary_value(x);
+            const double py = checked_boundary_value(y);
+            const double pz = checked_boundary_value(z);
+            long double prescribed = 0.0L;
+            if (selected.neumann) {
+                const double flux_value = selected.neumann->outward_flux(px, py, pz);
+                if (!std::isfinite(flux_value)) {
+                    throw std::invalid_argument(
+                        "Natural-boundary flux callback returned a non-finite value.");
+                }
+                prescribed = flux_value;
+            } else {
+                const double h = selected.robin->transfer_coefficient(px, py, pz);
+                const double ambient = selected.robin->ambient_value(px, py, pz);
+                if (!std::isfinite(h) || h < 0.0 || !std::isfinite(ambient)) {
+                    throw std::invalid_argument(
+                        "Robin residual requires finite nonnegative h and finite ambient.");
+                }
+                const long double trace =
+                    static_cast<long double>(weight[0]) * nodal_values[face[0]] +
+                    static_cast<long double>(weight[1]) * nodal_values[face[1]] +
+                    static_cast<long double>(weight[2]) * nodal_values[face[2]];
+                prescribed = static_cast<long double>(h) * (trace - ambient);
+                if (!std::isfinite(prescribed)) {
+                    throw std::overflow_error("Robin residual prescribed flux overflow.");
+                }
             }
             const long double mismatch = actual_outward - prescribed;
             weighted_mismatch_square += qp.normalized_weight * mismatch * mismatch;
@@ -291,7 +332,9 @@ constexpr std::array<FaceQuadraturePoint3D, 6> face_quadrature{{
             checked_boundary_value(area),
             checked_boundary_value(diameter),
             checked_norm(mismatch_l2_square,
-                "Natural-boundary L2 mismatch exceeds finite range.")
+                "Natural-boundary L2 mismatch exceeds finite range."),
+            selected.robin ? BoundaryResidualKind3D::Robin
+                           : BoundaryResidualKind3D::Neumann
         });
     }
     return squared;
@@ -304,7 +347,8 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     const std::span<const double> nodal_values,
     const std::span<const double> element_conductivity,
     const std::function<double(double, double, double)>& source,
-    const std::span<const NeumannResidualFace3D> natural_boundary_faces
+    const std::span<const NeumannResidualFace3D> natural_boundary_faces,
+    const std::span<const RobinResidualFace3D> robin_boundary_faces
 ) {
     mesh.validate();
     if (nodal_values.size() != mesh.nodes.size()) {
@@ -381,8 +425,9 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
 
     DiffusionResidualIndicators3D result;
     result.flux_jumps = evaluate_interior_flux_jumps_3d(mesh, cell_fields);
-    const auto boundary_squared = integrate_neumann_residuals_3d(
-        mesh, cell_fields, natural_boundary_faces, result.boundary_residual_faces);
+    const auto boundary_squared = integrate_natural_residuals_3d(
+        mesh, cell_fields, natural_boundary_faces, robin_boundary_faces,
+        nodal_values, result.boundary_residual_faces);
     result.cell_residual_errors.resize(mesh.elements.size(), 0.0);
     result.boundary_residual_errors.resize(mesh.elements.size(), 0.0);
     result.element_errors.resize(mesh.elements.size(), 0.0);
@@ -410,6 +455,19 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     return result;
 }
 
+
+// Existing five-argument API retains its Neumann-only semantics.
+DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
+    const TetrahedralMesh3D& mesh,
+    const std::span<const double> nodal_values,
+    const std::span<const double> element_conductivity,
+    const std::function<double(double, double, double)>& source,
+    const std::span<const NeumannResidualFace3D> natural_boundary_faces
+) {
+    return estimate_diffusion_residual_error_3d(
+        mesh, nodal_values, element_conductivity, source,
+        natural_boundary_faces, std::span<const RobinResidualFace3D>{});
+}
 
 // Existing four-argument API retains its cell-and-interior-only meaning.
 DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
