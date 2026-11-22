@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 
 #include "nova/fem/diffusion_3d.hpp"
+#include "nova/fem/p1_flux_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -503,5 +504,93 @@ NOVA_TEST(diffusion_3d_pure_neumann_residual_describes_the_gauged_cg_iterate) {
     NOVA_REQUIRE_NEAR(result.linear_solver.residual_norm, residual, 1.0e-14);
     for (std::size_t i = 0; i < x.size(); ++i) {
         NOVA_REQUIRE_NEAR(result.values[i], problem.mesh.nodes[i].x - 0.25, 1.0e-13);
+    }
+}
+
+
+// Independent 1D transmission solution embedded in a fitted 3D tetrahedral
+// grid. For k=2 on x<1/2 and k=4 on x>1/2, u(0)=0, outward
+// q_n(1)=-1, and insulated side walls, the exact solution is:
+//   u(x)=x/2                     (x<=1/2)
+//   u(x)=1/4+(x-1/2)/4           (x>=1/2)
+// Both layers carry the SAME physical flux q_x=-k*du/dx=-1.
+// The right-plate potential is 3/8 and the stored energy is 3/16.
+// This test validates the continuum interface law independently of
+// the FEM assembly and flux postprocessor.
+NOVA_TEST(diffusion_3d_two_layer_exact_transmission_and_energy) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const auto exact = [](const double x) {
+        return x <= 0.5 ? 0.5 * x : 0.25 + 0.25 * (x - 0.5);
+    };
+
+    // Check both independent material APIs and both representations of
+    // insulation (omitted faces versus explicit zero Neumann data).
+    for (int representation = 0; representation < 2; ++representation) {
+        ScalarDiffusion3DProblem problem;
+        problem.mesh = box.mesh;
+        if (representation == 0) {
+            for (const auto& cell : problem.mesh.elements) {
+                double centroid_x = 0.0;
+                for (const auto node : cell) {
+                    centroid_x += problem.mesh.nodes[node].x / 4.0;
+                }
+                problem.cell_diffusivity.push_back(
+                    centroid_x < 0.5 ? 2.0 : 4.0);
+            }
+        } else {
+            problem.diffusivity = [](const double x, double, double) {
+                return x < 0.5 ? 2.0 : 4.0;
+            };
+        }
+
+        for (const BoundaryFace3D& face : box.boundary_faces) {
+            if (face_on_x(problem.mesh, face, 0.0)) {
+                problem.dirichlet_faces.push_back({
+                    face, [](double, double, double) { return 0.0; }});
+            } else if (face_on_x(problem.mesh, face, 1.0)) {
+                problem.neumann_faces.push_back({
+                    face, [](double, double, double) { return -1.0; }});
+            } else if (representation == 0) {
+                problem.neumann_faces.push_back({
+                    face, [](double, double, double) { return 0.0; }});
+            }
+        }
+
+        const auto result = nova::fem::solve_scalar_diffusion_3d(problem);
+        NOVA_REQUIRE(result.linear_solver.converged);
+        for (std::size_t i = 0; i < problem.mesh.nodes.size(); ++i) {
+            const double x = problem.mesh.nodes[i].x;
+            NOVA_REQUIRE_NEAR(result.values[i], exact(x), 1.0e-8);
+        }
+
+        const auto fluxes = nova::fem::evaluate_p1_tetrahedral_flux_3d(
+            problem, result.values);
+        const auto quality = nova::fem::evaluate_mesh_quality_3d(problem.mesh);
+        NOVA_REQUIRE(fluxes.size() == problem.mesh.elements.size());
+        NOVA_REQUIRE_NEAR(quality.total_volume, 1.0, 1.0e-12);
+
+        double stored_energy = 0.0;
+        for (std::size_t i = 0; i < problem.mesh.elements.size(); ++i) {
+            const auto& cell = problem.mesh.elements[i];
+            double centroid_x = 0.0;
+            for (const auto node : cell) {
+                centroid_x += problem.mesh.nodes[node].x / 4.0;
+            }
+            const double k = centroid_x < 0.5 ? 2.0 : 4.0;
+            const double analytic_gradient = 1.0 / k;
+            NOVA_REQUIRE_NEAR(fluxes[i].gradient.x, analytic_gradient, 1.0e-8);
+            NOVA_REQUIRE_NEAR(fluxes[i].gradient.y, 0.0, 1.0e-8);
+            NOVA_REQUIRE_NEAR(fluxes[i].gradient.z, 0.0, 1.0e-8);
+            NOVA_REQUIRE_NEAR(fluxes[i].flux.x, -1.0, 1.0e-8);
+            NOVA_REQUIRE_NEAR(fluxes[i].flux.y, 0.0, 1.0e-8);
+            NOVA_REQUIRE_NEAR(fluxes[i].flux.z, 0.0, 1.0e-8);
+            const auto& grad = fluxes[i].gradient;
+            stored_energy += 0.5 * k *
+                (grad.x * grad.x + grad.y * grad.y + grad.z * grad.z) *
+                quality.elements[i].volume;
+        }
+        NOVA_REQUIRE_NEAR(stored_energy, 3.0 / 16.0, 1.0e-8);
+        NOVA_REQUIRE_NEAR(2.0 * stored_energy, exact(1.0), 1.0e-8);
     }
 }
