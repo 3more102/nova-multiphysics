@@ -3,6 +3,7 @@
 #include "nova/fem/tagged_boundary_flux_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 #include "nova/fem/tetrahedron_h1.hpp"
+#include "../fem/p1_integration_3d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -327,13 +328,21 @@ std::vector<DiscreteElectrodeReaction3D> evaluate_discrete_electrode_reactions_3
     const std::span<const fem::BoundaryFace3D> electrode_faces,
     const std::span<const int> electrode_ids
 ) {
-    if (problem.free_charge_density ||
-        !problem.cell_free_charge_density.empty() ||
-        !problem.displacement_flux_faces.empty()) {
-        throw std::invalid_argument(
-            "Discrete electrode reactions require zero impressed volume and displacement loads.");
-    }
+    // A fixed-voltage electrode reaction is (K*V - F)_electrode.
+    // Its load term must use the same volume and boundary quadrature as
+    // solve_scalar_diffusion_3d, including the outward-flux sign.
     const auto& mesh = problem.mesh;
+    if (!problem.cell_free_charge_density.empty() &&
+        problem.cell_free_charge_density.size() != mesh.elements.size()) {
+        throw std::invalid_argument(
+            "Discrete electrode cell charge requires one value per tetrahedron.");
+    }
+    for (const double charge : problem.cell_free_charge_density) {
+        if (!std::isfinite(charge)) {
+            throw std::invalid_argument(
+                "Discrete electrode cell charge must be finite.");
+        }
+    }
     mesh.validate();
     if (!solution.linear_solver.converged ||
         solution.potential.size() != mesh.nodes.size()) {
@@ -451,6 +460,81 @@ std::vector<DiscreteElectrodeReaction3D> evaluate_discrete_electrode_reactions_3
                 static_cast<long double>(grad[1]) * q.y +
                 static_cast<long double>(grad[2]) * q.z);
             reactions.at(group) += row_reaction;
+        }
+
+        // Subtract the assembled volumetric RHS from the fixed-node
+        // reaction. P1 shape functions and degree-two tetrahedral sampling
+        // are identical to the stationary 3D diffusion assembly.
+        const double cell_charge = problem.cell_free_charge_density.empty()
+            ? 0.0 : problem.cell_free_charge_density[element];
+        if (problem.free_charge_density || cell_charge != 0.0) {
+            for (const auto& q : fem::tetrahedron_degree_two_quadrature) {
+                const auto point = fem::detail::simplex_point(
+                    mesh, mesh.elements[element], q.shape);
+                const double spatial_charge = problem.free_charge_density
+                    ? problem.free_charge_density(point.x, point.y, point.z) : 0.0;
+                if (!std::isfinite(spatial_charge) ||
+                    !std::isfinite(spatial_charge + cell_charge)) {
+                    throw std::invalid_argument(
+                        "Discrete electrode volume charge must be finite.");
+                }
+                const long double weighted_charge =
+                    static_cast<long double>(spatial_charge + cell_charge) *
+                    std::abs(static_cast<long double>(
+                        basis.signed_jacobian_determinant)) *
+                    static_cast<long double>(q.weight);
+                for (std::size_t local = 0; local < 4U; ++local) {
+                    const int group = node_group[mesh.elements[element][local]];
+                    if (group != -1) {
+                        reactions.at(group) -=
+                            weighted_charge * static_cast<long double>(q.shape[local]);
+                    }
+                }
+            }
+        }
+    }
+
+    // The solver assembles Neumann data as F_i -= integral(g_n * N_i).
+    // Therefore a constrained-node reaction K*V-F has a PLUS sign here.
+    // Include edge/corner electrode vertices even if their containing
+    // Neumann face is not itself an electrode contact.
+    std::set<fem::BoundaryFace3D> visited_neumann;
+    for (const auto& condition : problem.displacement_flux_faces) {
+        auto key = condition.face;
+        for (const std::size_t node : key) {
+            if (node >= mesh.nodes.size()) {
+                throw std::out_of_range(
+                    "Discrete electrode Neumann face references a missing vertex.");
+            }
+        }
+        std::sort(key.begin(), key.end());
+        if (!condition.outward_flux || !exterior.contains(key) ||
+            !visited_neumann.insert(key).second) {
+            throw std::invalid_argument(
+                "Discrete electrode Neumann faces must be distinct exterior faces with flux callbacks.");
+        }
+        const double jacobian =
+            fem::detail::face_jacobian(mesh, condition.face);
+        for (const auto& q : fem::triangle_face_degree_two_quadrature) {
+            const auto point =
+                fem::detail::simplex_point(mesh, condition.face, q.shape);
+            const double flux =
+                condition.outward_flux(point.x, point.y, point.z);
+            if (!std::isfinite(flux)) {
+                throw std::invalid_argument(
+                    "Discrete electrode outward displacement must be finite.");
+            }
+            const long double weighted_flux =
+                static_cast<long double>(flux) *
+                static_cast<long double>(jacobian) *
+                static_cast<long double>(q.weight);
+            for (std::size_t local = 0; local < 3U; ++local) {
+                const int group = node_group[condition.face[local]];
+                if (group != -1) {
+                    reactions.at(group) +=
+                        weighted_flux * static_cast<long double>(q.shape[local]);
+                }
+            }
         }
     }
 
