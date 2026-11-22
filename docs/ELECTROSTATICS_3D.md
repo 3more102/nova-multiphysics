@@ -135,6 +135,43 @@ is applied. Verify matrix reciprocity and mesh convergence, and independently
 re-solve the FEM potential field using the computed terminal voltages if
 spatial field quantities are required.
 
+## Terminal-charge-to-field reconstruction (experimental)
+
+The public `reconstruct_floating_electrostatic_field_3d` helper in
+`nova/physics/floating_electrodes_3d.hpp` now completes a **source-free,
+linear** terminal-to-field workflow:
+
+1. Extract the unsymmetrized Maxwell capacitance matrix from electrode faces.
+2. Infer the voltages of prescribed-charge floating terminals.
+3. Reapply those electrode voltages as constant Dirichlet face data and solve
+   the P1 electrostatic field once more.
+4. Independently integrate the reconstructed electrode displacement fluxes and
+   report the maximum difference against the requested floating charges.
+
+For a unit parallel-plate example with `epsilon=2 F/m`, the low electrode
+fixed to 0 V and the high electrode prescribed +20 C, the recovered high
+terminal voltage is 10 V, the field is `E=(-10,0,0) V/m`, and the stored
+energy is 100 J. Tests also cover reversed electrode-face winding, a single
+floating terminal with an independent grounded exterior reference, and
+rejection of source terms.
+
+**Important conditions:** The input must have no volume free-charge callback,
+no cell free-charge values, and no prescribed displacement-flux faces, because
+the capacitance matrix excludes all such loads. Non-electrode original
+Dirichlet faces/nodes are explicitly set to 0 V in the new solve, matching the
+capacitance basis problems; existing electrode-face voltages are replaced by
+the computed terminal values. The caller must supply a nonsingular capacitance
+reference and keep electrode groups disjoint. Every reconstructed charge is
+calculated from the same non-equilibrated P1 element displacement used for
+capacitance extraction; a small residual is an **internal consistency check**,
+not independent physical validation. Mesh convergence and reciprocity remain
+caller responsibilities.
+
+This is a series of ordinary Dirichlet FEM solves and terminal algebra, **not**
+a monolithic constrained FEM formulation with floating potential unknowns.
+External charge densities, nonzero dielectric-space charge, nonlinear
+materials, and arbitrary impressed-flux loads are not supported here.
+
 ## Scope and limitations
 
 This is an experimental electrostatic Poisson interface, not a general Maxwell solver. It supports straight first-order tetrahedra, scalar or symmetric positive-definite tensor permittivity, optional per-cell material data, fixed potentials and prescribed normal displacement. It does not yet implement floating conductor boundary constraints inside the FEM solve, surface-charge unknowns, nonlinear dielectric response, AC or transient Maxwell equations, or a locally equilibrated displacement field. Per-cell D is a constitutive element average, not an equilibrated face flux or a Gauss-law error estimator. This prototype is not production-certified.
