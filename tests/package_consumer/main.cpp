@@ -142,6 +142,14 @@ int main() {
         std::abs(electrode_charges[0].conductor_charge_coulombs + 20.0) > 1.0e-8 ||
         std::abs(electrode_charges[1].conductor_charge_coulombs - 20.0) > 1.0e-8 ||
         std::abs(electrode_charges[1].area_square_metres - 1.0) > 1.0e-12) return 10;
+    // The installed SDK also exposes the discrete P1 reaction charge,
+    // independent of raw boundary-displacement surface integration.
+    const auto reactions = nova::physics::evaluate_discrete_electrode_reactions_3d(
+        electrostatic, capacitor, electrode_faces, electrode_ids);
+    if (reactions.size() != 2 ||
+        std::abs(reactions[0].reaction_charge_coulombs + 20.0) > 1.0e-8 ||
+        std::abs(reactions[1].reaction_charge_coulombs - 20.0) > 1.0e-8)
+        return 17;
     const double installed_capacitance =
         electrode_charges[1].conductor_charge_coulombs /
         (electrode_charges[1].potential_volts - electrode_charges[0].potential_volts);
