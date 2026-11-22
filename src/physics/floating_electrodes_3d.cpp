@@ -198,6 +198,10 @@ solve_affine_floating_electrode_potentials_3d(
     std::vector<FloatingElectrodeCharge3D> shifted;
     shifted.reserve(floating_electrodes.size());
     for (const auto& terminal : floating_electrodes) {
+        if (!std::isfinite(terminal.charge_coulombs)) {
+            throw std::invalid_argument(
+                "Affine floating-electrode prescribed charges must be finite.");
+        }
         const auto found = std::lower_bound(
             capacitance.electrode_ids.begin(), capacitance.electrode_ids.end(),
             terminal.electrode_id);
