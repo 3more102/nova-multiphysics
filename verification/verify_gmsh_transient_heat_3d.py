@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """End-to-end verification of imported, tagged transient 3D thermal studies."""
 
+import csv
 import math
 from pathlib import Path
 import re
@@ -102,6 +103,51 @@ def verify_series(exe, mesh, args, pvd):
     assert all((pvd.parent / name).is_file() for name in original_names)
 
 
+def verify_energy_csv(exe, mesh, args, target):
+    report = invoke(exe, mesh, *args, "--energy-csv", target)
+    assert "Energy CSV" in report and "rows 5" in report
+    expected = [
+        "step", "time_s", "heat_content_J", "source_energy_J",
+        "neumann_energy_J", "robin_energy_J",
+        "dirichlet_energy_J", "balance_residual_J",
+    ]
+    with target.open("r", encoding="utf-8", newline="") as stream:
+        reader = csv.DictReader(stream)
+        assert reader.fieldnames == expected
+        rows = list(reader)
+    assert len(rows) == 5
+    previous_content = 600.0
+    for index, row in enumerate(rows, 1):
+        assert int(row["step"]) == index
+        values = {key: float(row[key]) for key in expected[1:]}
+        assert all(map(math.isfinite, values.values()))
+        assert math.isclose(values["time_s"], 0.1 * index,
+                            rel_tol=0.0, abs_tol=1e-14)
+        assert math.isclose(values["heat_content_J"], 600.0 + 0.4 * index,
+                            rel_tol=0.0, abs_tol=1e-7)
+        assert math.isclose(values["source_energy_J"], 0.4,
+                            rel_tol=0.0, abs_tol=1e-9)
+        for key in ("neumann_energy_J", "robin_energy_J", "dirichlet_energy_J"):
+            assert abs(values[key]) < 1e-8
+        assert abs(values["balance_residual_J"]) < 1e-7
+        expected_content = previous_content + sum(
+            values[key] for key in
+            ("source_energy_J", "neumann_energy_J",
+             "robin_energy_J", "dirichlet_energy_J")
+        )
+        assert abs(expected_content - values["heat_content_J"]) < 1e-7
+        previous_content = values["heat_content_J"]
+
+    # An output exists: a second run must fail without modifying it.
+    original = target.read_bytes()
+    invoke(exe, mesh, *args, "--energy-csv", target, good=False)
+    assert target.read_bytes() == original
+    invoke(exe, mesh, *args, "--energy-csv", target.with_suffix(".txt"), good=False)
+    invoke(exe, mesh, *args, "--energy-csv", target.parent / "absent" / "energy.csv",
+           good=False)
+
+
+
 def main():
     exe, mesh = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
     with tempfile.TemporaryDirectory(prefix="nova-gmsh-transient-") as temp:
@@ -111,6 +157,12 @@ def main():
                 "--initial", 300, "--source", 4, "--dt", 0.1,
                 "--steps", 5, "--scheme", "cn")
         pvd = directory / "uniform_heat.pvd"
+        verify_energy_csv(exe, mesh, args, directory / "budget.csv")
+        paired_series = directory / "budget_series.pvd"
+        paired_csv = directory / "budget_series.csv"
+        invoke(exe, mesh, *args, "--vtk-series", paired_series,
+               "--energy-csv", paired_csv)
+        assert paired_series.is_file() and paired_csv.is_file()
         verify_series(exe, mesh, args, pvd)
 
         final_vtk = directory / "uniform_final.vtk"
@@ -185,6 +237,11 @@ def main():
             "--initial", 300, "--dt", 0.1, "--steps", 1,
         )
         invoke(exe, mesh, *bad_tensor, good=False)
+        invoke(exe, mesh, "--check-mesh", "--energy-csv",
+               directory / "mesh_budget.csv", good=False)
+        invoke(exe, mesh, *args, "--energy-csv",
+               directory / "dup.csv", "--energy-csv",
+               directory / "dup2.csv", good=False)
         invoke(exe, mesh, *args, "--vtk", mesh, good=False)
         invoke(exe, mesh, *args, "--vtk-series",
                directory / "invalid.txt", good=False)
