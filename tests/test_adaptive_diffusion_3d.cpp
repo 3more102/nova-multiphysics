@@ -293,3 +293,59 @@ NOVA_TEST(adaptive_diffusion_3d_re_evaluates_spatial_boundary_values_after_refin
                           -1.0, 1.0e-14);
     }
 }
+
+
+NOVA_TEST(adaptive_diffusion_3d_heterogeneous_cell_materials_and_natural_face_coverage) {
+    // Exercise both supported heterogeneous cellwise k and the implicit
+    // zero-Neumann faces that would otherwise be easy to omit from eta_K.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    auto problem = make_wall(box, 4.0);
+    for (std::size_t i = 0; i < problem.cell_diffusivity.size(); ++i) {
+        problem.cell_diffusivity[i] = 1.0 + static_cast<double>(i % 4U);
+    }
+
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(
+        problem, 0.6);
+    NOVA_REQUIRE(result.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.refined_solution.linear_solver.converged);
+    NOVA_REQUIRE(!result.adaptation.marked_elements.empty());
+
+    const auto& refinement = result.adaptation.refinement;
+    NOVA_REQUIRE(result.refined_problem.cell_diffusivity.size() ==
+                 refinement.parent_elements.size());
+    for (std::size_t child = 0; child < refinement.parent_elements.size(); ++child) {
+        const std::size_t parent = refinement.parent_elements[child];
+        NOVA_REQUIRE(parent < problem.cell_diffusivity.size());
+        NOVA_REQUIRE(result.refined_problem.cell_diffusivity[child] ==
+                     problem.cell_diffusivity[parent]);
+    }
+
+    // Each exterior face is either explicitly Dirichlet or is reported
+    // as natural, including omitted insulated faces with zero flux.
+    const auto verify_natural_coverage = [](
+        const nova::fem::ScalarDiffusion3DProblem& model,
+        const nova::fem::DiffusionResidualIndicators3D& indicators
+    ) {
+        const auto exterior = nova::fem::extract_boundary_faces_3d(model.mesh);
+        NOVA_REQUIRE(indicators.boundary_residual_faces.size() +
+                     model.dirichlet_faces.size() == exterior.size());
+        NOVA_REQUIRE(indicators.boundary_residual_errors.size() ==
+                     model.mesh.elements.size());
+        for (const auto& report : indicators.boundary_residual_faces) {
+            const auto& a = model.mesh.nodes[report.nodes[0]];
+            const auto& b = model.mesh.nodes[report.nodes[1]];
+            const auto& c = model.mesh.nodes[report.nodes[2]];
+            // The x-end plates are Dirichlet; no plate belongs to the
+            // natural-boundary residual estimator.
+            const bool x_plate =
+                (a.x == 0.0 && b.x == 0.0 && c.x == 0.0) ||
+                (a.x == 1.0 && b.x == 1.0 && c.x == 1.0);
+            NOVA_REQUIRE(!x_plate);
+            NOVA_REQUIRE(std::isfinite(report.mismatch_l2));
+            NOVA_REQUIRE(report.mismatch_l2 >= 0.0);
+        }
+    };
+    verify_natural_coverage(problem, result.coarse_indicators);
+    verify_natural_coverage(result.refined_problem, result.refined_indicators);
+}
