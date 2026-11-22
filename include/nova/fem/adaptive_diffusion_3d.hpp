@@ -35,4 +35,25 @@ struct AdaptiveDiffusionStep3D {
     const linalg::SolverOptions& solver_options = {}
 );
 
+// Bounded sequence of complete solve/estimate/mark/refine/resolve steps.
+// Each subsequent step consumes the previous step's refined PDE/mesh.
+// The full history is retained for inspection. No estimator tolerance,
+// mesh-quality guarantee, or certified error bound is implied.
+struct AdaptiveDiffusionCycles3D {
+    std::vector<AdaptiveDiffusionStep3D> steps;
+    bool stopped_without_marking{};
+};
+
+// Executes at most max_cycles steps (max_cycles must be >= 1), stopping
+// early if a step has no marked tetrahedra. This deliberately recomputes
+// each step's coarse solve; matrix/iterate reuse is a future optimization.
+// The final field and mesh are steps.back().refined_solution and
+// steps.back().refined_problem.
+[[nodiscard]] AdaptiveDiffusionCycles3D run_adaptive_diffusion_cycles_3d(
+    const ScalarDiffusion3DProblem& problem,
+    double dorfler_theta,
+    std::size_t max_cycles,
+    const linalg::SolverOptions& solver_options = {}
+);
+
 } // namespace nova::fem

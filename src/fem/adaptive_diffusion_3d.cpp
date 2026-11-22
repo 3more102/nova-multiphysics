@@ -198,4 +198,33 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
     return result;
 }
 
+AdaptiveDiffusionCycles3D run_adaptive_diffusion_cycles_3d(
+    const ScalarDiffusion3DProblem& problem,
+    const double dorfler_theta,
+    const std::size_t max_cycles,
+    const linalg::SolverOptions& solver_options
+) {
+    if (max_cycles == 0U) {
+        throw std::invalid_argument(
+            "Adaptive 3D diffusion requires at least one cycle.");
+    }
+
+    AdaptiveDiffusionCycles3D history;
+    ScalarDiffusion3DProblem current = problem;
+    for (std::size_t cycle = 0; cycle < max_cycles; ++cycle) {
+        auto step = solve_adaptive_diffusion_step_3d(
+            current, dorfler_theta, solver_options);
+        const bool no_marking = step.adaptation.marked_elements.empty();
+        if (!no_marking && cycle + 1U < max_cycles) {
+            current = step.refined_problem;
+        }
+        history.steps.push_back(std::move(step));
+        if (no_marking) {
+            history.stopped_without_marking = true;
+            break;
+        }
+    }
+    return history;
+}
+
 } // namespace nova::fem

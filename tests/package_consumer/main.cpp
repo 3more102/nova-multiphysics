@@ -129,6 +129,16 @@ int main() {
             adaptive.refined_problem.mesh.elements.size() ||
         !std::isfinite(adaptive.refined_indicators.total_error)) return 20;
 
+    // Link and run the public bounded multicycle API from an installed SDK.
+    // One cycle is deterministic and keeps this package smoke test inexpensive.
+    const auto adaptive_history = run_adaptive_diffusion_cycles_3d(
+        adaptive_problem, 0.5, 1U);
+    if (adaptive_history.steps.size() != 1U ||
+        adaptive_history.stopped_without_marking ||
+        !adaptive_history.steps[0].refined_solution.linear_solver.converged ||
+        adaptive_history.steps[0].refined_problem.mesh.elements.size() !=
+            adaptive.refined_problem.mesh.elements.size()) return 21;
+
     // Exercise the installed experimental electrostatics API and exported symbol.
     nova::physics::Electrostatics3DProblem electrostatic;
     electrostatic.mesh = box.mesh;

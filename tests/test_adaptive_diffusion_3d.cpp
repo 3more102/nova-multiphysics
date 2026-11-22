@@ -416,3 +416,75 @@ NOVA_TEST(adaptive_diffusion_3d_preserves_vertex_only_dirichlet_faces) {
         }
     }
 }
+
+NOVA_TEST(adaptive_diffusion_3d_multicycle_restarts_from_refined_pde) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    const auto problem = make_wall(box, 4.0);
+    const auto history = nova::fem::run_adaptive_diffusion_cycles_3d(
+        problem, 0.5, 2U);
+    NOVA_REQUIRE(history.steps.size() == 2U);
+    NOVA_REQUIRE(!history.stopped_without_marking);
+    const auto& first = history.steps[0];
+    const auto& second = history.steps[1];
+    NOVA_REQUIRE(first.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(first.refined_solution.linear_solver.converged);
+    NOVA_REQUIRE(second.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(second.refined_solution.linear_solver.converged);
+    NOVA_REQUIRE(!first.adaptation.marked_elements.empty());
+    NOVA_REQUIRE(!second.adaptation.marked_elements.empty());
+    NOVA_REQUIRE(
+        second.adaptation.refinement.coarse_element_count ==
+        first.refined_problem.mesh.elements.size());
+    NOVA_REQUIRE(
+        second.coarse_solution.values.size() ==
+        first.refined_solution.values.size());
+    for (std::size_t i = 0; i < second.coarse_solution.values.size(); ++i) {
+        NOVA_REQUIRE_NEAR(
+            second.coarse_solution.values[i],
+            first.refined_solution.values[i], 1.0e-10);
+    }
+    NOVA_REQUIRE(
+        second.refined_problem.mesh.elements.size() >
+        first.refined_problem.mesh.elements.size());
+    NOVA_REQUIRE(
+        second.refined_indicators.element_errors.size() ==
+        second.refined_problem.mesh.elements.size());
+}
+
+NOVA_TEST(adaptive_diffusion_3d_multicycle_early_zero_stop_and_bounds) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    const auto zero_problem = make_wall(box, 0.0);
+    const auto stopped = nova::fem::run_adaptive_diffusion_cycles_3d(
+        zero_problem, 0.5, 4U);
+    NOVA_REQUIRE(stopped.steps.size() == 1U);
+    NOVA_REQUIRE(stopped.stopped_without_marking);
+    NOVA_REQUIRE(stopped.steps[0].adaptation.marked_elements.empty());
+    NOVA_REQUIRE(
+        stopped.steps[0].refined_solution.values ==
+        stopped.steps[0].coarse_solution.values);
+    NOVA_REQUIRE(rejects([&] {
+        (void)nova::fem::run_adaptive_diffusion_cycles_3d(
+            zero_problem, 0.5, 0U);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        (void)nova::fem::run_adaptive_diffusion_cycles_3d(
+            zero_problem, 0.0, 1U);
+    }));
+
+    const auto source_problem = make_wall(box, 4.0);
+    const auto once = nova::fem::run_adaptive_diffusion_cycles_3d(
+        source_problem, 0.5, 1U);
+    const auto direct = nova::fem::solve_adaptive_diffusion_step_3d(
+        source_problem, 0.5);
+    NOVA_REQUIRE(once.steps.size() == 1U);
+    NOVA_REQUIRE(!once.stopped_without_marking);
+    NOVA_REQUIRE(
+        once.steps[0].refined_solution.values.size() ==
+        direct.refined_solution.values.size());
+    for (std::size_t i = 0; i < direct.refined_solution.values.size(); ++i) {
+        NOVA_REQUIRE_NEAR(once.steps[0].refined_solution.values[i],
+                          direct.refined_solution.values[i], 1.0e-10);
+    }
+}
