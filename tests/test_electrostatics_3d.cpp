@@ -405,3 +405,125 @@ NOVA_TEST(electrostatics_3d_capacitance_matrix_rejects_invalid_electrode_groups)
     rejects({{10, {}}});                            // Empty electrode.
     rejects({{10, {low_face}}});                    // No independent ground reference.
 }
+
+
+NOVA_TEST(electrostatics_3d_discrete_reaction_parallel_plate) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    std::vector<nova::fem::BoundaryFace3D> electrode_faces;
+    std::vector<int> electrode_ids;
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(problem.mesh, face, 0.0)) {
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 0.0; }});
+            electrode_faces.push_back(face);
+            electrode_ids.push_back(10);
+        } else if (on_x(problem.mesh, face, 1.0)) {
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 10.0; }});
+            electrode_faces.push_back({face[2], face[1], face[0]});
+            electrode_ids.push_back(20);
+        }
+    }
+    const auto solution = solve_electrostatics_3d(problem);
+    NOVA_REQUIRE(solution.linear_solver.converged);
+    const auto reactions = nova::physics::evaluate_discrete_electrode_reactions_3d(
+        problem, solution, electrode_faces, electrode_ids);
+    NOVA_REQUIRE(reactions.size() == 2U);
+    NOVA_REQUIRE(reactions[0].electrode_id == 10);
+    NOVA_REQUIRE(reactions[1].electrode_id == 20);
+    NOVA_REQUIRE_NEAR(reactions[0].reaction_charge_coulombs, -20.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(reactions[1].reaction_charge_coulombs, 20.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(reactions[0].potential_volts, 0.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(reactions[1].potential_volts, 10.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(
+        reactions[1].reaction_charge_coulombs * 10.0,
+        2.0 * solution.stored_energy_joules, 1.0e-7);
+}
+
+NOVA_TEST(electrostatics_3d_discrete_reaction_energy_identity_variable_permittivity) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 3U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double x, double, double) {
+        return 1.0 + x * x;
+    };
+    std::vector<nova::fem::BoundaryFace3D> faces;
+    std::vector<int> ids;
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(problem.mesh, face, 0.0)) {
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 0.0; }});
+            faces.push_back(face);
+            ids.push_back(10);
+        } else if (on_x(problem.mesh, face, 1.0)) {
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 7.0; }});
+            faces.push_back(face);
+            ids.push_back(20);
+        }
+    }
+    const auto solution = solve_electrostatics_3d(problem);
+    NOVA_REQUIRE(solution.linear_solver.converged);
+    const auto reactions = nova::physics::evaluate_discrete_electrode_reactions_3d(
+        problem, solution, faces, ids);
+    NOVA_REQUIRE(reactions.size() == 2U);
+    NOVA_REQUIRE(reactions[1].reaction_charge_coulombs > 0.0);
+    NOVA_REQUIRE_NEAR(
+        reactions[0].reaction_charge_coulombs +
+            reactions[1].reaction_charge_coulombs,
+        0.0, 1.0e-8);
+    // Exact Galerkin power identity for charge-free, insulated-side P1 FEM.
+    // This tests the discrete reactions, not a guaranteed physical
+    // continuum-flux conservation or mesh convergence.
+    NOVA_REQUIRE_NEAR(
+        7.0 * reactions[1].reaction_charge_coulombs,
+        2.0 * solution.stored_energy_joules, 1.0e-7);
+}
+
+NOVA_TEST(electrostatics_3d_discrete_reaction_rejects_invalid_inputs) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    std::vector<nova::fem::BoundaryFace3D> low;
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(problem.mesh, face, 0.0)) {
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 0.0; }});
+            low.push_back(face);
+        }
+    }
+    const auto solved = solve_electrostatics_3d(problem);
+    NOVA_REQUIRE(solved.linear_solver.converged);
+    const auto rejects = [&](const Electrostatics3DProblem& given,
+            const std::vector<nova::fem::BoundaryFace3D>& faces,
+            const std::vector<int>& ids) {
+        bool failed = false;
+        try {
+            (void)nova::physics::evaluate_discrete_electrode_reactions_3d(
+                given, solved, faces, ids);
+        } catch (const std::exception&) {
+            failed = true;
+        }
+        return failed;
+    };
+    NOVA_REQUIRE(rejects(problem, {}, {}));
+    NOVA_REQUIRE(rejects(problem, low, {}));
+    NOVA_REQUIRE(rejects(problem, {low[0], low[0]}, {1, 1}));
+    NOVA_REQUIRE(rejects(problem, {low[0], low[1]}, {1, 2}));
+    NOVA_REQUIRE(rejects(problem, {low[0]}, {-1}));
+    NOVA_REQUIRE(rejects(problem, {{0U, 1U, 2U}}, {1})); // No such selected exterior face is guaranteed.
+    auto with_charge = problem;
+    with_charge.free_charge_density =
+        [](double, double, double) { return 1.0; };
+    NOVA_REQUIRE(rejects(with_charge, low, {1, 1}));
+    with_charge.free_charge_density = {};
+    with_charge.cell_free_charge_density.assign(problem.mesh.elements.size(), 1.0);
+    NOVA_REQUIRE(rejects(with_charge, low, {1, 1}));
+}

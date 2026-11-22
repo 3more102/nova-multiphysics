@@ -1,6 +1,8 @@
 #include "nova/physics/electrode_charge_3d.hpp"
 
 #include "nova/fem/tagged_boundary_flux_3d.hpp"
+#include "nova/fem/p1_flux_3d.hpp"
+#include "nova/fem/tetrahedron_h1.hpp"
 
 #include <algorithm>
 #include <array>
@@ -300,6 +302,154 @@ CapacitanceMatrix3D extract_capacitance_matrix_3d(
                     std::max(result.max_relative_reciprocity_defect, defect / scale);
             }
         }
+    }
+    return result;
+}
+
+
+std::vector<DiscreteElectrodeReaction3D> evaluate_discrete_electrode_reactions_3d(
+    const Electrostatics3DProblem& problem,
+    const Electrostatics3DResult& solution,
+    const std::span<const fem::BoundaryFace3D> electrode_faces,
+    const std::span<const int> electrode_ids
+) {
+    if (problem.free_charge_density ||
+        !problem.cell_free_charge_density.empty() ||
+        !problem.displacement_flux_faces.empty()) {
+        throw std::invalid_argument(
+            "Discrete electrode reactions require zero impressed volume and displacement loads.");
+    }
+    const auto& mesh = problem.mesh;
+    mesh.validate();
+    if (!solution.linear_solver.converged ||
+        solution.potential.size() != mesh.nodes.size()) {
+        throw std::invalid_argument(
+            "Discrete electrode reactions require a converged full nodal solution.");
+    }
+    if (electrode_faces.empty() || electrode_faces.size() != electrode_ids.size()) {
+        throw std::invalid_argument(
+            "Discrete electrode reactions require nonempty equal-sized face and ID lists.");
+    }
+    for (double value : solution.potential) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument("Discrete electrode nodal voltages must be finite.");
+        }
+    }
+
+    std::vector<bool> fixed(mesh.nodes.size(), false);
+    for (const auto& constraint : problem.potential_constraints) {
+        if (constraint.node >= fixed.size()) {
+            throw std::out_of_range("Discrete reaction fixed node is outside the mesh.");
+        }
+        fixed[constraint.node] = true;
+    }
+    for (const auto& condition : problem.potential_faces) {
+        for (std::size_t node : condition.face) {
+            if (node >= fixed.size()) {
+                throw std::out_of_range("Discrete reaction fixed face is outside the mesh.");
+            }
+            fixed[node] = true;
+        }
+    }
+
+    // Validate actual exterior ownership independently of caller face winding.
+    std::set<fem::BoundaryFace3D> exterior;
+    for (auto face : fem::extract_boundary_faces_3d(mesh)) {
+        std::sort(face.begin(), face.end());
+        exterior.insert(face);
+    }
+    std::set<fem::BoundaryFace3D> visited;
+    std::map<int, std::size_t> counts;
+    std::map<int, double> potentials;
+    std::vector<int> node_group(mesh.nodes.size(), -1);
+    for (std::size_t i = 0; i < electrode_faces.size(); ++i) {
+        const int id = electrode_ids[i];
+        if (id < 0) {
+            throw std::invalid_argument("Discrete reaction electrode IDs must be nonnegative.");
+        }
+        auto face = electrode_faces[i];
+        for (std::size_t node : face) {
+            if (node >= mesh.nodes.size()) {
+                throw std::out_of_range("Discrete reaction electrode face has a missing node.");
+            }
+        }
+        std::sort(face.begin(), face.end());
+        if (face[0] == face[1] || face[1] == face[2] ||
+            !exterior.contains(face) || !visited.insert(face).second) {
+            throw std::invalid_argument(
+                "Discrete reaction electrode faces must be distinct exterior triangles.");
+        }
+        ++counts[id];
+        for (std::size_t node : face) {
+            if (!fixed[node]) {
+                throw std::invalid_argument(
+                    "Discrete reaction electrode nodes must be Dirichlet constrained.");
+            }
+            if (node_group[node] != -1 && node_group[node] != id) {
+                throw std::invalid_argument(
+                    "Discrete reaction electrode groups cannot share vertices.");
+            }
+            node_group[node] = id;
+            const double value = solution.potential[node];
+            const auto [it, inserted] = potentials.try_emplace(id, value);
+            if (!inserted) {
+                const double scale = std::max({1.0, std::abs(value), std::abs(it->second)});
+                if (std::abs(value - it->second) >
+                    256.0 * std::numeric_limits<double>::epsilon() * scale) {
+                    throw std::invalid_argument(
+                        "Discrete reaction group nodes must be equipotential.");
+                }
+            }
+        }
+    }
+
+    // The same material sampling as the assembled P1 volume stiffness:
+    // flux_cell = -<epsilon>_cell grad(V), and K*V tested against a P1 hat
+    // function is -volume * grad(N_i) dot flux_cell. No separate face normal
+    // or boundary-flux extrapolation is used here.
+    fem::ScalarDiffusion3DProblem weak;
+    weak.mesh = mesh;
+    weak.diffusivity = problem.permittivity;
+    weak.diffusivity_tensor = problem.permittivity_tensor;
+    weak.cell_diffusivity = problem.cell_permittivity;
+    weak.cell_diffusivity_tensors = problem.cell_permittivity_tensors;
+    const auto fluxes = fem::evaluate_p1_tetrahedral_flux_3d(weak, solution.potential);
+    std::map<int, long double> reactions;
+    for (const auto& [id, count] : counts) {
+        (void)count;
+        reactions.emplace(id, 0.0L);
+    }
+    for (std::size_t element = 0; element < mesh.elements.size(); ++element) {
+        const auto basis = fem::evaluate_tetrahedron_p1_physical_gradients_3d(
+            mesh, element);
+        const long double volume =
+            std::abs(static_cast<long double>(basis.signed_jacobian_determinant)) / 6.0L;
+        if (!(volume > 0.0L) || !std::isfinite(volume)) {
+            throw std::overflow_error("Discrete electrode reaction tetra volume invalid.");
+        }
+        const auto& q = fluxes[element].flux;
+        for (std::size_t local = 0; local < 4U; ++local) {
+            const int group = node_group[mesh.elements[element][local]];
+            if (group == -1) continue;
+            const auto& grad = basis.gradients[local];
+            const long double row_reaction = -volume * (
+                static_cast<long double>(grad[0]) * q.x +
+                static_cast<long double>(grad[1]) * q.y +
+                static_cast<long double>(grad[2]) * q.z);
+            reactions.at(group) += row_reaction;
+        }
+    }
+
+    std::vector<DiscreteElectrodeReaction3D> result;
+    result.reserve(counts.size());
+    for (const auto& [id, face_count] : counts) {
+        const long double reaction = reactions.at(id);
+        if (!std::isfinite(reaction) ||
+            std::abs(reaction) >
+                static_cast<long double>(std::numeric_limits<double>::max())) {
+            throw std::overflow_error("Discrete electrode reaction charge overflows double.");
+        }
+        result.push_back({id, face_count, potentials.at(id), static_cast<double>(reaction)});
     }
     return result;
 }

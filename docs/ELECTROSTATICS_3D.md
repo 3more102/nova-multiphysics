@@ -74,6 +74,46 @@ The regression suite includes:
 
 The installed SDK consumer also solves the capacitor benchmark and verifies the fixed-electrode charge API, checking the public headers and exported link symbols outside the source tree.
 
+## Discrete weak-form electrode reaction (experimental)
+
+The `evaluate_discrete_electrode_reactions_3d` public API is a **separate**
+charge diagnostic for solved, fixed-potential conductor boundaries. Unlike
+`evaluate_electrode_charges_3d`, which integrates the element-averaged
+displacement over exterior triangular faces, this method uses the same
+Galerkin volume weak form as the P1 solver:
+
+\[
+Q_g = \sum_{a\in E_g} (K V)_a
+    = \sum_T \int_T \epsilon\nabla w_g\cdot\nabla V\,dT.
+\]
+
+Here `E_g` contains the boundary nodes belonging to electrode `g`, and
+`w_g` is their P1 nodal indicator (one at those nodes, zero elsewhere).
+The implementation sums `-volume * grad(N_a) dot averaged_D` over all cells
+and constrained electrode vertices, with the same material quadrature as the
+assembled P1 stiffness. It accepts scalar, spatial or cellwise anisotropic SPD
+permittivity through the regular FEM material interface.
+
+**Required conditions:** each selected electrode group must have its complete
+exterior triangular contact supplied; no vertex may belong to two electrodes;
+all selected vertices must have fixed potentials and one common equipotential
+per group. Nonempty free-charge callbacks, cell charge values, and prescribed
+displacement-flux loads are rejected because the corresponding right-hand
+side contributions are not included in this reaction diagnostic.
+
+For a linear, source-free, no-prescribed-flux system with insulated remaining
+exterior, the discrete FEM identity `sum_g (V_g Q_g)=2*U` holds when all
+nonzero Dirichlet electrodes are included. On the parallel-plate benchmark,
+the two reaction charges are exactly approximately -20 C and +20 C (subject to
+linear solver tolerance), and `V_high*Q_high=200 J=2*U`. A separate
+variable-permittivity regression checks this energy identity on a coarse mesh.
+
+**Caveat:** these are *discrete FEM reactions*, not exact physical surface
+charges. They depend on the Galerkin approximation and mesh quality. This API
+does not change the capacitance extraction matrix, solve floating-electrode
+constraints, or certify physical charge conservation. It provides an
+independent discretization-consistency observable for future work.
+
 ## Multi-terminal capacitance matrix (experimental)
 
 Use `extract_capacitance_matrix_3d` with one group of exterior triangles per
