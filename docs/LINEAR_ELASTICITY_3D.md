@@ -71,3 +71,46 @@ buckling, or engineering stress certification is implied.
 
 Run the standard Windows/Linux CI matrix and Linux
 ASan/LSan/UBSan jobs before marking this feature ready for merge.
+
+## Prescribed thermal expansion (experimental thermoelastic extension)
+
+NOVA now accepts a **one-way, prescribed temperature change** for
+small-strain, cellwise isotropic thermal expansion. This extends the
+existing elasticity assembly; it does **not** yet solve the heat equation
+together with displacement or model deformation-to-heat feedback.
+
+For every tetrahedron supply both the cell_thermal_expansion_per_kelvin
+array (alpha, 1/K) and the cell_temperature_change_kelvin array
+(deltaT, K). Alternatively leave **both arrays empty** to retain the
+original zero-thermal-strain model. Each nonempty array must have exactly
+one finite value per cell. Cooling and negative thermal expansion are valid.
+Mismatches, NaNs and overflowed eigenstrains/eigenstresses are rejected.
+
+For isotropic Lamé coefficients lambda and mu:
+
+    epsilon_th  = alpha * deltaT * I
+    epsilon_el  = sym(grad(u)) - epsilon_th
+    sigma       = lambda*tr(epsilon_el)*I + 2*mu*epsilon_el
+    K*u         = F_body + F_traction + F_thermal
+    F_thermal[a,i] = integral (3*lambda+2*mu)*alpha*deltaT*grad(N_a)[i] dV
+    U           = 0.5 * integral epsilon_el : sigma dV
+
+The cell_strain output reports **total** displacement strain; cell_stress
+and strain_energy_joules use **elastic** strain, subtracting thermal
+eigenstrain. Element-constant thermal loads are integrated exactly for
+linear tetrahedra.
+
+The independent analytical benchmarks use a unit cube with E=1200 Pa,
+nu=0.25, alpha=0.002/K, deltaT=5 K:
+
+1. Stress-free expansion: u=0.01(x,y,z); all stresses and elastic energy
+   vanish, whereas total normal strains each equal 0.01.
+2. Fully clamped heating: u=0; sigma_xx=sigma_yy=sigma_zz=-24 Pa,
+   shears vanish, and elastic strain energy is 0.36 J.
+3. Reject mismatched arrays, nonfinite and overflowed thermal input.
+   Explicit zero-thermal-strain input must preserve the prior behavior.
+
+Temperature is an **externally prescribed** field, not a coupled
+thermal solve. This feature makes no claim to support transient
+thermoelasticity, thermal-interface equilibrium, nonlinear/plastic
+mechanics, contact, large deformation or geometric nonlinearity.

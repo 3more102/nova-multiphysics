@@ -35,15 +35,20 @@ struct LinearElasticity3DProblem {
     std::vector<DisplacementConstraint3D> prescribed_displacements;
     // Optional one constant body-force density (N/m^3) per tetrahedron.
     std::vector<ElasticVector3D> cell_body_force_density;
+    // Optional isotropic thermal eigenstrain: alpha[e] * delta_T[e].
+    // Supply both cellwise arrays (one entry per tetrahedron), or neither.
+    // Negative temperature changes and negative expansion coefficients are valid.
+    std::vector<double> cell_thermal_expansion_per_kelvin;
+    std::vector<double> cell_temperature_change_kelvin;
     // Optional constant applied traction on individually selected exterior faces.
     std::vector<ElasticFaceTraction3D> face_tractions;
 };
 
 struct LinearElasticity3DResult {
     std::vector<ElasticVector3D> displacement; // metres, one per vertex
-    std::vector<ElasticTensor6> cell_strain;    // dimensionless
-    std::vector<ElasticTensor6> cell_stress;    // Pa
-    double strain_energy_joules{};             // 0.5 * integral(sigma:epsilon)
+    std::vector<ElasticTensor6> cell_strain;    // total symmetric displacement strain
+    std::vector<ElasticTensor6> cell_stress;    // C:(cell_strain - thermal_strain), Pa
+    double strain_energy_joules{};             // 0.5 * integral(sigma:elastic_strain)
     linalg::SolverResult linear_solver;
 };
 
@@ -51,8 +56,10 @@ struct LinearElasticity3DResult {
 // Symmetric Galerkin stiffness, consistent constant body/face loads, and
 // symmetric displacement elimination. Every connected component must have
 // three noncollinear fully prescribed vertices to remove rigid body modes.
-// This first version omits thermal strain, geometric/material nonlinearity,
-// contact, partial-component constraints, and recovered equilibrated tractions.
+// Includes prescribed, cellwise isotropic thermal eigenstrain; temperature
+// is an input, not a solved or bidirectionally coupled thermal field.
+// Omits geometric/material nonlinearity, contact, partial-component
+// constraints, and recovered equilibrated tractions.
 [[nodiscard]] LinearElasticity3DResult solve_linear_elasticity_3d(
     const LinearElasticity3DProblem& problem,
     const linalg::SolverOptions& solver_options = {}

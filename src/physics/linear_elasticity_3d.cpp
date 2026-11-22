@@ -198,6 +198,36 @@ LinearElasticity3DResult solve_linear_elasticity_3d(
         }
     }
 
+    // Thermal expansion is prescribed here; heat conduction is not solved.
+    // Either both cellwise inputs are absent or both cover every tetrahedron.
+    const auto& expansion = problem.cell_thermal_expansion_per_kelvin;
+    const auto& delta_temperature = problem.cell_temperature_change_kelvin;
+    if (expansion.empty() != delta_temperature.empty() ||
+        (!expansion.empty() &&
+         (expansion.size() != cell_count ||
+          delta_temperature.size() != cell_count))) {
+        throw std::invalid_argument(
+            "3D thermal strain requires matching per-cell expansion and temperature arrays.");
+    }
+    std::vector<double> thermal_eigenstrain(cell_count, 0.0);
+    std::vector<double> thermal_pressure(cell_count, 0.0);
+    if (!expansion.empty()) {
+        for (std::size_t e = 0; e < cell_count; ++e) {
+            if (!std::isfinite(expansion[e]) ||
+                !std::isfinite(delta_temperature[e])) {
+                throw std::invalid_argument(
+                    "3D thermal expansion coefficients and temperature changes must be finite.");
+            }
+            thermal_eigenstrain[e] = expansion[e] * delta_temperature[e];
+            thermal_pressure[e] = (3.0 * materials[e].lambda +
+                                   2.0 * materials[e].mu) * thermal_eigenstrain[e];
+            if (!std::isfinite(thermal_eigenstrain[e]) ||
+                !std::isfinite(thermal_pressure[e])) {
+                throw std::overflow_error("Non-finite 3D thermal eigenstrain or stress.");
+            }
+        }
+    }
+
     std::vector<std::optional<double>> prescribed(3U * node_count);
     std::set<std::size_t> fixed_vertices;
     for (const auto& condition : problem.prescribed_displacements) {
@@ -249,6 +279,9 @@ LinearElasticity3DResult solve_linear_elasticity_3d(
             for (std::size_t i = 0; i < 3U; ++i) {
                 const auto row = 3U * tet[a] + i;
                 rhs[row] += volume * force[i] / 4.0;
+                // C:(alpha*deltaT*I) = (3*lambda+2*mu)*alpha*deltaT*I.
+                // Move this eigenstress to the applied-load side of weak form.
+                rhs[row] += volume * thermal_pressure[e] * grad[a][i];
                 for (std::size_t b = 0; b < 4U; ++b) {
                     const double dot = grad[a][0] * grad[b][0] +
                                        grad[a][1] * grad[b][1] +
@@ -318,10 +351,17 @@ LinearElasticity3DResult solve_linear_elasticity_3d(
             }
         }
         const auto strain = strain_from_gradient(gradient);
-        const auto stress = stress_from_strain(strain, materials[e]);
+        auto elastic_strain = strain;
+        for (std::size_t i = 0; i < 3U; ++i) {
+            elastic_strain[i] -= thermal_eigenstrain[e];
+        }
+        const auto stress = stress_from_strain(elastic_strain, materials[e]);
         double work = 0.0;
         for (std::size_t i = 0; i < 6U; ++i) {
-            work += (i < 3U ? 1.0 : 2.0) * strain[i] * stress[i];
+            if (!std::isfinite(stress[i]) || !std::isfinite(elastic_strain[i])) {
+                throw std::overflow_error("Non-finite 3D thermoelastic stress or strain.");
+            }
+            work += (i < 3U ? 1.0 : 2.0) * elastic_strain[i] * stress[i];
         }
         result.strain_energy_joules += 0.5 * volume * work;
         if (!std::isfinite(result.strain_energy_joules)) {
