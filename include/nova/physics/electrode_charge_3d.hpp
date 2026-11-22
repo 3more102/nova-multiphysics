@@ -65,18 +65,21 @@ struct CapacitanceMatrix3D {
 
 
 // Discrete weak-form reaction charge for equipotential Dirichlet electrodes.
-// For source-free 3D P1 electrostatics, the net conductor reaction is
-//   Q_g = sum_{i in electrode g} (K V)_i
-//       = sum_K integral_K epsilon grad(w_g) dot grad(V) dV,
+// For 3D P1 electrostatics, the conductor reaction is
+//   Q_g = sum_{i in electrode g} (K V - F)_i
+//       = integral epsilon grad(w_g) dot grad(V) dV
+//         - integral rho_free * w_g dV
+//         + integral_N (D dot outward_normal) * w_g dA,
 // where w_g is one on the electrode's selected boundary vertices and zero
-// elsewhere. This is a Galerkin reaction, distinct from direct face-D flux.
-// Material quadrature matches the underlying P1 FEM assembly.
+// elsewhere. Spatial and cellwise free charge are additive. The degree-two
+// volume and triangular-face quadratures match the stationary P1 FEM solver.
+// This is an algebraic Galerkin reaction, distinct from direct face-D flux.
 //
 // The selected triangle groups must cover each electrode's entire contact;
 // no selected node may belong to multiple electrode IDs. Every selected
-// vertex must be explicitly fixed by the source problem. The method rejects
-// free-charge callbacks, cell volume charge, and prescribed displacement
-// loads: including them requires reaction load accounting.
+// vertex must be explicitly fixed by the source problem. Volume charges and
+// prescribed displacement loads are supported; their callbacks must be
+// finite. The charge-free identity Q=K*V is preserved.
 //
 // This is an algebraic FEM consistency diagnostic, not an independently
 // converged physical surface-charge measurement.
