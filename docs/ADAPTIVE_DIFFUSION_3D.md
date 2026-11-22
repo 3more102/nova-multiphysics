@@ -92,3 +92,17 @@ conductivities and verifies exact parent-to-child coefficient replication.
 It also checks that every exterior face is represented exactly once by
 Dirichlet classification or natural-boundary residual accounting on both
 coarse and refined meshes, including implicitly insulated faces.
+
+### Supplementary exact-norm and all-Dirichlet regressions
+
+The additional manufactured-wall test computes continuum `L2` and `H1`
+seminorm errors using the independent `compute_error_norms_3d` quadrature
+on the coarse and refined meshes. It requires both to decrease for the
+specified mixed-boundary quadratic wall; unlike the energy-only check,
+this also evaluates the field-value norm.
+
+A second quadratic manufactured solution `u=x^2+y^2+z^2` with `k=1`,
+`f=-6` and spatially varying Dirichlet data on **every** exterior face
+checks that all refined boundary-node values, including new midpoints,
+are recomputed from their original spatial functions. These regression
+cases are not certification or universal adaptive error guarantees.
