@@ -8,6 +8,7 @@
 #include "nova/physics/electrode_charge_3d.hpp"
 #include "nova/physics/floating_electrodes_3d.hpp"
 #include "nova/physics/floating_conductor_schur_3d.hpp"
+#include "nova/physics/affine_floating_conductor_schur_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/thermal_checkpoint_3d.hpp"
 
@@ -261,6 +262,23 @@ $EndElements
         schur.max_floating_reaction_mismatch_coulombs > 1.0e-8 ||
         std::abs(schur.field.stored_energy_joules - 100.0) > 1.0e-7)
         return 19;
+
+    // Installed load-aware affine Schur public header + exported symbol.
+    // rho=1 C/m^3 and epsilon=2 F/m on a unit cube, Q_right=0:
+    // the discrete terminal voltage is 0.25 V and Q_total=-1 C.
+    auto loaded_electrostatic = electrostatic;
+    loaded_electrostatic.free_charge_density =
+        [](double, double, double) { return 1.0; };
+    const auto affine_schur =
+        nova::physics::solve_affine_floating_conductor_schur_3d(
+            loaded_electrostatic, electrode_groups,
+            std::vector<nova::physics::FixedElectrodePotential3D>{{1, 0.0}},
+            std::vector<nova::physics::FloatingElectrodeCharge3D>{{2, 0.0}});
+    if (!affine_schur.field.linear_solver.converged ||
+        affine_schur.loaded_discrete_reactions.size() != 2U ||
+        std::abs(affine_schur.terminals.potential_volts[1] - 0.25) > 1.0e-7 ||
+        affine_schur.max_floating_reaction_mismatch_coulombs > 1.0e-7)
+        return 20;
 
     // Verify the installed SDK exports the versioned thermal checkpoint API.
     const std::vector<double> saved_temperature(box.mesh.nodes.size(), 301.25);
