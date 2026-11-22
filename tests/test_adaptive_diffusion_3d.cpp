@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <set>
 #include <stdexcept>
 #include <vector>
 
@@ -328,11 +329,23 @@ NOVA_TEST(adaptive_diffusion_3d_heterogeneous_cell_materials_and_natural_face_co
         const nova::fem::DiffusionResidualIndicators3D& indicators
     ) {
         const auto exterior = nova::fem::extract_boundary_faces_3d(model.mesh);
-        NOVA_REQUIRE(indicators.boundary_residual_faces.size() +
-                     model.dirichlet_faces.size() == exterior.size());
         NOVA_REQUIRE(indicators.boundary_residual_errors.size() ==
                      model.mesh.elements.size());
+        std::set<nova::fem::BoundaryFace3D> exterior_keys;
+        for (auto face : exterior) {
+            std::sort(face.begin(), face.end());
+            NOVA_REQUIRE(exterior_keys.insert(face).second);
+        }
+        std::set<nova::fem::BoundaryFace3D> classified;
+        for (const auto& condition : model.dirichlet_faces) {
+            auto face = condition.face;
+            std::sort(face.begin(), face.end());
+            NOVA_REQUIRE(exterior_keys.contains(face));
+            NOVA_REQUIRE(classified.insert(face).second);
+        }
         for (const auto& report : indicators.boundary_residual_faces) {
+            NOVA_REQUIRE(exterior_keys.contains(report.nodes));
+            NOVA_REQUIRE(classified.insert(report.nodes).second);
             const auto& a = model.mesh.nodes[report.nodes[0]];
             const auto& b = model.mesh.nodes[report.nodes[1]];
             const auto& c = model.mesh.nodes[report.nodes[2]];
@@ -345,6 +358,7 @@ NOVA_TEST(adaptive_diffusion_3d_heterogeneous_cell_materials_and_natural_face_co
             NOVA_REQUIRE(std::isfinite(report.mismatch_l2));
             NOVA_REQUIRE(report.mismatch_l2 >= 0.0);
         }
+        NOVA_REQUIRE(classified.size() == exterior_keys.size());
     };
     verify_natural_coverage(problem, result.coarse_indicators);
     verify_natural_coverage(result.refined_problem, result.refined_indicators);
