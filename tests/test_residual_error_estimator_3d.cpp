@@ -227,3 +227,98 @@ NOVA_TEST(diffusion_residual_estimator_3d_solve_estimate_refine_resolve_converge
     NOVA_REQUIRE(coarse_error.l2 > fine_error.l2);
     NOVA_REQUIRE(coarse_error.h1_seminorm > fine_error.h1_seminorm);
 }
+
+
+NOVA_TEST(diffusion_residual_estimator_3d_dorfler_local_refine_and_resolve) {
+    using namespace nova::fem;
+    // Manufactured mixed-boundary Poisson problem: u=x(1-x), -Delta u=2.
+    // Homogeneous Dirichlet x-end faces and natural zero-flux y/z faces
+    // are physically consistent on EVERY refined mesh. The coarse P1
+    // constrained trial space is nested in the refined trial space,
+    // unlike re-interpolated nonhomogeneous quadratic boundary data.
+    // Exercise estimator -> Dörfler -> LOCAL refine -> transfer -> re-solve.
+    const auto box = make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const ExactScalarField3D exact{
+        [](double x, double, double) { return x * (1.0 - x); },
+        [](double x, double, double) { return 1.0 - 2.0*x; },
+        [](double, double, double) { return 0.0; },
+        [](double, double, double) { return 0.0; }
+    };
+    const auto source = [](double, double, double) { return 2.0; };
+    const auto on_dirichlet_end = [](
+        const TetrahedralMesh3D& mesh, const BoundaryFace3D& face
+    ) {
+        const double x = mesh.nodes[face[0]].x;
+        return (x == 0.0 || x == 1.0) &&
+            mesh.nodes[face[1]].x == x && mesh.nodes[face[2]].x == x;
+    };
+
+    ScalarDiffusion3DProblem coarse;
+    coarse.mesh = box.mesh;
+    coarse.cell_diffusivity.assign(coarse.mesh.elements.size(), 1.0);
+    coarse.source = source;
+    for (const auto& face : box.boundary_faces) {
+        if (on_dirichlet_end(coarse.mesh, face)) {
+            coarse.dirichlet_faces.push_back({face, exact.value});
+        }
+    }
+
+    nova::linalg::SolverOptions options;
+    options.relative_tolerance = 1.0e-12;
+    options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
+    const auto coarse_solution = solve_scalar_diffusion_3d(coarse, options);
+    NOVA_REQUIRE(coarse_solution.linear_solver.converged);
+    const auto before = compute_error_norms_3d(
+        coarse.mesh, coarse_solution.values, exact);
+    const auto indicators = estimate_diffusion_residual_error_3d(
+        coarse.mesh, coarse_solution.values, coarse.cell_diffusivity, source);
+    NOVA_REQUIRE(indicators.total_error > 0.0);
+
+    const auto cycle = refine_tetrahedra_by_indicators_3d(
+        coarse.mesh, indicators.element_errors, 0.65, box.boundary_faces);
+    const auto& refinement = cycle.refinement;
+    NOVA_REQUIRE(!cycle.marked_elements.empty());
+    NOVA_REQUIRE(cycle.marked_elements.size() < coarse.mesh.elements.size());
+    NOVA_REQUIRE(refinement.mesh.nodes.size() > coarse.mesh.nodes.size());
+    NOVA_REQUIRE(refinement.mesh.elements.size() > coarse.mesh.elements.size());
+    NOVA_REQUIRE(refinement.mesh.elements.size() <= 8U * coarse.mesh.elements.size());
+    NOVA_REQUIRE(refinement.parent_elements.size() ==
+                 refinement.mesh.elements.size());
+    NOVA_REQUIRE(refinement.boundary_faces.size() ==
+                 refinement.parent_boundary_faces.size());
+    NOVA_REQUIRE_NEAR(
+        evaluate_mesh_quality_3d(refinement.mesh).total_volume,
+        evaluate_mesh_quality_3d(coarse.mesh).total_volume, 1.0e-12);
+
+    // Transfer the previous solution and cell data without relying on the
+    // solver to silently infer initial values or physical boundary metadata.
+    const auto inherited = prolongate_p1_refined_3d(
+        refinement, coarse_solution.values);
+    NOVA_REQUIRE(inherited.size() == refinement.mesh.nodes.size());
+    for (std::size_t i = 0; i < coarse.mesh.nodes.size(); ++i) {
+        NOVA_REQUIRE_NEAR(inherited[i], coarse_solution.values[i], 1.0e-14);
+    }
+
+    ScalarDiffusion3DProblem fine;
+    fine.mesh = refinement.mesh;
+    fine.cell_diffusivity = prolongate_cellwise_constant_refined_3d(
+        refinement, coarse.cell_diffusivity);
+    fine.source = source;
+    for (const auto& face : refinement.boundary_faces) {
+        if (on_dirichlet_end(fine.mesh, face)) {
+            fine.dirichlet_faces.push_back({face, exact.value});
+        }
+    }
+
+    const auto fine_solution = solve_scalar_diffusion_3d(fine, options);
+    NOVA_REQUIRE(fine_solution.linear_solver.converged);
+    const auto after = compute_error_norms_3d(
+        fine.mesh, fine_solution.values, exact);
+    NOVA_REQUIRE(std::isfinite(after.l2));
+    NOVA_REQUIRE(std::isfinite(after.h1_seminorm));
+    // The nested homogeneous-Dirichlet spaces make this a controlled
+    // refinement test; no monotonicity claim is made for arbitrary physics.
+    NOVA_REQUIRE(after.h1_seminorm < before.h1_seminorm);
+    NOVA_REQUIRE(after.l2 < before.l2);
+}
