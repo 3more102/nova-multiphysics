@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 
 #include "nova/fem/adaptive_diffusion_3d.hpp"
+#include "nova/fem/p1_flux_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -45,6 +46,40 @@ template <class F>
         }
     }
     return problem;
+}
+
+// Independently integrate k * |grad(u_exact)-grad(u_h)|^2 on each
+// tetrahedron for u_exact=x(1-x), k=2, -div(k grad u)=4. Because
+// grad(u_h) is cellwise constant and grad(u_exact) is affine in x,
+// first and second tetrahedral x moments give the exact integral.
+[[nodiscard]] double manufactured_wall_energy_error_squared(
+    const nova::fem::ScalarDiffusion3DProblem& problem,
+    const std::vector<double>& values
+) {
+    const auto fluxes = nova::fem::evaluate_p1_tetrahedral_flux_3d(
+        problem, values);
+    const auto quality = nova::fem::evaluate_mesh_quality_3d(problem.mesh);
+    double error_squared = 0.0;
+    for (std::size_t i = 0; i < problem.mesh.elements.size(); ++i) {
+        double sum_x = 0.0;
+        double sum_x_squared = 0.0;
+        for (const auto node : problem.mesh.elements[i]) {
+            const double x = problem.mesh.nodes[node].x;
+            sum_x += x;
+            sum_x_squared += x * x;
+        }
+        const double mean_x = sum_x / 4.0;
+        const double mean_x_squared =
+            (sum_x * sum_x + sum_x_squared) / 20.0;
+        const auto& gradient = fluxes[i].gradient;
+        const double a = 1.0 - gradient.x;
+        const double mean_squared_gradient_error =
+            a * a - 4.0 * a * mean_x + 4.0 * mean_x_squared +
+            gradient.y * gradient.y + gradient.z * gradient.z;
+        error_squared += problem.cell_diffusivity[i] *
+            quality.elements[i].volume * mean_squared_gradient_error;
+    }
+    return error_squared;
 }
 
 } // namespace
@@ -95,6 +130,36 @@ NOVA_TEST(adaptive_diffusion_3d_solves_marks_refines_transfers_and_resolves) {
             NOVA_REQUIRE_NEAR(result.refined_solution.values[i], 0.0, 1.0e-8);
         }
     }
+}
+
+NOVA_TEST(adaptive_diffusion_3d_reduces_exact_manufactured_energy_error) {
+    // The source-loaded wall has an exact continuum solution u=x(1-x).
+    // Independently measure its energy-seminorm error, rather than relying
+    // solely on the residual indicator's own self-reported decrease.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const auto problem = make_wall(box, 4.0);
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(
+        problem, 0.65);
+
+    NOVA_REQUIRE(!result.adaptation.marked_elements.empty());
+    NOVA_REQUIRE(result.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.refined_solution.linear_solver.converged);
+    const double coarse_error_squared =
+        manufactured_wall_energy_error_squared(
+            problem, result.coarse_solution.values);
+    const double fine_error_squared =
+        manufactured_wall_energy_error_squared(
+            result.refined_problem, result.refined_solution.values);
+    NOVA_REQUIRE(std::isfinite(coarse_error_squared));
+    NOVA_REQUIRE(std::isfinite(fine_error_squared));
+    NOVA_REQUIRE(coarse_error_squared > 1.0e-6);
+    NOVA_REQUIRE(fine_error_squared >= 0.0);
+    NOVA_REQUIRE(fine_error_squared < coarse_error_squared - 1.0e-9);
+    NOVA_REQUIRE_NEAR(
+        nova::fem::evaluate_mesh_quality_3d(
+            result.refined_problem.mesh).total_volume,
+        1.0, 1.0e-12);
 }
 
 NOVA_TEST(adaptive_diffusion_3d_zero_indicator_returns_identity_without_resolve) {
