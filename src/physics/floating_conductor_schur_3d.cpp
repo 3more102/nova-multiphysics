@@ -30,23 +30,16 @@ SchurFloatingConductor3DResult solve_floating_conductor_schur_3d(
     const std::span<const FloatingElectrodeCharge3D> floating_electrodes,
     const linalg::SolverOptions& solver_options
 ) {
-    // The Schur terminal operator describes the homogeneous (source-free)
-    // linear FEM system. Impressed load vectors would introduce an affine
-    // charge offset and must not silently be ignored.
-    if (dielectric_problem.free_charge_density ||
+    // The capacitance operator is source-free; impressed loads instead
+    // contribute an affine terminal-charge offset q0. Determine it from
+    // one zero-terminal-voltage solve before solving C_FF V_F = Q_F-q0_F-C_FK V_K.
+    const bool loaded = static_cast<bool>(dielectric_problem.free_charge_density) ||
         !dielectric_problem.cell_free_charge_density.empty() ||
-        !dielectric_problem.displacement_flux_faces.empty()) {
-        throw std::invalid_argument(
-            "Floating Schur solve requires no volume free charge or "
-            "prescribed normal displacement.");
-    }
+        !dielectric_problem.displacement_flux_faces.empty();
 
     SchurFloatingConductor3DResult result;
     result.discrete_capacitance = extract_discrete_capacitance_matrix_3d(
         dielectric_problem, electrode_groups, solver_options);
-    result.terminals = solve_floating_electrode_potentials_3d(
-        result.discrete_capacitance, fixed_electrodes, floating_electrodes);
-
     // Capacitance extraction has already validated unique exterior electrode
     // faces, disjoint electrode vertices, node ranges, and reference faces.
     std::set<fem::BoundaryFace3D> selected_faces;
@@ -88,9 +81,95 @@ SchurFloatingConductor3DResult solve_floating_conductor_schur_3d(
         }
     }
 
-    // Every electrode becomes a constant-potential Dirichlet conductor.
-    // The floating subset was obtained by the exact P1 terminal Schur
-    // complement (within iterative solve and matrix-assembly precision).
+    // The weak-form q0 contains the charge reaction at electrodes held at
+    // zero potential with the actual free-charge and Neumann loads active.
+    // This is the affine component, not a capacitance-matrix column.
+    const auto& ids = result.discrete_capacitance.electrode_ids;
+    result.induced_terminal_charges_coulombs.assign(ids.size(), 0.0);
+    if (loaded) {
+        Electrostatics3DProblem zero_problem = field_problem;
+        for (const auto& group : electrode_groups) {
+            for (const auto& face : group.faces) {
+                zero_problem.potential_faces.push_back({face, ground});
+            }
+        }
+        const auto zero_field =
+            solve_electrostatics_3d(zero_problem, solver_options);
+        if (!zero_field.linear_solver.converged) {
+            throw std::runtime_error(
+                "Floating Schur affine zero-voltage FEM solve did not converge.");
+        }
+        const auto zero_reactions = evaluate_discrete_electrode_reactions_3d(
+            zero_problem, zero_field, all_faces, all_ids);
+        if (zero_reactions.size() != ids.size()) {
+            throw std::runtime_error(
+                "Floating Schur affine charge offset has incomplete terminals.");
+        }
+        for (std::size_t i = 0; i < ids.size(); ++i) {
+            if (zero_reactions[i].electrode_id != ids[i] ||
+                !std::isfinite(zero_reactions[i].reaction_charge_coulombs)) {
+                throw std::runtime_error(
+                    "Floating Schur affine charge offset ordering is invalid.");
+            }
+            result.induced_terminal_charges_coulombs[i] =
+                zero_reactions[i].reaction_charge_coulombs;
+        }
+    }
+
+    std::vector<FloatingElectrodeCharge3D> effective_floating;
+    effective_floating.reserve(floating_electrodes.size());
+    for (const auto& terminal : floating_electrodes) {
+        const auto found = std::lower_bound(ids.begin(), ids.end(),
+                                           terminal.electrode_id);
+        if (found == ids.end() || *found != terminal.electrode_id ||
+            !std::isfinite(terminal.charge_coulombs)) {
+            throw std::invalid_argument(
+                "Floating Schur requires finite charge on a known electrode.");
+        }
+        const auto index = static_cast<std::size_t>(found - ids.begin());
+        const long double effective =
+            static_cast<long double>(terminal.charge_coulombs) -
+            static_cast<long double>(result.induced_terminal_charges_coulombs[index]);
+        if (!std::isfinite(effective) ||
+            std::abs(effective) >
+                static_cast<long double>(std::numeric_limits<double>::max())) {
+            throw std::overflow_error(
+                "Floating Schur effective terminal charge overflows.");
+        }
+        effective_floating.push_back({
+            terminal.electrode_id, static_cast<double>(effective)});
+    }
+
+    result.terminals = solve_floating_electrode_potentials_3d(
+        result.discrete_capacitance, fixed_electrodes, effective_floating);
+    // Terminal-algebra estimates are C*V. Expose the actual affine prediction
+    // C*V + q0, and measure the residual against the ORIGINAL requested Q.
+    result.terminals.max_floating_charge_residual_coulombs = 0.0;
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        const long double charge =
+            static_cast<long double>(result.terminals.estimated_charge_coulombs[i]) +
+            static_cast<long double>(result.induced_terminal_charges_coulombs[i]);
+        if (!std::isfinite(charge) ||
+            std::abs(charge) >
+                static_cast<long double>(std::numeric_limits<double>::max())) {
+            throw std::overflow_error("Floating Schur affine charge overflows.");
+        }
+        result.terminals.estimated_charge_coulombs[i] =
+            static_cast<double>(charge);
+    }
+    for (const auto& terminal : floating_electrodes) {
+        const auto found = std::lower_bound(
+            ids.begin(), ids.end(), terminal.electrode_id);
+        const auto index = static_cast<std::size_t>(found - ids.begin());
+        result.terminals.max_floating_charge_residual_coulombs = std::max(
+            result.terminals.max_floating_charge_residual_coulombs,
+            checked_abs_difference(
+                result.terminals.estimated_charge_coulombs[index],
+                terminal.charge_coulombs));
+    }
+
+    // Every electrode becomes a constant-potential Dirichlet conductor,
+    // using the affine Schur system for impressed loads.
     for (const auto& group : electrode_groups) {
         const auto& ids = result.terminals.electrode_ids;
         const auto found = std::lower_bound(ids.begin(), ids.end(), group.electrode_id);
@@ -112,9 +191,9 @@ SchurFloatingConductor3DResult solve_floating_conductor_schur_3d(
         throw std::runtime_error("Reconstructed floating Schur FEM field did not converge.");
     }
 
-    // Weak-form reactions represent K*V at constrained electrode vertices.
-    // They are the SAME discrete charge operator as the Schur matrix and
-    // must match prescribed floating charges up to the linear solver error.
+    // Full loaded weak-form reactions represent (K*V-F) on constrained
+    // electrode vertices. They must match prescribed floating charges within
+    // solver accuracy; raw boundary-flux charges are not equilibrated.
     result.discrete_reactions = evaluate_discrete_electrode_reactions_3d(
         field_problem, result.field, all_faces, all_ids);
     // Keep the legacy raw boundary estimate as a separate diagnostic.
