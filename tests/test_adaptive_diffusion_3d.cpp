@@ -349,3 +349,56 @@ NOVA_TEST(adaptive_diffusion_3d_heterogeneous_cell_materials_and_natural_face_co
     verify_natural_coverage(problem, result.coarse_indicators);
     verify_natural_coverage(result.refined_problem, result.refined_indicators);
 }
+
+
+NOVA_TEST(adaptive_diffusion_3d_vertex_only_affine_dirichlet_is_not_neumann) {
+    // With every boundary vertex fixed to u=x, each boundary triangle has
+    // an essential P1 trace. It must not contribute an insulated-face
+    // flux residual (which would cause spurious adaptive refinement).
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    nova::fem::ScalarDiffusion3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.cell_diffusivity.assign(box.mesh.elements.size(), 2.0);
+    for (std::size_t i = 0; i < box.mesh.nodes.size(); ++i) {
+        problem.dirichlet_constraints.push_back({
+            i, box.mesh.nodes[i].x});
+    }
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(
+        problem, 0.5);
+    NOVA_REQUIRE(result.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.coarse_indicators.boundary_residual_faces.empty());
+    NOVA_REQUIRE_NEAR(result.coarse_indicators.total_error, 0.0, 1.0e-10);
+    NOVA_REQUIRE(result.adaptation.marked_elements.empty());
+}
+
+NOVA_TEST(adaptive_diffusion_3d_preserves_vertex_only_dirichlet_faces) {
+    // A positive source triggers refinement. All boundary vertices are
+    // prescribed u=y, without face callbacks; each new midpoint on those
+    // fully fixed boundary faces must retain the P1 interpolated trace.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    nova::fem::ScalarDiffusion3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.cell_diffusivity.assign(box.mesh.elements.size(), 2.0);
+    problem.source = [](double, double, double) { return 4.0; };
+    for (std::size_t i = 0; i < box.mesh.nodes.size(); ++i) {
+        problem.dirichlet_constraints.push_back({
+            i, box.mesh.nodes[i].y});
+    }
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(
+        problem, 1.0);
+    NOVA_REQUIRE(result.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.refined_solution.linear_solver.converged);
+    NOVA_REQUIRE(!result.adaptation.marked_elements.empty());
+    NOVA_REQUIRE(result.refined_problem.dirichlet_constraints.size() >
+                 problem.dirichlet_constraints.size());
+    NOVA_REQUIRE(result.refined_indicators.boundary_residual_faces.empty());
+    for (const auto& face : result.adaptation.refinement.boundary_faces) {
+        for (const auto node : face) {
+            const auto& p = result.refined_problem.mesh.nodes[node];
+            NOVA_REQUIRE_NEAR(result.refined_solution.values[node],
+                              p.y, 1.0e-8);
+        }
+    }
+}
