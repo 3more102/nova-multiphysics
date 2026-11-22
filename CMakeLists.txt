@@ -47,6 +47,7 @@ add_library(nova_core
     src/fem/adaptive_heat_3d.cpp
     src/fem/energy_balance_3d.cpp
     src/fem/conservative_face_heat_3d.cpp
+    src/physics/linear_elasticity_3d.cpp
     src/physics/electrostatics_3d.cpp
     src/physics/electrode_charge_3d.cpp
     src/physics/floating_electrodes_3d.cpp
@@ -151,6 +152,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_tagged_boundary_flux_3d.cpp
         tests/test_energy_balance_3d.cpp
         tests/test_conservative_face_heat_3d.cpp
+        tests/test_linear_elasticity_3d.cpp
         tests/test_electrostatics_3d.cpp
         tests/test_floating_electrodes_3d.cpp
         tests/test_floating_conductor_schur_3d.cpp
