@@ -30,22 +30,13 @@ SchurFloatingConductor3DResult solve_floating_conductor_schur_3d(
     const std::span<const FloatingElectrodeCharge3D> floating_electrodes,
     const linalg::SolverOptions& solver_options
 ) {
-    // The Schur terminal operator describes the homogeneous (source-free)
-    // linear FEM system. Impressed load vectors would introduce an affine
-    // charge offset and must not silently be ignored.
-    if (dielectric_problem.free_charge_density ||
-        !dielectric_problem.cell_free_charge_density.empty() ||
-        !dielectric_problem.displacement_flux_faces.empty()) {
-        throw std::invalid_argument(
-            "Floating Schur solve requires no volume free charge or "
-            "prescribed normal displacement.");
-    }
-
+    // Capacitance is the homogeneous linear terminal response. The affine
+    // contribution from impressed loads is computed separately below.
     SchurFloatingConductor3DResult result;
     result.discrete_capacitance = extract_discrete_capacitance_matrix_3d(
         dielectric_problem, electrode_groups, solver_options);
-    result.terminals = solve_floating_electrode_potentials_3d(
-        result.discrete_capacitance, fixed_electrodes, floating_electrodes);
+    result.load_offset_charge_coulombs.assign(
+        result.discrete_capacitance.electrode_ids.size(), 0.0);
 
     // Capacitance extraction has already validated unique exterior electrode
     // faces, disjoint electrode vertices, node ranges, and reference faces.
@@ -88,9 +79,94 @@ SchurFloatingConductor3DResult solve_floating_conductor_schur_3d(
         }
     }
 
+    // For nonzero source or Neumann terms, the terminal relation is affine:
+    //   Q = C*V + Q0.
+    // Solve the impressed-load problem with every electrode at zero volts to
+    // evaluate Q0 = (K*V0 - rhs)_electrodes. Its non-electrode ground
+    // references are identical to those used in the capacitance basis solves.
+    // This is ONE extra FEM solve, not a dense interior Schur construction.
+    std::vector<FloatingElectrodeCharge3D> reduced_charges(
+        floating_electrodes.begin(), floating_electrodes.end());
+    const bool has_impressed_loads =
+        static_cast<bool>(dielectric_problem.free_charge_density) ||
+        !dielectric_problem.cell_free_charge_density.empty() ||
+        !dielectric_problem.displacement_flux_faces.empty();
+    if (has_impressed_loads) {
+        Electrostatics3DProblem zero_problem = field_problem;
+        for (const auto& group : electrode_groups) {
+            for (const auto& face : group.faces) {
+                zero_problem.potential_faces.push_back({face, ground});
+            }
+        }
+        const auto zero_field =
+            solve_electrostatics_3d(zero_problem, solver_options);
+        if (!zero_field.linear_solver.converged) {
+            throw std::runtime_error(
+                "Impressed-load zero-terminal electrostatic solve did not converge.");
+        }
+        const auto offsets = evaluate_discrete_electrode_reactions_3d(
+            zero_problem, zero_field, all_faces, all_ids);
+        const auto& ids = result.discrete_capacitance.electrode_ids;
+        if (offsets.size() != ids.size()) {
+            throw std::logic_error("Missing impressed-load terminal reactions.");
+        }
+        for (std::size_t i = 0; i < ids.size(); ++i) {
+            if (offsets[i].electrode_id != ids[i]) {
+                throw std::logic_error("Impressed-load terminal order differs from capacitance.");
+            }
+            result.load_offset_charge_coulombs[i] =
+                offsets[i].reaction_charge_coulombs;
+        }
+        for (auto& terminal : reduced_charges) {
+            const auto it = std::lower_bound(
+                ids.begin(), ids.end(), terminal.electrode_id);
+            if (it == ids.end() || *it != terminal.electrode_id) {
+                throw std::invalid_argument(
+                    "Unknown impressed-load floating electrode ID.");
+            }
+            const auto index = static_cast<std::size_t>(it - ids.begin());
+            const long double reduced =
+                static_cast<long double>(terminal.charge_coulombs) -
+                static_cast<long double>(result.load_offset_charge_coulombs[index]);
+            if (!std::isfinite(reduced) ||
+                std::abs(reduced) >
+                    static_cast<long double>(std::numeric_limits<double>::max())) {
+                throw std::overflow_error(
+                    "Impressed-load adjusted terminal charge exceeds double range.");
+            }
+            terminal.charge_coulombs = static_cast<double>(reduced);
+        }
+    }
+    result.terminals = solve_floating_electrode_potentials_3d(
+        result.discrete_capacitance, fixed_electrodes, reduced_charges);
+    // The terminal algebra initially predicts C*V. Restore Q0 so that the
+    // returned estimated charges are physical loaded Galerkin reactions.
+    result.terminals.max_floating_charge_residual_coulombs = 0.0;
+    for (std::size_t i = 0;
+         i < result.terminals.estimated_charge_coulombs.size(); ++i) {
+        const long double physical =
+            static_cast<long double>(result.terminals.estimated_charge_coulombs[i]) +
+            static_cast<long double>(result.load_offset_charge_coulombs[i]);
+        if (!std::isfinite(physical) ||
+            std::abs(physical) >
+                static_cast<long double>(std::numeric_limits<double>::max())) {
+            throw std::overflow_error("Loaded terminal charge exceeds double range.");
+        }
+        result.terminals.estimated_charge_coulombs[i] = static_cast<double>(physical);
+    }
+    for (const auto& terminal : floating_electrodes) {
+        const auto& ids = result.terminals.electrode_ids;
+        const auto it = std::lower_bound(ids.begin(), ids.end(), terminal.electrode_id);
+        const auto index = static_cast<std::size_t>(it - ids.begin());
+        result.terminals.max_floating_charge_residual_coulombs = std::max(
+            result.terminals.max_floating_charge_residual_coulombs,
+            checked_abs_difference(result.terminals.estimated_charge_coulombs[index],
+                                   terminal.charge_coulombs));
+    }
+
     // Every electrode becomes a constant-potential Dirichlet conductor.
-    // The floating subset was obtained by the exact P1 terminal Schur
-    // complement (within iterative solve and matrix-assembly precision).
+    // Floating terminal potentials satisfy the affine discrete Schur system
+    // to solver and quadrature accuracy.
     for (const auto& group : electrode_groups) {
         const auto& ids = result.terminals.electrode_ids;
         const auto found = std::lower_bound(ids.begin(), ids.end(), group.electrode_id);
