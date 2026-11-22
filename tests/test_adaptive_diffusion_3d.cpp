@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 
 #include "nova/fem/adaptive_diffusion_3d.hpp"
+#include "nova/fem/error_norms_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 
 #include <algorithm>
@@ -292,4 +293,38 @@ NOVA_TEST(adaptive_diffusion_3d_re_evaluates_spatial_boundary_values_after_refin
         NOVA_REQUIRE_NEAR(condition.outward_flux(0.5, 1.0, 0.5),
                           -1.0, 1.0e-14);
     }
+}
+
+
+NOVA_TEST(adaptive_diffusion_3d_manufactured_wall_improves_independent_l2_and_h1_norms) {
+    // This selected smooth wall problem has exact u=x(1-x).
+    // An all-marked cycle should reduce independently quadrature-measured
+    // solution L2 and gradient H1 errors. It does not assert monotonicity
+    // for general anisotropic geometry or arbitrary marking fractions.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const auto problem = make_wall(box, 4.0);
+    const nova::fem::ExactScalarField3D exact{
+        [](double x, double, double) { return x * (1.0 - x); },
+        [](double x, double, double) { return 1.0 - 2.0 * x; },
+        [](double, double, double) { return 0.0; },
+        [](double, double, double) { return 0.0; }
+    };
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(
+        problem, 1.0);
+
+    NOVA_REQUIRE(result.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.refined_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.adaptation.marked_elements.size() ==
+                 problem.mesh.elements.size());
+    const auto coarse = nova::fem::compute_error_norms_3d(
+        problem.mesh, result.coarse_solution.values, exact);
+    const auto refined = nova::fem::compute_error_norms_3d(
+        result.refined_problem.mesh, result.refined_solution.values, exact);
+    NOVA_REQUIRE(coarse.l2 > 0.0);
+    NOVA_REQUIRE(coarse.h1_seminorm > 0.0);
+    NOVA_REQUIRE(std::isfinite(refined.l2));
+    NOVA_REQUIRE(std::isfinite(refined.h1_seminorm));
+    NOVA_REQUIRE(refined.l2 < 0.9 * coarse.l2);
+    NOVA_REQUIRE(refined.h1_seminorm < 0.9 * coarse.h1_seminorm);
 }
