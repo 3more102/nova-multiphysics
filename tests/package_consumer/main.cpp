@@ -262,6 +262,27 @@ $EndElements
         std::abs(schur.field.stored_energy_joules - 100.0) > 1.0e-7)
         return 19;
 
+    // Exercise the installed affine Schur API with nonzero volume charge.
+    // rho=2, epsilon=2, Q_high=0 => V_high=0.5; q0=[-1,-1].
+    nova::physics::Electrostatics3DProblem loaded_schur_problem = electrostatic;
+    loaded_schur_problem.free_charge_density =
+        [](double, double, double) { return 1.5; };
+    loaded_schur_problem.cell_free_charge_density.assign(
+        box.mesh.elements.size(), 0.5);
+    const auto loaded_schur = nova::physics::solve_floating_conductor_schur_3d(
+        loaded_schur_problem, electrode_groups,
+        std::vector<nova::physics::FixedElectrodePotential3D>{{1, 0.0}},
+        std::vector<nova::physics::FloatingElectrodeCharge3D>{{2, 0.0}});
+    if (!loaded_schur.field.linear_solver.converged ||
+        loaded_schur.induced_terminal_charges_coulombs.size() != 2U ||
+        std::abs(loaded_schur.induced_terminal_charges_coulombs[0] + 1.0) > 1.0e-8 ||
+        std::abs(loaded_schur.induced_terminal_charges_coulombs[1] + 1.0) > 1.0e-8 ||
+        std::abs(loaded_schur.terminals.potential_volts[1] - 0.5) > 1.0e-8 ||
+        std::abs(loaded_schur.discrete_reactions[1].reaction_charge_coulombs) >
+            1.0e-8 ||
+        loaded_schur.max_floating_reaction_mismatch_coulombs > 1.0e-8)
+        return 21;
+
     // Verify the installed SDK exports the versioned thermal checkpoint API.
     const std::vector<double> saved_temperature(box.mesh.nodes.size(), 301.25);
     std::stringstream checkpoint_stream;
