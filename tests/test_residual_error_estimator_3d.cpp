@@ -231,26 +231,37 @@ NOVA_TEST(diffusion_residual_estimator_3d_solve_estimate_refine_resolve_converge
 
 NOVA_TEST(diffusion_residual_estimator_3d_dorfler_local_refine_and_resolve) {
     using namespace nova::fem;
-    // Non-affine manufactured field: -Delta u = -6 with u = x^2+y^2+z^2.
-    // Unlike the uniform-refinement regression, this uses the public
-    // estimator -> Dörfler marking -> conforming LOCAL refinement -> P1/cell
-    // transfer -> fresh FEM solve sequence on a genuinely nonzero residual.
+    // Manufactured mixed-boundary Poisson problem: u=x(1-x), -Delta u=2.
+    // Homogeneous Dirichlet x-end faces and natural zero-flux y/z faces
+    // are physically consistent on EVERY refined mesh. The coarse P1
+    // constrained trial space is nested in the refined trial space,
+    // unlike re-interpolated nonhomogeneous quadratic boundary data.
+    // Exercise estimator -> Dörfler -> LOCAL refine -> transfer -> re-solve.
     const auto box = make_box_mesh_3d(
         0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
     const ExactScalarField3D exact{
-        [](double x, double y, double z) { return x*x + y*y + z*z; },
-        [](double x, double, double) { return 2.0*x; },
-        [](double, double y, double) { return 2.0*y; },
-        [](double, double, double z) { return 2.0*z; }
+        [](double x, double, double) { return x * (1.0 - x); },
+        [](double x, double, double) { return 1.0 - 2.0*x; },
+        [](double, double, double) { return 0.0; },
+        [](double, double, double) { return 0.0; }
     };
-    const auto source = [](double, double, double) { return -6.0; };
+    const auto source = [](double, double, double) { return 2.0; };
+    const auto on_dirichlet_end = [](
+        const TetrahedralMesh3D& mesh, const BoundaryFace3D& face
+    ) {
+        const double x = mesh.nodes[face[0]].x;
+        return (x == 0.0 || x == 1.0) &&
+            mesh.nodes[face[1]].x == x && mesh.nodes[face[2]].x == x;
+    };
 
     ScalarDiffusion3DProblem coarse;
     coarse.mesh = box.mesh;
     coarse.cell_diffusivity.assign(coarse.mesh.elements.size(), 1.0);
     coarse.source = source;
     for (const auto& face : box.boundary_faces) {
-        coarse.dirichlet_faces.push_back({face, exact.value});
+        if (on_dirichlet_end(coarse.mesh, face)) {
+            coarse.dirichlet_faces.push_back({face, exact.value});
+        }
     }
 
     nova::linalg::SolverOptions options;
@@ -295,7 +306,9 @@ NOVA_TEST(diffusion_residual_estimator_3d_dorfler_local_refine_and_resolve) {
         refinement, coarse.cell_diffusivity);
     fine.source = source;
     for (const auto& face : refinement.boundary_faces) {
-        fine.dirichlet_faces.push_back({face, exact.value});
+        if (on_dirichlet_end(fine.mesh, face)) {
+            fine.dirichlet_faces.push_back({face, exact.value});
+        }
     }
 
     const auto fine_solution = solve_scalar_diffusion_3d(fine, options);
@@ -304,8 +317,8 @@ NOVA_TEST(diffusion_residual_estimator_3d_dorfler_local_refine_and_resolve) {
         fine.mesh, fine_solution.values, exact);
     NOVA_REQUIRE(std::isfinite(after.l2));
     NOVA_REQUIRE(std::isfinite(after.h1_seminorm));
-    // These inequalities are test observations for this manufactured
-    // problem, not a generic guarantee for arbitrary marked meshes.
+    // The nested homogeneous-Dirichlet spaces make this a controlled
+    // refinement test; no monotonicity claim is made for arbitrary physics.
     NOVA_REQUIRE(after.h1_seminorm < before.h1_seminorm);
     NOVA_REQUIRE(after.l2 < before.l2);
 }
