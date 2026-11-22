@@ -152,6 +152,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_electrostatics_3d.cpp
         tests/test_floating_electrodes_3d.cpp
         tests/test_floating_conductor_schur_3d.cpp
+        tests/test_floating_schur_convergence_3d.cpp
         tests/test_transient_heat_3d.cpp
         tests/test_adaptive_heat_3d.cpp
         tests/test_transient_heat_3d_restart.cpp
