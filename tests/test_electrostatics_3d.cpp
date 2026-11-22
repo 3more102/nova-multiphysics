@@ -520,14 +520,87 @@ NOVA_TEST(electrostatics_3d_discrete_reaction_rejects_invalid_inputs) {
     NOVA_REQUIRE(rejects(problem, {low[0]}, {-1}));
     NOVA_REQUIRE(rejects(problem, {{0U, 1U, 2U}}, {1})); // No such selected exterior face is guaranteed.
     auto with_charge = problem;
-    with_charge.free_charge_density =
-        [](double, double, double) { return 1.0; };
+    with_charge.free_charge_density = [](double, double, double) {
+        return std::numeric_limits<double>::quiet_NaN();
+    };
     NOVA_REQUIRE(rejects(with_charge, low, {1, 1}));
     with_charge.free_charge_density = {};
-    with_charge.cell_free_charge_density.assign(problem.mesh.elements.size(), 1.0);
+    with_charge.cell_free_charge_density = {1.0}; // Wrong cell count.
+    NOVA_REQUIRE(rejects(with_charge, low, {1, 1}));
+    with_charge.cell_free_charge_density.assign(
+        problem.mesh.elements.size(), std::numeric_limits<double>::infinity());
     NOVA_REQUIRE(rejects(with_charge, low, {1, 1}));
 }
 
+
+// Independent Gauss-law benchmark: on a 1 m cube, uniform free charge
+// rho = 2 C/m^3 with grounded x-end plates and insulated sides must induce
+// Q_left = Q_right = -1 C. The cell and spatial sources are additive.
+NOVA_TEST(electrostatics_3d_discrete_reaction_includes_volume_free_charge) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    problem.free_charge_density =
+        [](double, double, double) { return 1.5; };
+    problem.cell_free_charge_density.assign(box.mesh.elements.size(), 0.5);
+    std::vector<nova::fem::BoundaryFace3D> faces;
+    std::vector<int> ids;
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(box.mesh, face, 0.0) || on_x(box.mesh, face, 1.0)) {
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 0.0; }});
+            faces.push_back(face);
+            ids.push_back(on_x(box.mesh, face, 0.0) ? 10 : 20);
+        }
+    }
+    const auto solved = solve_electrostatics_3d(problem);
+    NOVA_REQUIRE(solved.linear_solver.converged);
+    const auto reactions = nova::physics::evaluate_discrete_electrode_reactions_3d(
+        problem, solved, faces, ids);
+    NOVA_REQUIRE(reactions.size() == 2U);
+    NOVA_REQUIRE_NEAR(reactions[0].reaction_charge_coulombs, -1.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(reactions[1].reaction_charge_coulombs, -1.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(reactions[0].reaction_charge_coulombs +
+                      reactions[1].reaction_charge_coulombs + 2.0,
+                      0.0, 1.0e-8);
+}
+
+// For an outward D.n=+1 C/m^2 on the y=0 side of a unit cube,
+// zero volume charge and fixed x-end plates, global Gauss balance requires
+// Q_left + Q_right = +1 C. This detects the Neumann RHS sign.
+NOVA_TEST(electrostatics_3d_discrete_reaction_includes_neumann_displacement) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    std::vector<nova::fem::BoundaryFace3D> faces;
+    std::vector<int> ids;
+    for (const auto& face : box.boundary_faces) {
+        if (on_x(box.mesh, face, 0.0) || on_x(box.mesh, face, 1.0)) {
+            problem.potential_faces.push_back({
+                face, [](double, double, double) { return 0.0; }});
+            faces.push_back(face);
+            ids.push_back(on_x(box.mesh, face, 0.0) ? 10 : 20);
+        } else if (box.mesh.nodes[face[0]].y == 0.0 &&
+                   box.mesh.nodes[face[1]].y == 0.0 &&
+                   box.mesh.nodes[face[2]].y == 0.0) {
+            problem.displacement_flux_faces.push_back({
+                face, [](double, double, double) { return 1.0; }});
+        }
+    }
+    const auto solved = solve_electrostatics_3d(problem);
+    NOVA_REQUIRE(solved.linear_solver.converged);
+    const auto reactions = nova::physics::evaluate_discrete_electrode_reactions_3d(
+        problem, solved, faces, ids);
+    NOVA_REQUIRE(reactions.size() == 2U);
+    NOVA_REQUIRE_NEAR(reactions[0].reaction_charge_coulombs +
+                      reactions[1].reaction_charge_coulombs, 1.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(reactions[0].reaction_charge_coulombs,
+                      reactions[1].reaction_charge_coulombs, 1.0e-8);
+}
 
 NOVA_TEST(electrostatics_3d_discrete_capacitance_matrix) {
     using nova::physics::ElectrodeBoundaryGroup3D;
