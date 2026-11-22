@@ -89,17 +89,36 @@ Q_g = \sum_{a\in E_g} (K V)_a
 
 Here `E_g` contains the boundary nodes belonging to electrode `g`, and
 `w_g` is their P1 nodal indicator (one at those nodes, zero elsewhere).
-The implementation sums `-volume * grad(N_a) dot averaged_D` over all cells
-and constrained electrode vertices, with the same material quadrature as the
-assembled P1 stiffness. It accepts scalar, spatial or cellwise anisotropic SPD
-permittivity through the regular FEM material interface.
+For source-free, insulated models the result is `(K V)_g`. For models with
+impressed charge and prescribed outward displacement it is instead the
+**full Galerkin reaction**:
+
+```text
+Q_g = sum_{a in E_g} (K V - F)_a
+    = integral epsilon grad(w_g) dot grad(V) dV
+      - integral rho_free w_g dV
+      + integral_N (D dot outward_normal) w_g dA
+```
+
+The volume and exterior-face loads use the same positive degree-two tetrahedron
+and triangle quadratures as the stationary P1 FEM solver. Spatial and per-cell
+charge are additive. The conductivity/permittivity term still uses
+`-volume * grad(N_a) dot averaged_D`. All material representations already
+supported by the solver remain available.
 
 **Required conditions:** each selected electrode group must have its complete
 exterior triangular contact supplied; no vertex may belong to two electrodes;
 all selected vertices must have fixed potentials and one common equipotential
-per group. Nonempty free-charge callbacks, cell charge values, and prescribed
-displacement-flux loads are rejected because the corresponding right-hand
-side contributions are not included in this reaction diagnostic.
+per group. Source and prescribed outward-displacement callbacks must be
+finite and the per-cell charge array must match the tetrahedron count.
+Neumann loads carry a positive sign in `Q=K V-F` because the FEM right-hand
+side contains their *negative* outward flux.
+
+The regression suite checks an independent Gauss-law balance for a constant
+volume charge in a parallel-plate slab and for a prescribed nonzero side-face
+displacement. On these manufactured geometries the sum of electrode reactions
+matches the volume charge and prescribed boundary displacement consistently.
+Such discrete consistency is not a certified continuum charge error.
 
 For a linear, source-free, no-prescribed-flux system with insulated remaining
 exterior, the discrete FEM identity `sum_g (V_g Q_g)=2*U` holds when all
