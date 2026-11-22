@@ -308,6 +308,33 @@ capacitance error, and potential-field error trend toward the independent
 analytic solution after mesh refinement. This is a manufactured benchmark,
 not experimental validation or proof of arbitrary-geometry convergence.
 
+### Exact two-layer dielectric interface patch (regression)
+
+The `floating_schur_two_layer_dielectric_exact_interface_patch` regression
+checks an interface-fitted unit cube with two layers of epsilon=2 and 4 F/m
+separated at x=0.5 m, insulated sidewalls, grounded x=0 electrode, and a
+floating x=1 electrode with Q=+1 C. Continuity of V and normal D yields:
+
+```text
+D_x = -1 C/m^2
+V(x) = x/2                     (0 <= x <= 1/2)
+     = 1/4 + (x-1/2)/4        (1/2 <= x <= 1)
+E_x = -1/2 V/m (left), -1/4 V/m (right)
+V_right = 3/8 V
+C_equivalent = 8/3 F
+U = Q * V_right / 2 = 3/16 J
+Q_left = -1 C; Q_right = +1 C
+```
+
+The exact potential is piecewise affine and belongs to the P1 finite-element
+space on an interface-fitted mesh. The test uses 2x2x2 and 4x4x4 meshes
+and repeats with both per-cell and spatial callback permittivity. It checks
+individual nodal potentials and cellwise E and D; the weak-form capacitance,
+floating voltage, electrode reactions, raw flux/reaction agreement, stored
+energy, and the identity V*Q=2U. The test is a discretization-consistency
+check, not experimental validation. It does not establish accuracy for
+unfitted, curved, or nonconforming dielectric interfaces.
+
 The earlier `reconstruct_floating_electrostatic_field_3d` based on raw
 boundary flux is still available unchanged for comparisons.
 
