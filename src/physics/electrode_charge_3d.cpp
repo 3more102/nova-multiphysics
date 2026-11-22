@@ -115,10 +115,11 @@ using ElectrodeFaceKey3D = std::array<std::size_t, 3>;
 
 } // namespace
 
-CapacitanceMatrix3D extract_capacitance_matrix_3d(
+static CapacitanceMatrix3D extract_capacitance_matrix_impl_3d(
     const Electrostatics3DProblem& dielectric_problem,
     const std::span<const ElectrodeBoundaryGroup3D> electrodes,
-    const linalg::SolverOptions& solver_options
+    const linalg::SolverOptions& solver_options,
+    const bool use_discrete_reactions
 ) {
     if (electrodes.empty()) {
         throw std::invalid_argument("Capacitance extraction requires at least one electrode.");
@@ -268,17 +269,30 @@ CapacitanceMatrix3D extract_capacitance_matrix_3d(
                 "Capacitance basis electrostatic solve did not converge."
             );
         }
-        const auto charges = evaluate_electrode_charges_3d(
-            basis_problem, solved, all_faces, all_ids
-        );
-        if (charges.size() != count) {
+        // Switch only the charge extraction, not the underlying basis
+        // solves or their validated boundary/material conditions.
+        std::vector<double> basis_charges;
+        basis_charges.reserve(count);
+        if (use_discrete_reactions) {
+            const auto reactions = evaluate_discrete_electrode_reactions_3d(
+                basis_problem, solved, all_faces, all_ids);
+            for (const auto& group : reactions) {
+                basis_charges.push_back(group.reaction_charge_coulombs);
+            }
+        } else {
+            const auto charges = evaluate_electrode_charges_3d(
+                basis_problem, solved, all_faces, all_ids);
+            for (const auto& group : charges) {
+                basis_charges.push_back(group.conductor_charge_coulombs);
+            }
+        }
+        if (basis_charges.size() != count) {
             throw std::runtime_error(
-                "Capacitance basis solve returned an incomplete electrode charge set."
-            );
+                "Capacitance basis solve returned an incomplete electrode charge set.");
         }
         for (std::size_t electrode_index = 0;
              electrode_index < count; ++electrode_index) {
-            const double charge = charges[electrode_index].conductor_charge_coulombs;
+            const double charge = basis_charges[electrode_index];
             if (!std::isfinite(charge)) {
                 throw std::overflow_error("Capacitance matrix contains a non-finite entry.");
             }
@@ -452,6 +466,25 @@ std::vector<DiscreteElectrodeReaction3D> evaluate_discrete_electrode_reactions_3
         result.push_back({id, face_count, potentials.at(id), static_cast<double>(reaction)});
     }
     return result;
+}
+
+
+CapacitanceMatrix3D extract_capacitance_matrix_3d(
+    const Electrostatics3DProblem& dielectric_problem,
+    const std::span<const ElectrodeBoundaryGroup3D> electrodes,
+    const linalg::SolverOptions& solver_options
+) {
+    return extract_capacitance_matrix_impl_3d(
+        dielectric_problem, electrodes, solver_options, false);
+}
+
+CapacitanceMatrix3D extract_discrete_capacitance_matrix_3d(
+    const Electrostatics3DProblem& dielectric_problem,
+    const std::span<const ElectrodeBoundaryGroup3D> electrodes,
+    const linalg::SolverOptions& solver_options
+) {
+    return extract_capacitance_matrix_impl_3d(
+        dielectric_problem, electrodes, solver_options, true);
 }
 
 } // namespace nova::physics

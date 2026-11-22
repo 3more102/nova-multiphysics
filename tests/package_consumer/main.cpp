@@ -207,6 +207,19 @@ $EndElements
         std::abs(capacitance_matrix.matrix_farads[3] - 2.0) > 1.0e-8 ||
         capacitance_matrix.max_reciprocity_defect_farads > 1.0e-8) return 13;
 
+    // Verify the installed FEM-reaction capacitance extractor as an
+    // independent public symbol, preserving the raw flux API.
+    const auto discrete_capacitance =
+        nova::physics::extract_discrete_capacitance_matrix_3d(
+            electrostatic, electrode_groups);
+    if (discrete_capacitance.electrode_ids !=
+            std::vector<int>({1, 2}) ||
+        discrete_capacitance.matrix_farads.size() != 4U ||
+        std::abs(discrete_capacitance.matrix_farads[0] - 2.0) > 1.0e-8 ||
+        std::abs(discrete_capacitance.matrix_farads[1] + 2.0) > 1.0e-8 ||
+        discrete_capacitance.max_reciprocity_defect_farads > 1.0e-8)
+        return 18;
+
     // Check installed floating-electrode terminal algebra and exported symbol.
     const auto floating_voltages =
         nova::physics::solve_floating_electrode_potentials_3d(

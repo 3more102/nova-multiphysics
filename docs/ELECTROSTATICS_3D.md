@@ -141,6 +141,30 @@ below; a fully coupled floating-conductor FEM field solve remains future work.
 The parallel-plate regression returns the Maxwell matrix
 `[[2, -2], [-2, 2]] F` for `epsilon = 2 F/m`, unit area and unit gap.
 
+## Weak-form discrete capacitance matrix (experimental)
+
+`extract_discrete_capacitance_matrix_3d` uses the **same validated
+unit-voltage basis FEM solves** as `extract_capacitance_matrix_3d`, but its
+matrix entries are the electrode weak-form reactions `(K V)_electrode`
+rather than raw outward surface fluxes. This implementation shares the basis
+solver and matrix construction, so it does not run duplicate solves simply
+to compare two charge-estimator methods.
+
+The returned `CapacitanceMatrix3D` has the same electrode-ID ordering,
+unsymmetrized row-major matrix, and reciprocity diagnostics. For a source-free
+symmetric SPD dielectric and converged Galerkin solves, the discrete matrix
+should be symmetric (within solver and floating-point tolerances). A two-plate
+test checks `[[2,-2],[-2,2]] F`; a spatially varying-permittivity test checks
+reciprocity and constant-voltage nullspace behavior.
+
+Do not assume this matrix is the continuum Maxwell capacitance. It is based
+on P1 Galerkin reaction charge and depends on mesh discretization. The
+existing boundary-flux matrix remains available independently; comparing
+both and repeating after mesh refinement helps identify flux-extrapolation
+error. No hidden matrix symmetrization, voltage gauge, or physical calibration
+is applied. Floating-terminal voltage inference can consume either matrix,
+but a true nonlinear or charge-loaded conductor solve is not implemented.
+
 ## Floating-electrode terminal potentials (experimental)
 
 After extracting a capacitance matrix, the *terminal-only* inverse
