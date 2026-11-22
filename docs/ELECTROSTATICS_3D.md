@@ -311,6 +311,31 @@ not experimental validation or proof of arbitrary-geometry convergence.
 The earlier `reconstruct_floating_electrostatic_field_3d` based on raw
 boundary flux is still available unchanged for comparisons.
 
+### Analytical discontinuous-dielectric interface check
+
+The \`floating_schur_two_layer_dielectric_interface_exact_solution\` regression
+tests a *mesh-fitted* sharp permittivity discontinuity, complementing the
+smooth graded-dielectric mesh-convergence benchmark. The unit-area slab has
+\`epsilon=2 F/m\` on \`0<=x<0.5\` and \`epsilon=6 F/m\` on \`0.5<x<=1\`.
+The left electrode is grounded and the right electrode has \`Q=+1 C\`.
+An independent one-dimensional Gauss-law derivation gives
+
+\`\`\`text
+D_x = -1 C/m^2 throughout the dielectric
+V(x) = x/2                     for 0 <= x <= 0.5
+     = 1/4 + (x - 0.5)/6      for 0.5 < x <= 1
+V_right = 1/3 V, C = 3 F, U = 1/6 J
+\`\`\`
+
+At two tetrahedral resolutions aligned to the interface, the regression
+checks the analytical nodal potential, discontinuous electric field,
+continuous normal displacement, Maxwell capacitance matrix, conductor
+charges, reciprocity, reconstructed energy, and winding-independent face
+handling. Since the piecewise-affine exact solution is in the conforming
+P1 space, this is an *exact-solution patch test* rather than a general
+error-estimator validation. Curved or non-mesh-fitted interfaces, singular
+edge fields, and nonlinear dielectrics are outside its scope.
+
 ## Scope and limitations
 
 This is an experimental electrostatic Poisson interface, not a general Maxwell solver. It supports straight first-order tetrahedra, scalar or symmetric positive-definite tensor permittivity, optional per-cell material data, fixed potentials and prescribed normal displacement. It does not yet implement floating conductor boundary constraints inside the FEM solve, surface-charge unknowns, nonlinear dielectric response, AC or transient Maxwell equations, or a locally equilibrated displacement field. Per-cell D is a constitutive element average, not an equilibrated face flux or a Gauss-law error estimator. This prototype is not production-certified.
