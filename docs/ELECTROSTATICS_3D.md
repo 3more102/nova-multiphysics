@@ -83,8 +83,10 @@ displacement over exterior triangular faces, this method uses the same
 Galerkin volume weak form as the P1 solver:
 
 \[
-Q_g = \sum_{a\in E_g} (K V)_a
-    = \sum_T \int_T \epsilon\nabla w_g\cdot\nabla V\,dT.
+Q_g = \sum_{a\in E_g} (K V - rhs)_a
+    = \sum_T \int_T \epsilon\nabla w_g\cdot\nabla V\,dT
+      - \sum_T \int_T \rho_{free} w_g\,dT
+      + \sum_{F \in \Gamma_N} \int_F (D\cdot n)w_g\,dF.
 \]
 
 Here `E_g` contains the boundary nodes belonging to electrode `g`, and
@@ -97,11 +99,13 @@ permittivity through the regular FEM material interface.
 **Required conditions:** each selected electrode group must have its complete
 exterior triangular contact supplied; no vertex may belong to two electrodes;
 all selected vertices must have fixed potentials and one common equipotential
-per group. Nonempty free-charge callbacks, cell charge values, and prescribed
-displacement-flux loads are rejected because the corresponding right-hand
-side contributions are not included in this reaction diagnostic.
+per group. Spatial plus per-cell volume free charge and prescribed outward
+displacement are included by matching the FEM's degree-two tetrahedral and
+triangle-face load quadratures. A non-finite source or invalid boundary face
+is rejected; the return value is the assembled **K*V-rhs** reaction, not K*V
+alone.
 
-For a linear, source-free, no-prescribed-flux system with insulated remaining
+Only for a linear, source-free, no-prescribed-flux system with insulated remaining
 exterior, the discrete FEM identity `sum_g (V_g Q_g)=2*U` holds when all
 nonzero Dirichlet electrodes are included. On the parallel-plate benchmark,
 the two reaction charges are exactly approximately -20 C and +20 C (subject to
@@ -172,7 +176,8 @@ After extracting a capacitance matrix, the *terminal-only* inverse
 `nova/physics/floating_electrodes_3d.hpp` solves
 
 ```text
-C_FF * V_F = Q_F - C_FK * V_K
+Q = C*V + Q0
+C_FF * V_F = Q_F - Q0_F - C_FK * V_K
 ```
 
 where F indexes floating conductors with prescribed total charge Q, and K
@@ -242,9 +247,9 @@ materials, and arbitrary impressed-flux loads are not supported here.
 floating-conductor solver**, available through
 `nova/physics/floating_conductor_schur_3d.hpp`.
 
-Consider the linear 3D source-free FEM stiffness matrix, split into unconstrained
+Consider the linear 3D FEM stiffness matrix, split into unconstrained
 interior degrees of freedom `i` and equipotential terminal degrees of freedom
-`e`. Eliminating the interior unknowns yields the terminal operator
+`e`. Eliminating the interior unknowns yields the homogeneous terminal operator
 
 ```text
 C = K_ee - K_ei * inverse(K_ii) * K_ie
@@ -253,12 +258,16 @@ C_FF * V_F = Q_F - C_FK * V_K
 
 NOVA obtains `C` **implicitly** through unit-terminal-voltage P1 FEM solves
 and *discrete weak-form electrode reactions*, instead of constructing a dense
-global nodal Schur matrix. After solving the small terminal system, a final
+global nodal Schur matrix. With impressed volume or Neumann loads, one
+additional all-zero-terminal FEM solve evaluates the affine reaction offset
+`Q0 = (K*V0-rhs)_electrode`. For source-free inputs Q0 is zero and no extra
+solve is needed. After solving the small terminal system, a final
 Dirichlet P1 solve reconstructs `V`, `E`, `D`, and stored energy.
 Each returned result includes:
 
 - The **unsymmetrized** Galerkin reaction capacitance matrix and reciprocity
-  diagnostics, inferred terminal potentials, and terminal charge estimates.
+  diagnostics, the load-induced `load_offset_charge_coulombs` ordered by
+  electrode ID, inferred terminal potentials, and **loaded** charge estimates.
 - Independently integrated weak-form electrode reaction charges.
 - Legacy element-averaged surface-displacement electrode estimates.
 - Maximum mismatch between prescribed floating charge and reconstructed FEM
@@ -269,21 +278,26 @@ The parallel-plate regression (`epsilon = 2 F/m`, unit area and distance,
 `E = (-10,0,0) V/m`, `Q = [-20,+20] C`, and `U = 100 J`.
 Other regressions cover spatially varying permittivity, the discrete
 `sum_g(V_g*Q_g) = 2*U` identity, an independently grounded single floating
-terminal, all-fixed terminals, and singular-gauge/invalid-load rejection.
+terminal, all-fixed terminals, and singular-gauge/invalid-boundary rejection.
+Additional Poisson and Neumann regressions check the independent affine
+load-balance identities, including additive cell plus spatial sources.
 
 **Mathematical and engineering limits:** This is a series of standard
 Galerkin FEM solves implementing an **implicit discrete Schur complement**,
 not a monolithic augmented saddle-point solve with extra unknowns. A
 specified independent voltage reference is required when the isolated
-terminal block has a constant-voltage nullspace. It accepts a linear
-permittivity representation and *no* nonempty volume-charge callback,
-per-cell free charge, or prescribed-displacement faces, as those would
-require an affine reaction-load term. Existing non-electrode Dirichlet
-constraints are grounded at zero volts (matching the capacitance basis
-solves) rather than preserving their original values. Electrode groups
+terminal block has a constant-voltage nullspace. The dielectric is linear;
+spatial and per-cell volume free charge and non-overlapping Neumann
+displacement faces are included in the affine reaction-load term. Nonlinear
+dielectrics, arbitrary space-charge coupling, and other boundary operators
+are not supported. Existing non-electrode Dirichlet constraints are grounded
+at zero volts (matching the capacitance basis solves) rather than preserving
+their original values. Electrode groups
 must be disjoint, complete exterior conductor face patches. Solver and
-quadrature tolerances limit the charge residual. The flux-versus-reaction
-disagreement is **not** a validated physical error bar. Independent mesh
+quadrature tolerances limit the charge residual. In loaded cases
+`sum(V*Q)=2*U` is **not** the source-free energy identity and must not be
+used as a validation check. The flux-versus-reaction disagreement is
+**not** a validated physical error bar. Independent mesh
 convergence and experimental validation remain necessary.
 
 ### Analytical mesh-convergence check: graded dielectric
@@ -313,4 +327,4 @@ boundary flux is still available unchanged for comparisons.
 
 ## Scope and limitations
 
-This is an experimental electrostatic Poisson interface, not a general Maxwell solver. It supports straight first-order tetrahedra, scalar or symmetric positive-definite tensor permittivity, optional per-cell material data, fixed potentials and prescribed normal displacement. It does not yet implement floating conductor boundary constraints inside the FEM solve, surface-charge unknowns, nonlinear dielectric response, AC or transient Maxwell equations, or a locally equilibrated displacement field. Per-cell D is a constitutive element average, not an equilibrated face flux or a Gauss-law error estimator. This prototype is not production-certified.
+This is an experimental electrostatic Poisson interface, not a general Maxwell solver. It supports straight first-order tetrahedra, scalar or symmetric positive-definite tensor permittivity, optional per-cell material data, fixed potentials and prescribed normal displacement. It does not yet implement a monolithic mixed formulation of floating conductor boundary constraints with explicit surface-charge unknowns, nonlinear dielectric response, AC or transient Maxwell equations, or a locally equilibrated displacement field. Per-cell D is a constitutive element average, not an equilibrated face flux or a Gauss-law error estimator. This prototype is not production-certified.
