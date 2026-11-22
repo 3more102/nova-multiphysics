@@ -286,6 +286,28 @@ quadrature tolerances limit the charge residual. The flux-versus-reaction
 disagreement is **not** a validated physical error bar. Independent mesh
 convergence and experimental validation remain necessary.
 
+### Analytical mesh-convergence check: graded dielectric
+
+The `floating_schur_dielectric_capacitor_mesh_convergence` regression checks
+the continuum result **independently** of the discrete Schur equations.
+For a unit-area, unit-distance slab with dielectric
+`epsilon(x) = (1+x) F/m`, a grounded plate at `x=0`, a floating plate
+at `x=1` with `Q=+1 C`, and naturally insulated sidewalls:
+
+```text
+V_exact(x) = ln(1+x) V
+V_floating = ln(2) V
+C_exact = 1/ln(2) F
+E_exact,x = -1/(1+x) V/m
+U_exact = 0.5*ln(2) J
+```
+
+The test checks charge conservation and the FEM energy identity at multiple
+mesh resolutions, then verifies that the **terminal-voltage error**, terminal
+capacitance error, and potential-field error trend toward the independent
+analytic solution after mesh refinement. This is a manufactured benchmark,
+not experimental validation or proof of arbitrary-geometry convergence.
+
 The earlier `reconstruct_floating_electrostatic_field_3d` based on raw
 boundary flux is still available unchanged for comparisons.
 
