@@ -1,11 +1,13 @@
 #include "test_framework.hpp"
 #include "nova/physics/transient_electrothermal_3d.hpp"
 #include "nova/physics/adaptive_transient_electrothermal_3d.hpp"
+#include "nova/io/thermal_checkpoint_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <sstream>
 
 namespace {
 using namespace nova::fem;
@@ -261,7 +263,10 @@ NOVA_TEST(adaptive_transient_electrothermal_3d_nonlinear_failure_rolls_back) {
     o.initial_time_step = 0.02;
     o.minimum_time_step = 0.005;
     o.end_time = 0.10;
+    std::size_t observer_calls = 0U;
+    o.on_accepted_step = [&](const auto&, const auto&) { ++observer_calls; };
     const auto r = solve_adaptive_transient_electrothermal_3d(p, o);
+    NOVA_REQUIRE(observer_calls == 0U);
     NOVA_REQUIRE(!r.completed);
     NOVA_REQUIRE(r.stop_reason ==
                  AdaptiveTransientElectrothermal3DStopReason::MinimumTimeStep);
@@ -347,4 +352,84 @@ NOVA_TEST(adaptive_transient_electrothermal_3d_final_short_step_and_options) {
     NOVA_REQUIRE(rejects([&] {
         (void)solve_adaptive_transient_electrothermal_3d(p, o);
     }));
+}
+
+NOVA_TEST(adaptive_transient_electrothermal_checkpoint_observer_and_restart) {
+    // The nonlinear manufactured ODE starts with a rejected large step.
+    // Only committed two-half-step solutions may be observed/checkpointed.
+    auto p = make_unit_coupling();
+    p.electrical_conductivity_scale = [](double t) {
+        return 1.0 + 0.01 * (t - 300.0);
+    };
+    p.thermal_conductivity_scale = [](double t) {
+        return 1.0 + 0.01 * (t - 300.0);
+    };
+
+    AdaptiveTransientElectrothermal3DOptions options;
+    options.end_time = 0.3;
+    options.initial_time_step = 0.3;
+    options.maximum_time_step = 0.3;
+    options.minimum_time_step = 1.0e-5;
+    options.absolute_error_kelvin = 0.05;
+    options.relative_error = 0.0;
+
+    std::ostringstream checkpoint_output;
+    double saved_next_step = 0.0;
+    std::vector<double> observed_times;
+    options.on_accepted_step = [&](const AdaptiveTransientElectrothermal3DStep& step,
+                                   const std::vector<double>& temperature) {
+        NOVA_REQUIRE(temperature.size() == p.electrical.mesh.nodes.size());
+        NOVA_REQUIRE(step.time > 0.0);
+        NOVA_REQUIRE(step.next_time_step >= options.minimum_time_step);
+        NOVA_REQUIRE(step.next_time_step <= options.maximum_time_step);
+        NOVA_REQUIRE(step.max_normalized_local_error <= 1.0);
+        observed_times.push_back(step.time);
+        if (observed_times.size() == 1U) {
+            nova::io::write_transient_heat_checkpoint_3d(
+                checkpoint_output, p.electrical.mesh, step.time, temperature);
+            saved_next_step = step.next_time_step;
+        }
+    };
+
+    const auto continuous = solve_adaptive_transient_electrothermal_3d(p, options);
+    NOVA_REQUIRE(continuous.completed);
+    NOVA_REQUIRE(continuous.rejected_steps >= 1U);
+    NOVA_REQUIRE(continuous.accepted_steps.size() >= 3U);
+    NOVA_REQUIRE(observed_times.size() == continuous.accepted_steps.size());
+    NOVA_REQUIRE(continuous.attempts.size() ==
+                 continuous.accepted_steps.size() + continuous.rejected_steps);
+    for (std::size_t i = 0; i < observed_times.size(); ++i) {
+        NOVA_REQUIRE_NEAR(observed_times[i], continuous.accepted_steps[i].time, 0.0);
+    }
+
+    std::istringstream checkpoint_input(checkpoint_output.str());
+    const auto saved = nova::io::read_transient_heat_checkpoint_3d(
+        checkpoint_input, p.electrical.mesh);
+    NOVA_REQUIRE_NEAR(saved.time, observed_times.front(), 0.0);
+    NOVA_REQUIRE(saved_next_step > 0.0);
+    auto restarted_problem = p;
+    restarted_problem.thermal.initial_temperature = saved.temperature;
+    auto restarted_options = options;
+    restarted_options.on_accepted_step = {};
+    restarted_options.coupling.thermal_time.start_time = saved.time;
+    restarted_options.initial_time_step = saved_next_step;
+    const auto restarted = solve_adaptive_transient_electrothermal_3d(
+        restarted_problem, restarted_options);
+    NOVA_REQUIRE(restarted.completed);
+    NOVA_REQUIRE_NEAR(restarted.final_time, continuous.final_time, 1e-14);
+    NOVA_REQUIRE(restarted.accepted_steps.size() + 1U ==
+                 continuous.accepted_steps.size());
+    for (std::size_t i = 0; i < restarted.accepted_steps.size(); ++i) {
+        NOVA_REQUIRE_NEAR(restarted.accepted_steps[i].time,
+                          continuous.accepted_steps[i + 1U].time, 1e-12);
+        NOVA_REQUIRE_NEAR(restarted.accepted_steps[i].next_time_step,
+                          continuous.accepted_steps[i + 1U].next_time_step, 1e-12);
+    }
+    for (std::size_t i = 0; i < restarted.temperature.size(); ++i) {
+        NOVA_REQUIRE_NEAR(restarted.temperature[i], continuous.temperature[i], 1e-8);
+    }
+    // Original problem and checkpoint are separate, immutable restart inputs.
+    for (double t : p.thermal.initial_temperature) {
+        NOVA_REQUIRE_NEAR(t, 300.0, 0.0);
+    }
 }
