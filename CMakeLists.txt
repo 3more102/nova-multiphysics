@@ -51,6 +51,7 @@ add_library(nova_core
     src/physics/electrostatics_3d.cpp
     src/physics/electrothermal_3d.cpp
     src/physics/nonlinear_electrothermal_3d.cpp
+    src/physics/transient_electrothermal_3d.cpp
     src/physics/electrode_charge_3d.cpp
     src/physics/floating_electrodes_3d.cpp
     src/physics/floating_conductor_schur_3d.cpp
@@ -166,6 +167,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_electrostatics_3d.cpp
         tests/test_electrothermal_3d.cpp
         tests/test_nonlinear_electrothermal_3d.cpp
+        tests/test_transient_electrothermal_3d.cpp
         tests/test_floating_electrodes_3d.cpp
         tests/test_floating_conductor_schur_3d.cpp
         tests/test_floating_schur_convergence_3d.cpp
