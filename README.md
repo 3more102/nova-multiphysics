@@ -30,14 +30,14 @@ The following reflects functionality represented in the current source tree. **E
 | **2D transient heat** | Consistent capacity matrix; Backward Euler and Crank–Nicolson; time-dependent loads and boundary data; adaptive timestep control and restart | Experimental |
 | **3D steady diffusion / conduction** | Continuous P1 tetrahedra; isotropic or SPD tensor coefficients; material regions, heat sources, mixed boundaries and flux diagnostics | Experimental |
 | **3D transient heat** | P1 tetrahedra; implicit time integration, adaptive steps, per-step energy accounting, time-varying boundary data, state checkpoints | Experimental |
-| **3D electrostatics** | Scalar/tensor permittivity, electric potential, field/displacement and energy; electrode-charge and capacitance diagnostics; restricted floating-terminal Schur workflow | Experimental |
+| **3D electrothermal FEM** | Stationary DC conduction → Joule heating → thermal diffusion; temperature-dependent sigma(T)/k(T), segregated implicit transient coupling, adaptive step doubling and versioned step-boundary restart | Experimental C++ APIs |\n| **3D electrostatics** | Scalar/tensor permittivity, electric potential, field/displacement and energy; electrode-charge and capacitance diagnostics; restricted floating-terminal Schur workflow | Experimental |
 | **3D linear elasticity** | Small-strain isotropic P1 tetrahedral solver with fully prescribed nodal displacements, body forces, face tractions, and stress/strain recovery | Experimental C++ API |
 | **Mesh infrastructure** | Validated 2D triangle/3D tetrahedron topology, quality metrics, 2D uniform refinement, 3D uniform and marked local refinement, field transfer | Developing |
 | **3D error indicators / adaptation** | P1 cell residuals, interior flux jumps and selected natural-boundary residuals; restricted one-cycle solve–estimate–mark–refine–resolve workflow | Experimental |
 | **Numerical solvers** | CSR sparse algebra; CG, BiCGSTAB, restarted GMRES; Jacobi and CG-only IC(0); Newton nonlinear solves | Core components |
 | **Interoperability / output** | First-order Gmsh MSH 2.2/4.1 ASCII import; legacy VTK, ParaView PVD time series; installable CMake SDK | Supported development workflows |
 
-**Important scope boundaries:** These are individual numerical capabilities, not a unified multiphysics coupling system. The project does not currently provide an integrated desktop GUI, general CAD kernel, automatic production-grade 3D meshing, validated fluid/EM solvers, or commercial engineering certification.
+**Important scope boundaries:** NOVA contains experimental dedicated electrothermal coupling, but not a unified general-purpose multiphysics coupling framework. The project does not currently provide an integrated desktop GUI, general CAD kernel, automatic production-grade 3D meshing, validated fluid/EM solvers, or commercial engineering certification.
 
 ### Physics and numerical documentation
 
@@ -47,7 +47,7 @@ The following reflects functionality represented in the current source tree. **E
 | Transient 3D heat, time integrators and energy diagnostics | [Transient 3D heat](docs/TRANSIENT_HEAT_3D.md) |
 | Imported-mesh transient CLI | [Gmsh transient heat](docs/GMSH_TRANSIENT_HEAT_3D.md) |
 | 2D/3D temporal adaptation | [Adaptive heat 2D](docs/ADAPTIVE_HEAT_2D.md) · [Adaptive heat 3D](docs/ADAPTIVE_HEAT_3D.md) |
-| Electrostatics, capacitance and floating conductors | [3D electrostatics](docs/ELECTROSTATICS_3D.md) |
+| Electrothermal adaptive stepping and restart | [Adaptive electrothermal integration](docs/ADAPTIVE_TRANSIENT_ELECTROTHERMAL_3D.md) · [Versioned checkpoint](docs/ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D.md) |\n| Electrostatics, capacitance and floating conductors | [3D electrostatics](docs/ELECTROSTATICS_3D.md) |
 | 3D mesh refinement and residual indicators | [Tetrahedral refinement](docs/UNIFORM_TETRA_REFINEMENT_3D.md) · [Residual error indicators](docs/RESIDUAL_ERROR_ESTIMATOR_3D.md) |
 | Conventions and analytical verification | [Numerical conventions](docs/NUMERICAL_CONVENTIONS.md) · [3D spatial error norms](docs/VERIFICATION_3D_ERROR_NORMS.md) |
 

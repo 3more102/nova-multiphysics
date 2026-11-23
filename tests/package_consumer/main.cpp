@@ -15,6 +15,7 @@
 #include "nova/physics/floating_conductor_schur_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/thermal_checkpoint_3d.hpp"
+#include "nova/io/adaptive_electrothermal_checkpoint_3d.hpp"
 
 #include <array>
 #include <cmath>
@@ -207,6 +208,21 @@ int main() {
         accepted_observer_calls != 1U ||
         adaptive_solution.accepted_steps.front().next_time_step <= 0.0)
         return 28;
+
+    // Installed SDK integration: single-file adaptive state plus numerical
+    // controller compatibility checking and exact restart metadata.
+    std::ostringstream adaptive_checkpoint_text;
+    nova::io::write_adaptive_electrothermal_checkpoint_3d(
+        adaptive_checkpoint_text, box.mesh, "sdk_probe_v1", adaptive_thermal,
+        {adaptive_solution.final_time, adaptive_solution.temperature,
+         adaptive_solution.accepted_steps.front().next_time_step});
+    std::istringstream adaptive_checkpoint_stream(adaptive_checkpoint_text.str());
+    const auto recovered = nova::io::read_adaptive_electrothermal_checkpoint_3d(
+        adaptive_checkpoint_stream, box.mesh, "sdk_probe_v1", adaptive_thermal);
+    if (recovered.temperature != adaptive_solution.temperature ||
+        recovered.time != adaptive_solution.final_time ||
+        recovered.next_time_step != adaptive_solution.accepted_steps.front().next_time_step)
+        return 29;
 
     // Exercise the installed Neumann-boundary residual overload and link symbol.
     std::vector<NeumannResidualFace3D> natural_faces;
