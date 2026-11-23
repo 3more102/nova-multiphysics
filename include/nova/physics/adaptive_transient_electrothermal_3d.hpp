@@ -10,6 +10,22 @@ namespace nova::physics {
 
 struct AdaptiveTransientElectrothermal3DStep;
 
+// Cumulative accepted/rejected trial counts and integrated heat budgets.
+// Restore this from a checkpoint to retain run-wide diagnostics. Exact
+// individual attempt/step records remain local to each solver invocation.
+struct AdaptiveTransientElectrothermal3DProgress {
+    std::size_t attempted_steps{};
+    std::size_t accepted_steps{};
+    std::size_t rejected_steps{};
+    std::size_t nonlinear_iterations{};
+    double source_energy{};
+    double neumann_energy{};
+    double robin_energy{};
+    double dirichlet_energy{};
+    double balance_residual{};
+    double latest_heat_content{};
+};
+
 // Experimental adaptive-step, fixed-mesh, Backward Euler electrothermal
 // coupling. Each trial compares one full step to two independently
 // converged half steps. Accepted state uses the TWO half steps.
@@ -26,6 +42,9 @@ struct AdaptiveTransientElectrothermal3DOptions {
     double maximum_growth_factor{2.0}; // >1
     std::size_t maximum_attempts{10000U};
     std::size_t maximum_accepted_steps{5000U};
+    // Optional cumulative totals from the last accepted restart boundary.
+    // Maximum attempt/accepted-step caps still apply per invocation.
+    AdaptiveTransientElectrothermal3DProgress previous_progress{};
     // Invoked exactly once AFTER an accepted step is committed, never for
     // full-step comparisons or rejected trials. The temperature is the
     // accepted two-half-step field, and can be serialized with the existing
@@ -68,6 +87,8 @@ struct AdaptiveTransientElectrothermal3DStep {
     // heat_content is from the second half-step; all energy inputs and
     // balance residuals are summed, and time is the accepted end time.
     fem::TransientHeatStepDiagnostics3D heat_budget{};
+    // Cumulative totals as of this committed step (including pre-restart work).
+    AdaptiveTransientElectrothermal3DProgress progress{};
 };
 
 // On early termination, temperature and final_time refer ONLY to the
@@ -83,6 +104,7 @@ struct AdaptiveTransientElectrothermal3DResult {
     std::vector<AdaptiveTransientElectrothermal3DStep> accepted_steps;
     DCJouleHeating3DResult last_electrical;
     std::size_t rejected_steps{};
+    AdaptiveTransientElectrothermal3DProgress progress{};
 };
 
 // The local temporal error indicator is the maximal normalized nodal
