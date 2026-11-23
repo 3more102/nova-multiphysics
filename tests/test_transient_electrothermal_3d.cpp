@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "nova/physics/transient_electrothermal_3d.hpp"
+#include "nova/physics/adaptive_transient_electrothermal_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -176,4 +177,174 @@ NOVA_TEST(transient_electrothermal_3d_rejects_incompatible_materials_and_options
     opts = {};
     opts.max_coupling_iterations = 0;
     NOVA_REQUIRE(rejects([&] { (void)solve_transient_electrothermal_3d(p, opts); }));
+}
+
+NOVA_TEST(adaptive_transient_electrothermal_3d_constant_joule_ramp_energy) {
+    const auto p = make_unit_coupling();
+    AdaptiveTransientElectrothermal3DOptions o;
+    o.initial_time_step = 0.10;
+    o.maximum_time_step = 0.10;
+    o.end_time = 0.14;
+    const auto r = solve_adaptive_transient_electrothermal_3d(p, o);
+    NOVA_REQUIRE(r.completed);
+    NOVA_REQUIRE(r.stop_reason ==
+                 AdaptiveTransientElectrothermal3DStopReason::Completed);
+    NOVA_REQUIRE(r.rejected_steps == 0);
+    NOVA_REQUIRE(r.accepted_steps.size() == 2);
+    NOVA_REQUIRE(r.attempts.size() == 2);
+    NOVA_REQUIRE_NEAR(r.final_time, 0.14, 1e-14);
+    for (const double t : r.temperature) {
+        NOVA_REQUIRE_NEAR(t, 314.0, 2e-8);
+    }
+    double integrated_joules = 0.0;
+    double elapsed = 0.0;
+    for (const auto& step : r.accepted_steps) {
+        NOVA_REQUIRE(step.max_normalized_local_error <= 1.0);
+        NOVA_REQUIRE(step.nonlinear_iterations >= 3U);
+        NOVA_REQUIRE_NEAR(step.joule_power_watts, 200.0, 1e-7);
+        NOVA_REQUIRE_NEAR(step.heat_budget.source_energy,
+                          200.0 * step.time_step, 2e-8);
+        NOVA_REQUIRE_NEAR(step.heat_budget.balance_residual, 0.0, 1e-8);
+        elapsed += step.time_step;
+        integrated_joules += step.heat_budget.source_energy;
+    }
+    NOVA_REQUIRE_NEAR(elapsed, 0.14, 1e-14);
+    NOVA_REQUIRE_NEAR(integrated_joules, 28.0, 2e-8);
+    NOVA_REQUIRE_NEAR(r.accepted_steps.back().heat_budget.heat_content,
+                      2.0 * 314.0, 2e-7);
+    for (const auto t : p.thermal.initial_temperature)
+        NOVA_REQUIRE_NEAR(t, 300.0, 0.0);
+}
+
+NOVA_TEST(adaptive_transient_electrothermal_3d_rejects_and_improves_nonlinear_ode) {
+    auto p = make_unit_coupling();
+    p.electrical_conductivity_scale = [](double t) {
+        return 1.0 + 0.01 * (t - 300.0);
+    };
+    p.thermal_conductivity_scale = [](double t) {
+        return 1.0 + 0.01 * (t - 300.0);
+    };
+    AdaptiveTransientElectrothermal3DOptions o;
+    o.end_time = 0.3;
+    o.initial_time_step = 0.3;
+    o.maximum_time_step = 0.3;
+    o.minimum_time_step = 1e-5;
+    o.absolute_error_kelvin = 0.05;
+    o.relative_error = 0.0;
+    const auto r = solve_adaptive_transient_electrothermal_3d(p, o);
+    NOVA_REQUIRE(r.completed);
+    NOVA_REQUIRE(r.rejected_steps >= 1U);
+    NOVA_REQUIRE(r.accepted_steps.size() >= 3U);
+    NOVA_REQUIRE(r.attempts.size() == r.accepted_steps.size() + r.rejected_steps);
+    NOVA_REQUIRE(r.attempts.front().nonlinear_converged);
+    NOVA_REQUIRE(!r.attempts.front().accepted);
+    NOVA_REQUIRE(r.attempts.front().max_normalized_local_error > 1.0);
+    NOVA_REQUIRE_NEAR(r.final_time, 0.3, 1e-12);
+    const double exact_t = 300.0 + 100.0 * (std::exp(0.3) - 1.0);
+    for (const auto t : r.temperature) {
+        NOVA_REQUIRE(std::abs(t - exact_t) < 1.5);
+        // Compare with one coarse BE step: D=100*0.3/(1-0.3).
+        NOVA_REQUIRE(std::abs(t - exact_t) <
+                     std::abs(300.0 + 30.0 / 0.7 - exact_t));
+    }
+    for (const auto& step : r.accepted_steps) {
+        NOVA_REQUIRE(step.max_normalized_local_error <= 1.0);
+        NOVA_REQUIRE(step.heat_budget.source_energy > 0.0);
+        NOVA_REQUIRE_NEAR(step.heat_budget.balance_residual, 0.0, 1e-7);
+    }
+}
+
+NOVA_TEST(adaptive_transient_electrothermal_3d_nonlinear_failure_rolls_back) {
+    const auto p = make_unit_coupling();
+    AdaptiveTransientElectrothermal3DOptions o;
+    o.coupling.max_coupling_iterations = 1;
+    o.initial_time_step = 0.02;
+    o.minimum_time_step = 0.005;
+    o.end_time = 0.10;
+    const auto r = solve_adaptive_transient_electrothermal_3d(p, o);
+    NOVA_REQUIRE(!r.completed);
+    NOVA_REQUIRE(r.stop_reason ==
+                 AdaptiveTransientElectrothermal3DStopReason::MinimumTimeStep);
+    NOVA_REQUIRE(r.accepted_steps.empty());
+    NOVA_REQUIRE(r.rejected_steps >= 3U);
+    NOVA_REQUIRE(r.attempts.size() == r.rejected_steps);
+    NOVA_REQUIRE_NEAR(r.final_time, 0.0, 0.0);
+    for (const auto& attempt : r.attempts) {
+        NOVA_REQUIRE(!attempt.accepted);
+        NOVA_REQUIRE(!attempt.nonlinear_converged);
+        NOVA_REQUIRE(std::isinf(attempt.max_normalized_local_error));
+    }
+    for (const auto t : r.temperature)
+        NOVA_REQUIRE_NEAR(t, 300.0, 0.0);
+}
+
+NOVA_TEST(adaptive_transient_electrothermal_3d_attempt_and_step_caps) {
+    auto p = make_unit_coupling();
+    p.electrical_conductivity_scale = [](double t) {
+        return 1.0 + 0.01 * (t - 300.0);
+    };
+    AdaptiveTransientElectrothermal3DOptions o;
+    o.initial_time_step = 0.3;
+    o.maximum_time_step = 0.3;
+    o.end_time = 0.3;
+    o.absolute_error_kelvin = 0.05;
+    o.relative_error = 0.0;
+    o.maximum_attempts = 1U;
+    const auto capped = solve_adaptive_transient_electrothermal_3d(p, o);
+    NOVA_REQUIRE(!capped.completed);
+    NOVA_REQUIRE(capped.stop_reason ==
+                 AdaptiveTransientElectrothermal3DStopReason::AttemptLimit);
+    NOVA_REQUIRE(capped.rejected_steps == 1U);
+    NOVA_REQUIRE(capped.accepted_steps.empty());
+    NOVA_REQUIRE_NEAR(capped.final_time, 0.0, 0.0);
+    p = make_unit_coupling();
+    o = {};
+    o.initial_time_step = 0.1;
+    o.maximum_time_step = 0.1;
+    o.end_time = 0.15;
+    o.maximum_accepted_steps = 1U;
+    const auto capped_steps = solve_adaptive_transient_electrothermal_3d(p, o);
+    NOVA_REQUIRE(!capped_steps.completed);
+    NOVA_REQUIRE(capped_steps.stop_reason ==
+                 AdaptiveTransientElectrothermal3DStopReason::AcceptedStepLimit);
+    NOVA_REQUIRE(capped_steps.accepted_steps.size() == 1U);
+    NOVA_REQUIRE_NEAR(capped_steps.final_time, 0.1, 1e-14);
+    for (const auto t : capped_steps.temperature)
+        NOVA_REQUIRE_NEAR(t, 310.0, 2e-8);
+}
+
+NOVA_TEST(adaptive_transient_electrothermal_3d_final_short_step_and_options) {
+    const auto p = make_unit_coupling();
+    AdaptiveTransientElectrothermal3DOptions o;
+    o.initial_time_step = 0.05;
+    o.maximum_time_step = 0.05;
+    o.minimum_time_step = 0.01;
+    o.end_time = 0.002;  // final physical interval is below minimum step
+    const auto r = solve_adaptive_transient_electrothermal_3d(p, o);
+    NOVA_REQUIRE(r.completed);
+    NOVA_REQUIRE(r.accepted_steps.size() == 1U);
+    NOVA_REQUIRE_NEAR(r.final_time, 0.002, 1e-14);
+    for (const auto t : r.temperature)
+        NOVA_REQUIRE_NEAR(t, 300.2, 2e-8);
+    o = {};
+    o.minimum_time_step = 0.2;
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_adaptive_transient_electrothermal_3d(p, o);
+    }));
+    o = {};
+    o.absolute_error_kelvin = 0.0;
+    o.relative_error = 0.0;
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_adaptive_transient_electrothermal_3d(p, o);
+    }));
+    o = {};
+    o.end_time = 0.0;
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_adaptive_transient_electrothermal_3d(p, o);
+    }));
+    o = {};
+    o.maximum_attempts = 0U;
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_adaptive_transient_electrothermal_3d(p, o);
+    }));
 }
