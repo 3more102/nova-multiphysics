@@ -181,10 +181,56 @@ void read_matching_options(std::istream& in,
     read_matching_setting(in, "electrical_preconditioner", static_cast<int>(e.preconditioner));
 }
 
+void write_progress(
+    std::ostream& output,
+    const physics::AdaptiveTransientElectrothermal3DProgress& progress
+) {
+    write_setting(output, "progress_attempted", progress.attempted_steps);
+    write_setting(output, "progress_accepted", progress.accepted_steps);
+    write_setting(output, "progress_rejected", progress.rejected_steps);
+    write_setting(output, "progress_iterations", progress.nonlinear_iterations);
+    write_setting(output, "progress_source_energy", progress.source_energy);
+    write_setting(output, "progress_neumann_energy", progress.neumann_energy);
+    write_setting(output, "progress_robin_energy", progress.robin_energy);
+    write_setting(output, "progress_dirichlet_energy", progress.dirichlet_energy);
+    write_setting(output, "progress_balance_residual", progress.balance_residual);
+    write_setting(output, "progress_heat_content", progress.latest_heat_content);
+}
+
+physics::AdaptiveTransientElectrothermal3DProgress
+read_progress(std::istream& input) {
+    physics::AdaptiveTransientElectrothermal3DProgress progress;
+    progress.attempted_steps = read_number<std::size_t>(input, "progress_attempted");
+    progress.accepted_steps = read_number<std::size_t>(input, "progress_accepted");
+    progress.rejected_steps = read_number<std::size_t>(input, "progress_rejected");
+    progress.nonlinear_iterations = read_number<std::size_t>(
+        input, "progress_iterations");
+    progress.source_energy = read_number<double>(input, "progress_source_energy");
+    progress.neumann_energy = read_number<double>(input, "progress_neumann_energy");
+    progress.robin_energy = read_number<double>(input, "progress_robin_energy");
+    progress.dirichlet_energy = read_number<double>(input, "progress_dirichlet_energy");
+    progress.balance_residual = read_number<double>(input, "progress_balance_residual");
+    progress.latest_heat_content = read_number<double>(input, "progress_heat_content");
+    return progress;
+}
+
+void validate_progress(const physics::AdaptiveTransientElectrothermal3DProgress& p) {
+    if (p.accepted_steps > p.attempted_steps ||
+        p.rejected_steps != p.attempted_steps - p.accepted_steps) {
+        throw std::invalid_argument("Invalid adaptive checkpoint cumulative counts.");
+    }
+    for (const double v : {p.source_energy, p.neumann_energy, p.robin_energy,
+                           p.dirichlet_energy, p.balance_residual,
+                           p.latest_heat_content}) {
+        check_finite(v, "cumulative energy");
+    }
+}
+
 void validate_state(const physics::AdaptiveTransientElectrothermal3DOptions& o,
                     const AdaptiveElectrothermalCheckpoint3D& state) {
     check_finite(state.time, "time");
     check_finite(state.next_time_step, "next timestep");
+    validate_progress(state.progress);
     if (!(state.time >= o.coupling.thermal_time.start_time) ||
         !(state.time <= o.end_time) ||
         state.next_time_step < o.minimum_time_step ||
@@ -207,16 +253,21 @@ void write_adaptive_electrothermal_checkpoint_3d(
     }
     validate_options(options);
     validate_state(options, checkpoint);
+    if (!checkpoint.progress_complete) {
+        throw std::invalid_argument(
+            "Incomplete legacy adaptive checkpoint progress cannot be serialized as v2.");
+    }
     if (!output.good()) {
         throw std::runtime_error("Adaptive electrothermal checkpoint output is not writable.");
     }
     std::ostringstream staged;
     staged.imbue(std::locale::classic());
     staged << std::setprecision(std::numeric_limits<double>::max_digits10);
-    staged << "NOVA_ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D\nversion 1\n";
+    staged << "NOVA_ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D\nversion 2\n";
     staged << "model_id " << model_id << '\n';
     write_options(staged, options);
     write_setting(staged, "next_dt", checkpoint.next_time_step);
+    write_progress(staged, checkpoint.progress);
     staged << "thermal_state\n";
     // The pre-existing thermal checkpoint validates the mesh, state size,
     // nonfinite entries and topology, and writes to this temporary stream.
@@ -242,7 +293,8 @@ AdaptiveElectrothermalCheckpoint3D read_adaptive_electrothermal_checkpoint_3d(
     }
     validate_options(expected_options);
     expect(input, "NOVA_ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D");
-    if (read_number<unsigned>(input, "version") != 1U) {
+    const auto version = read_number<unsigned>(input, "version");
+    if (version != 1U && version != 2U) {
         throw std::invalid_argument("Unsupported adaptive electrothermal checkpoint version.");
     }
     expect(input, "model_id");
@@ -254,6 +306,11 @@ AdaptiveElectrothermalCheckpoint3D read_adaptive_electrothermal_checkpoint_3d(
     read_matching_options(input, expected_options);
     AdaptiveElectrothermalCheckpoint3D result;
     result.next_time_step = read_number<double>(input, "next_dt");
+    if (version == 2U) {
+        result.progress = read_progress(input);
+    } else {
+        result.progress_complete = false;
+    }
     expect(input, "thermal_state");
     auto thermal = read_transient_heat_checkpoint_3d(input, expected_mesh);
     result.time = thermal.time;
