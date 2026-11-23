@@ -1,4 +1,4 @@
-# Versioned adaptive electrothermal restart (experimental)
+# Versioned adaptive electrothermal restart and cumulative progress (experimental)
 
 The single-stream C++20 checkpoint API in
 `nova/io/adaptive_electrothermal_checkpoint_3d.hpp` stores an **accepted**
@@ -6,9 +6,13 @@ The single-stream C++20 checkpoint API in
 earlier, application-managed pair of a thermal checkpoint and a separately
 stored proposed controller timestep.
 
+The writer emits **version 2**; the reader also accepts legacy v1 checkpoints.
+
 The record includes:
 
 - the accepted physical time and full nodal P1 temperature vector;
+- cumulative attempted/accepted/rejected counts, accepted-comparison nonlinear
+  iterations and running signed thermal energy integrals;
 - `next_time_step`, the adaptive controller's proposed next trial size;
 - exact mesh node coordinates, tetrahedron indices and node ordering;
 - an explicit, caller-assigned `model_id` compatibility token;
@@ -41,7 +45,7 @@ options.on_accepted_step = [&](const auto& step, const auto& field) {
     std::ofstream output("checkpoint.tmp", std::ios::trunc);
     nova::io::write_adaptive_electrothermal_checkpoint_3d(
         output, problem.electrical.mesh, model_id, options,
-        {step.time, field, step.next_time_step});
+        {step.time, field, step.next_time_step, step.progress});
     output.close();
     if (!output) throw std::runtime_error("Checkpoint file write failed");
     // Verify and atomically replace the prior checkpoint at the application
@@ -55,6 +59,10 @@ const auto state = nova::io::read_adaptive_electrothermal_checkpoint_3d(
 problem.thermal.initial_temperature = state.temperature;
 options.coupling.thermal_time.start_time = state.time;
 options.initial_time_step = state.next_time_step;
+if (!state.progress_complete) {
+    throw std::runtime_error("Legacy checkpoint has no cumulative accounting");
+}
+options.previous_progress = state.progress;
 const auto resumed =
     nova::physics::solve_adaptive_transient_electrothermal_3d(
         problem, options);
@@ -72,11 +80,11 @@ All other stored numerical settings must match the read-time options
 exactly. The checkpoint's time must fall within the configured physical
 window, and the proposed timestep must stay within the configured bounds.
 
-## Format version 1
+## Format version 2
 
 ```text
 NOVA_ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D
-version 1
+version 2
 model_id <opaque-identifier>
 end_time <double>
 min_dt <double>
@@ -101,6 +109,16 @@ electrical_relative_tolerance <double>
 electrical_absolute_tolerance <double>
 electrical_preconditioner <enum-integer>
 next_dt <double>
+progress_attempted <unsigned>
+progress_accepted <unsigned>
+progress_rejected <unsigned>
+progress_iterations <unsigned>
+progress_source_energy <double>
+progress_neumann_energy <double>
+progress_robin_energy <double>
+progress_dirichlet_energy <double>
+progress_balance_residual <double>
+progress_heat_content <double>
 thermal_state
 NOVA_THERMAL_CHECKPOINT_3D 1
 ... validated mesh / time / P1 field ...
@@ -122,22 +140,29 @@ numerical-settings equality are necessary but not sufficient evidence
 of physical model equivalence. Reconstruct the same model and use
 deterministic callbacks to obtain reproducible step-boundary restart.
 
-Attempt and accepted-step limits apply to **each API invocation**, not
-to all previous invocations combined. Separate application bookkeeping
-is required for cumulative compute-budget auditing and history/energy
-accounting. No MPI state, adaptive mesh genealogy, time-dependent
+Attempt and accepted-step limits still apply **per solver invocation**.
+`options.previous_progress` carries run-wide counters and integrated energy
+across restarts. It does **not** change the per-invocation stop limits,
+reproduce historical individual attempt/step records, or include the nonlinear
+iteration cost of rejected trials. No MPI state, adaptive mesh genealogy, time-dependent
 external solver state or implicit state in callbacks is captured.
 
-The API stages serialization in memory, not an atomic filesystem
+The stream API stages serialization in memory, not an atomic filesystem
 transaction. Write a new temporary file, close and verify it, then
 replace the old checkpoint safely using your platform's file APIs. To
 avoid periodic memory spikes, consider checkpoint frequency and
 application-level rotation. The reader rejects malformed, nonfinite,
-truncated, version-incompatible or unexpectedly appended content.
+truncated, version-incompatible or unexpectedly appended content. A version-1
+checkpoint is accepted with `progress_complete=false`: no previous counters
+or energy integrals can be inferred from its temperature. The v2 writer
+refuses to claim complete accounting from such a legacy checkpoint unless
+the caller explicitly reconstructs and marks the accounting complete.
 
 ## Verification
 
-The dedicated tests validate exact-double roundtrip, expected-model and
+The dedicated tests validate cumulative-progress exact roundtrip,
+legacy-version handling, restart count/energy equivalence, exact-double
+roundtrip, expected-model and
 controller incompatibility, altered mesh ordering/coordinates, version
 corruption, trailing/truncated records, invalid writes without partial
 stream output and a nonlinear electrothermal full-vs-restarted integration.
