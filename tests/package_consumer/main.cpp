@@ -19,6 +19,7 @@
 
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -223,6 +224,22 @@ int main() {
         recovered.time != adaptive_solution.final_time ||
         recovered.next_time_step != adaptive_solution.accepted_steps.front().next_time_step)
         return 29;
+
+    // Verify the installed SDK exports recoverable filesystem checkpoint symbols.
+    const auto sdk_path = std::filesystem::temp_directory_path() /
+        "nova_sdk_adaptive_checkpoint_file_probe.chk";
+    nova::io::save_adaptive_electrothermal_checkpoint_file_3d(
+        sdk_path, box.mesh, "sdk_probe_v1", adaptive_thermal,
+        {adaptive_solution.final_time, adaptive_solution.temperature,
+         adaptive_solution.accepted_steps.front().next_time_step});
+    const auto disk_recovered = nova::io::load_adaptive_electrothermal_checkpoint_file_3d(
+        sdk_path, box.mesh, "sdk_probe_v1", adaptive_thermal);
+    std::filesystem::remove(sdk_path);
+    auto sdk_backup = sdk_path;
+    sdk_backup += ".bak";
+    std::filesystem::remove(sdk_backup);
+    if (disk_recovered.temperature != adaptive_solution.temperature ||
+        disk_recovered.time != adaptive_solution.final_time) return 30;
 
     // Exercise the installed Neumann-boundary residual overload and link symbol.
     std::vector<NeumannResidualFace3D> natural_faces;
