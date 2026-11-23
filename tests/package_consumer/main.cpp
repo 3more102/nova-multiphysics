@@ -1,6 +1,7 @@
 #include "nova/physics/electrothermal_3d.hpp"
 #include "nova/physics/nonlinear_electrothermal_3d.hpp"
 #include "nova/physics/transient_electrothermal_3d.hpp"
+#include "nova/physics/adaptive_transient_electrothermal_3d.hpp"
 #include "nova/fem/adaptive_diffusion_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
@@ -176,6 +177,25 @@ int main() {
         std::abs(transient_solution.accepted_steps.back().heat_budget.balance_residual)
              > 1e-7)
         return 27;
+
+    // The adaptive time-step controller must link from the installed SDK,
+    // preserve discrete energy accounting and expose accepted-step telemetry.
+    nova::physics::AdaptiveTransientElectrothermal3DOptions adaptive_thermal;
+    adaptive_thermal.coupling = transient_options;
+    adaptive_thermal.end_time = 0.02;
+    adaptive_thermal.initial_time_step = 0.02;
+    adaptive_thermal.maximum_time_step = 0.02;
+    adaptive_thermal.absolute_error_kelvin = 0.1;
+    const auto adaptive_solution =
+        nova::physics::solve_adaptive_transient_electrothermal_3d(
+            transient_coupling, adaptive_thermal);
+    if (!adaptive_solution.completed ||
+        adaptive_solution.accepted_steps.size() != 1U ||
+        adaptive_solution.rejected_steps != 0U ||
+        std::abs(adaptive_solution.final_time - 0.02) > 1e-12 ||
+        std::abs(adaptive_solution.accepted_steps.front()
+                     .heat_budget.balance_residual) > 1e-7)
+        return 28;
 
     // Exercise the installed Neumann-boundary residual overload and link symbol.
     std::vector<NeumannResidualFace3D> natural_faces;
