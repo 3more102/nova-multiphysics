@@ -4,8 +4,8 @@ Public API: `nova/physics/nonlinear_electrothermal_3d.hpp`,
 `solve_nonlinear_electrothermal_3d`.
 
 This builds on the separately merged, one-way electrical/Joule/thermal FEM
-workflow. It is a **stationary temperature-dependent electrical conductivity**
-Picard iteration. It is not a transient or fully monolithic multiphysics
+workflow. It is a **stationary temperature-dependent electrical and optional thermal
+conductivity** Picard iteration. It is not a transient or fully monolithic multiphysics
 solver.
 
 ## Model and units
@@ -20,7 +20,11 @@ At iteration `n`:
 - Solve `-div(sigma^n grad(V^n)) = s_I`, with electrical boundary data.
 - Calculate `E=-grad(V)`, `J=sigma^n E`, and `q_J=E dot J >= 0`
   using the existing one-way flux/heat assembly.
-- Solve `-div(k grad(T_solved^n)) = q_base + q_J` with thermal boundary data.
+- If a thermal law is supplied, form `k_e^n = k_ref_e * k_scale(Tbar_e^n)`
+  using the same cell-averaged iterate, then solve
+  `-div(k^n grad(T_solved^n)) = q_base + q_J`.
+- Without a thermal law, the base thermal conductivity remains unchanged,
+  including its original spatial-scalar and spatial-tensor representations.
 - If not converged, set `T^(n+1) = T^n + relaxation*(T_solved^n-T^n)`.
 
 The two physics must use **identical** tetrahedral connectivity and coordinates.
@@ -28,8 +32,11 @@ Electrical conductivity must be provided entirely by
 `electrical.cell_diffusivity` or `electrical.cell_diffusivity_tensors`.
 Spatial callbacks are intentionally rejected because this API samples a
 cell-average nodal temperature, not the quadrature-point temperature.
-Thermal scalar/tensor/cellwise materials and supported Dirichlet/Neumann/Robin
-boundary conditions remain available through the underlying solver.
+For temperature-dependent `k(T)`, thermal material must also use precisely
+one complete cellwise scalar or SPD-tensor representation (no spatial callback).
+The scaling laws must return **strictly positive finite** multipliers.
+Without `k(T)`, thermal spatial scalar/tensor/cellwise materials remain
+available. Supported Dirichlet, Neumann and Robin conditions are unchanged.
 
 The solver checks **unrelaxed** differences, so tiny relaxation cannot
 misleadingly declare success:
@@ -61,6 +68,14 @@ p.initial_temperature_kelvin = 300.0;
 p.conductivity_scale = [](double t_kelvin) {
     return 1.0 + 0.003 * (t_kelvin - 300.0);
 };
+// Optional: temperature-dependent thermal conductivity in W/(m K).
+// With this enabled, base.thermal must have complete per-cell material.
+p.base.thermal.diffusivity = {};
+p.base.thermal.cell_diffusivity.assign(
+    p.base.thermal.mesh.elements.size(), 4.0);
+p.thermal_conductivity_scale = [](double t_kelvin) {
+    return 1.0 + 0.01 * (t_kelvin - 300.0);
+};
 const auto result = nova::physics::solve_nonlinear_electrothermal_3d(p);
 if (!result.converged) {
     // Inspect result.iterations and result.max_fixed_point_residual_kelvin.
@@ -75,6 +90,12 @@ if (!result.converged) {
   (200 W for 2 S/m, 10 V across a unit cube, and 4 W/(m K)).
 - Positive feedback, conductivity consistency and voltage gauge invariance.
 - Constant-voltage SPD tensor support with additive 10 W base heating.
+- Thermal `k(T)` regression showing reduced interior temperature for a
+  positive thermal-conductivity slope, with unchanged 200 W Joule power.
+- Coupled `sigma(T)` and `k(T)` gauge invariance and energy budget.
+- Tensor thermal `k(T)` coefficients with additive spatial+cell heat sources.
+- Backward-compatible thermal spatial callback when `k(T)` is absent.
+- Invalid thermal scaling laws, mixed thermal materials and incomplete arrays.
 - Iteration-cap nonconvergence and tiny-relaxation false-convergence guard.
 - Invalid laws, material representations, data lengths, initial conditions,
   and nonlinear solver options.
@@ -91,8 +112,11 @@ verified in GitHub Actions.
 - Conductivity is held **constant inside each cell**, based on the cell
   average of the P1 nodal temperature. This is a discretization choice;
   finer cellwise material resolution can change the result.
-- Electrical conductivity may depend on temperature, but thermal conductivity
-  and other coefficients do not vary with temperature inside this algorithm.
+- Electrical and thermal conductivity can depend on **cell-average** nodal
+  temperature through independent dimensionless positive scaling laws.
+  Other coefficients and constitutive effects are temperature-independent.
+- The returned energy budget is an assembled discrete weak-form balance; it
+  is not an independently certified continuum heat-flux calculation.
 - Fixed-point convergence is **not proof of uniqueness**, continuum accuracy,
   energy-norm convergence or global nonlinear stability. No automatic line
   search, Newton Jacobian, temperature-dependent contact resistance, radiation,

@@ -30,16 +30,23 @@ void validate_options(const NonlinearElectrothermal3DProblem& problem,
         throw std::invalid_argument("Invalid electrothermal Picard solver options.");
     }
 
-    const auto& e = problem.base.electrical;
-    const auto cells = e.mesh.elements.size();
-    const bool scalar = !e.cell_diffusivity.empty();
-    const bool tensor = !e.cell_diffusivity_tensors.empty();
-    if (scalar == tensor || e.diffusivity || e.diffusivity_tensor ||
-        (scalar && e.cell_diffusivity.size() != cells) ||
-        (tensor && e.cell_diffusivity_tensors.size() != cells)) {
-        throw std::invalid_argument(
-            "Electrothermal feedback requires exactly one complete cellwise "
-            "scalar or tensor reference conductivity field.");
+    const auto require_cellwise_material = [](const fem::ScalarDiffusion3DProblem& p) {
+        const auto cells = p.mesh.elements.size();
+        const bool scalar = !p.cell_diffusivity.empty();
+        const bool tensor = !p.cell_diffusivity_tensors.empty();
+        if (scalar == tensor || p.diffusivity || p.diffusivity_tensor ||
+            (scalar && p.cell_diffusivity.size() != cells) ||
+            (tensor && p.cell_diffusivity_tensors.size() != cells)) {
+            throw std::invalid_argument(
+                "Temperature-dependent conductivity requires exactly one "
+                "complete per-cell scalar or tensor reference material.");
+        }
+    };
+    require_cellwise_material(problem.base.electrical);
+    // Preserve legacy spatial/tensor thermal material paths unless k(T)
+    // is explicitly requested.
+    if (problem.thermal_conductivity_scale) {
+        require_cellwise_material(problem.base.thermal);
     }
 }
 
@@ -51,47 +58,47 @@ double checked_product(double base, double scale) {
     return value;
 }
 
-void update_electrical_material(
-    const NonlinearElectrothermal3DProblem& problem,
+void update_scaled_cell_material(
+    const fem::ScalarDiffusion3DProblem& original,
+    fem::ScalarDiffusion3DProblem& updated,
     const std::vector<double>& temperature,
-    fem::ScalarDiffusion3DProblem& electrical
+    const std::function<double(double)>& scaling_law
 ) {
-    const auto& original = problem.base.electrical;
     for (std::size_t i = 0; i < original.mesh.elements.size(); ++i) {
-        const auto& t = original.mesh.elements[i];
+        const auto& tetrahedron = original.mesh.elements[i];
         long double sum = 0.0L;
-        for (const auto vertex : t) {
+        for (const auto vertex : tetrahedron) {
             if (vertex >= temperature.size()) {
-                throw std::invalid_argument("Electrothermal mesh references an invalid vertex.");
+                throw std::invalid_argument(
+                    "Electrothermal material mesh references an invalid vertex.");
             }
             sum += static_cast<long double>(temperature[vertex]);
         }
-        const double cell_temperature = static_cast<double>(sum / 4.0L);
-        if (!std::isfinite(cell_temperature)) {
+        const double mean_temperature = static_cast<double>(sum / 4.0L);
+        if (!std::isfinite(mean_temperature)) {
             throw std::overflow_error("Electrothermal cell temperature is not finite.");
         }
-        const double scale = problem.conductivity_scale(cell_temperature);
+        const double scale = scaling_law(mean_temperature);
         if (!std::isfinite(scale) || scale <= 0.0) {
             throw std::invalid_argument(
-                "Electrothermal conductivity scale must be positive and finite.");
+                "Electrothermal conductivity multiplier must be positive and finite.");
         }
         if (!original.cell_diffusivity.empty()) {
-            electrical.cell_diffusivity[i] =
-                checked_product(original.cell_diffusivity[i], scale);
-            if (electrical.cell_diffusivity[i] <= 0.0) {
+            const double coefficient = checked_product(original.cell_diffusivity[i], scale);
+            if (coefficient <= 0.0) {
                 throw std::invalid_argument(
                     "Electrothermal scaled scalar conductivity must be positive.");
             }
+            updated.cell_diffusivity[i] = coefficient;
         } else {
             const auto& a = original.cell_diffusivity_tensors[i];
-            auto& b = electrical.cell_diffusivity_tensors[i];
+            auto& b = updated.cell_diffusivity_tensors[i];
             b = {
                 checked_product(a.xx, scale), checked_product(a.yy, scale),
                 checked_product(a.zz, scale), checked_product(a.xy, scale),
                 checked_product(a.xz, scale), checked_product(a.yz, scale)
             };
-            // SPD validation remains the responsibility of the shared
-            // stationary FEM conductivity assembly at quadrature points.
+            // Shared stationary FEM assembly validates tensor SPD.
         }
     }
 }
@@ -111,7 +118,14 @@ NonlinearElectrothermal3DResult solve_nonlinear_electrothermal_3d(
     NonlinearElectrothermal3DResult result;
     for (std::size_t iteration = 1; iteration <= options.max_iterations; ++iteration) {
         auto trial = problem.base;
-        update_electrical_material(problem, temperature, trial.electrical);
+        update_scaled_cell_material(
+            problem.base.electrical, trial.electrical, temperature,
+            problem.conductivity_scale);
+        if (problem.thermal_conductivity_scale) {
+            update_scaled_cell_material(
+                problem.base.thermal, trial.thermal, temperature,
+                problem.thermal_conductivity_scale);
+        }
         result.fields = solve_one_way_electrothermal_3d(
             trial, electrical_options, thermal_options);
         const auto& solved = result.fields.thermal_solution.values;
