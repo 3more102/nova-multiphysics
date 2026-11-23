@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <iomanip>
+#include <initializer_list>
 #include <istream>
 #include <limits>
 #include <locale>
