@@ -169,3 +169,137 @@ NOVA_TEST(nonlinear_electrothermal_3d_rejects_bad_feedback_and_options) {
     options.relative_tolerance = 0.0;
     NOVA_REQUIRE(rejects([&] { (void)solve_nonlinear_electrothermal_3d(p, options); }));
 }
+
+NOVA_TEST(nonlinear_electrothermal_3d_variable_thermal_k_reduces_hotspot) {
+    auto p = plate();
+    const auto constant = solve_nonlinear_electrothermal_3d(p);
+    NOVA_REQUIRE(constant.converged);
+    p.thermal_conductivity_scale = [](double t_kelvin) {
+        return 1.0 + 0.02 * (t_kelvin - 300.0);
+    };
+    const auto r = solve_nonlinear_electrothermal_3d(p);
+    NOVA_REQUIRE(r.converged);
+    NOVA_REQUIRE(r.iterations > 2);
+    NOVA_REQUIRE_NEAR(r.fields.total_joule_power_watts, 200.0, 1e-7);
+    NOVA_REQUIRE_NEAR(r.fields.thermal_balance.generated_heat, 200.0, 1e-7);
+    NOVA_REQUIRE_NEAR(r.fields.thermal_balance.signed_balance_defect, 0.0, 2e-7);
+    NOVA_REQUIRE(r.fields.thermal_balance.max_free_equation_residual < 2e-7);
+    bool found_cooler_interior = false;
+    for (std::size_t i = 0; i < p.base.thermal.mesh.nodes.size(); ++i) {
+        const double x = p.base.thermal.mesh.nodes[i].x;
+        if (x == 0.5 &&
+            r.fields.thermal_solution.values[i] <
+                constant.fields.thermal_solution.values[i] - 0.1) {
+            found_cooler_interior = true;
+        }
+    }
+    NOVA_REQUIRE(found_cooler_interior);
+    NOVA_REQUIRE(r.fields.heated_thermal_problem.cell_diffusivity.size() ==
+                 p.base.thermal.mesh.elements.size());
+    for (std::size_t cell = 0; cell < p.base.thermal.mesh.elements.size(); ++cell) {
+        double mean = 0.0;
+        for (const auto vertex : p.base.thermal.mesh.elements[cell]) {
+            mean += r.last_temperature_iterate[vertex] / 4.0;
+        }
+        NOVA_REQUIRE_NEAR(r.fields.heated_thermal_problem.cell_diffusivity[cell],
+                          4.0 * p.thermal_conductivity_scale(mean), 1e-10);
+    }
+    NOVA_REQUIRE_NEAR(p.base.thermal.cell_diffusivity.front(), 4.0, 0.0);
+}
+
+NOVA_TEST(nonlinear_electrothermal_3d_combined_sigma_and_k_feedback) {
+    auto p = plate();
+    p.conductivity_scale = [](double t_kelvin) {
+        return 1.0 + 0.002 * (t_kelvin - 300.0);
+    };
+    p.thermal_conductivity_scale = [](double t_kelvin) {
+        return 1.0 + 0.01 * (t_kelvin - 300.0);
+    };
+    const auto r = solve_nonlinear_electrothermal_3d(p);
+    NOVA_REQUIRE(r.converged);
+    NOVA_REQUIRE(r.iterations > 2);
+    NOVA_REQUIRE(r.fields.total_joule_power_watts > 200.0);
+    NOVA_REQUIRE_NEAR(r.fields.thermal_balance.generated_heat,
+                      r.fields.total_joule_power_watts, 1e-6);
+    NOVA_REQUIRE_NEAR(r.fields.thermal_balance.signed_balance_defect, 0.0, 1e-6);
+    NOVA_REQUIRE(r.fields.thermal_balance.max_free_equation_residual < 1e-6);
+
+    auto shifted = plate(20.0, 30.0);
+    shifted.conductivity_scale = p.conductivity_scale;
+    shifted.thermal_conductivity_scale = p.thermal_conductivity_scale;
+    const auto b = solve_nonlinear_electrothermal_3d(shifted);
+    NOVA_REQUIRE(b.converged);
+    NOVA_REQUIRE_NEAR(b.fields.total_joule_power_watts,
+                      r.fields.total_joule_power_watts, 1e-5);
+    for (std::size_t i = 0; i < b.fields.thermal_solution.values.size(); ++i) {
+        NOVA_REQUIRE_NEAR(b.fields.thermal_solution.values[i],
+                          r.fields.thermal_solution.values[i], 1e-6);
+    }
+}
+
+NOVA_TEST(nonlinear_electrothermal_3d_tensor_thermal_feedback_and_additive_heat) {
+    auto p = plate(0.0, 0.0);
+    p.base.thermal.cell_diffusivity.clear();
+    p.base.thermal.cell_diffusivity_tensors.assign(
+        p.base.thermal.mesh.elements.size(), {4.0, 5.0, 6.0, 0.1, 0.0, 0.0});
+    p.base.thermal.cell_source.assign(p.base.thermal.mesh.elements.size(), 7.0);
+    p.base.thermal.source = [](double, double, double) { return 3.0; };
+    p.thermal_conductivity_scale = [](double t_kelvin) {
+        return 1.0 + 0.002 * (t_kelvin - 300.0);
+    };
+    const auto r = solve_nonlinear_electrothermal_3d(p);
+    NOVA_REQUIRE(r.converged);
+    NOVA_REQUIRE_NEAR(r.fields.total_joule_power_watts, 0.0, 1e-10);
+    NOVA_REQUIRE_NEAR(r.fields.thermal_balance.generated_heat, 10.0, 1e-8);
+    NOVA_REQUIRE_NEAR(r.fields.thermal_balance.signed_balance_defect, 0.0, 1e-7);
+    const auto& updated = r.fields.heated_thermal_problem.cell_diffusivity_tensors;
+    NOVA_REQUIRE(updated.size() == p.base.thermal.mesh.elements.size());
+    for (std::size_t cell = 0; cell < updated.size(); ++cell) {
+        double mean = 0.0;
+        for (const auto node : p.base.thermal.mesh.elements[cell]) {
+            mean += r.last_temperature_iterate[node] / 4.0;
+        }
+        const double multiplier = p.thermal_conductivity_scale(mean);
+        NOVA_REQUIRE_NEAR(updated[cell].xx, 4.0 * multiplier, 1e-10);
+        NOVA_REQUIRE_NEAR(updated[cell].yy, 5.0 * multiplier, 1e-10);
+        NOVA_REQUIRE_NEAR(updated[cell].xy, 0.1 * multiplier, 1e-10);
+    }
+    NOVA_REQUIRE_NEAR(p.base.thermal.cell_diffusivity_tensors[0].xx, 4.0, 0.0);
+}
+
+NOVA_TEST(nonlinear_electrothermal_3d_constant_k_preserves_spatial_thermal_material) {
+    auto p = plate();
+    p.base.thermal.cell_diffusivity.clear();
+    p.base.thermal.diffusivity = [](double, double, double) { return 4.0; };
+    const auto r = solve_nonlinear_electrothermal_3d(p);
+    NOVA_REQUIRE(r.converged);
+    NOVA_REQUIRE_NEAR(r.fields.total_joule_power_watts, 200.0, 1e-7);
+    NOVA_REQUIRE_NEAR(r.fields.thermal_balance.signed_balance_defect, 0.0, 2e-7);
+}
+
+NOVA_TEST(nonlinear_electrothermal_3d_rejects_invalid_thermal_feedback) {
+    auto p = plate();
+    p.thermal_conductivity_scale = [](double) { return 0.0; };
+    NOVA_REQUIRE(rejects([&] { (void)solve_nonlinear_electrothermal_3d(p); }));
+    p = plate();
+    p.thermal_conductivity_scale = [](double) {
+        return std::numeric_limits<double>::quiet_NaN();
+    };
+    NOVA_REQUIRE(rejects([&] { (void)solve_nonlinear_electrothermal_3d(p); }));
+    p = plate();
+    p.thermal_conductivity_scale = [](double) { return -1.0; };
+    NOVA_REQUIRE(rejects([&] { (void)solve_nonlinear_electrothermal_3d(p); }));
+    p = plate();
+    p.thermal_conductivity_scale = [](double) { return 1.0; };
+    p.base.thermal.cell_diffusivity.pop_back();
+    NOVA_REQUIRE(rejects([&] { (void)solve_nonlinear_electrothermal_3d(p); }));
+    p = plate();
+    p.thermal_conductivity_scale = [](double) { return 1.0; };
+    p.base.thermal.diffusivity = [](double, double, double) { return 4.0; };
+    NOVA_REQUIRE(rejects([&] { (void)solve_nonlinear_electrothermal_3d(p); }));
+    p = plate();
+    p.thermal_conductivity_scale = [](double) { return 1.0; };
+    p.base.thermal.cell_diffusivity_tensors.assign(
+        p.base.thermal.mesh.elements.size(), {4.0, 4.0, 4.0, 0.0, 0.0, 0.0});
+    NOVA_REQUIRE(rejects([&] { (void)solve_nonlinear_electrothermal_3d(p); }));
+}
