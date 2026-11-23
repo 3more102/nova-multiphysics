@@ -67,7 +67,12 @@ energy accounting. `attempts` logs start, size, end, normalized error,
 nonlinear success and acceptance. `accepted_steps` records physical dt,
 error, nonlinear iteration cost for three solves, Joule power and energy.
 `rejected_steps` counts attempts not accepted. The nonlinear iteration
-count includes the discarded full-step comparison (cost diagnostic).
+count includes the discarded full-step comparison for **accepted** steps
+(cost diagnostic). `result.progress` and each accepted `step.progress` also
+report cumulative attempted/accepted/rejected counts, the sum of those
+accepted-comparison nonlinear iterations, the signed integrated heat-energy
+terms, and the latest accepted heat content. Rejected candidates do not
+contribute to cumulative energy.
 Each accepted step also reports `next_time_step`, the bounded proposed dt for
 the next trial (not necessarily the final truncated physical interval).
 
@@ -111,11 +116,15 @@ a caller-assigned model identity. The older thermal-state-only API remains
 available but requires separate application-managed timestep metadata.
 
 The accepted-state callback can call the new checkpoint writer using
-`{step.time, temperature, step.next_time_step}`. A restart reads/validates
-the snapshot **before** updating `problem.thermal.initial_temperature`,
-`options.coupling.thermal_time.start_time` and
-`options.initial_time_step`. It does not serialize the physical model,
-side-effecting callback state or cumulative attempt history.
+`{step.time, temperature, step.next_time_step, step.progress}`. A restart
+reads/validates the snapshot **before** updating the physical state and sets
+`options.previous_progress = checkpoint.progress` to preserve running totals.
+The v2 checkpoint stores cumulative accounting but **not** individual
+historical attempts, time-series records, physical model definitions or
+side-effecting callback state. Legacy v1 records have
+`progress_complete=false`, because those totals cannot be reconstructed
+from a nodal temperature snapshot. Per-invocation attempt/step caps remain
+unchanged; the restored totals do not impose a lifetime cap.
 
 ## Numerical verification cases
 
