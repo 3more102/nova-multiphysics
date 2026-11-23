@@ -13,6 +13,8 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <type_traits>
+#include <utility>
 
 namespace nova::io {
 namespace {
@@ -211,7 +213,7 @@ void write_adaptive_electrothermal_checkpoint_3d(
     std::ostringstream staged;
     staged.imbue(std::locale::classic());
     staged << std::setprecision(std::numeric_limits<double>::max_digits10);
-    staged << "NOVA_ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D 1\n";
+    staged << "NOVA_ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D\nversion 1\n";
     staged << "model_id " << model_id << '\n';
     write_options(staged, options);
     write_setting(staged, "next_dt", checkpoint.next_time_step);
@@ -240,7 +242,7 @@ AdaptiveElectrothermalCheckpoint3D read_adaptive_electrothermal_checkpoint_3d(
     }
     validate_options(expected_options);
     expect(input, "NOVA_ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D");
-    if (read_number<unsigned>(input, "1") != 1U) {
+    if (read_number<unsigned>(input, "version") != 1U) {
         throw std::invalid_argument("Unsupported adaptive electrothermal checkpoint version.");
     }
     expect(input, "model_id");
