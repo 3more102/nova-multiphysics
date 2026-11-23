@@ -303,3 +303,133 @@ NOVA_TEST(nonlinear_electrothermal_3d_rejects_invalid_thermal_feedback) {
         p.base.thermal.mesh.elements.size(), {4.0, 4.0, 4.0, 0.0, 0.0, 0.0});
     NOVA_REQUIRE(rejects([&] { (void)solve_nonlinear_electrothermal_3d(p); }));
 }
+
+NOVA_TEST(nonlinear_electrothermal_3d_history_records_every_solved_step) {
+    auto p = plate();
+    const auto r = solve_nonlinear_electrothermal_3d(p);
+    NOVA_REQUIRE(r.converged);
+    NOVA_REQUIRE(r.history.size() == r.iterations);
+    NOVA_REQUIRE(r.history.size() >= 2);
+    for (std::size_t i = 0; i < r.history.size(); ++i) {
+        const auto& h = r.history[i];
+        NOVA_REQUIRE(h.iteration == i + 1);
+        NOVA_REQUIRE_NEAR(h.total_joule_power_watts, 200.0, 1e-7);
+        NOVA_REQUIRE_NEAR(h.signed_thermal_balance_defect_watts, 0.0, 2e-7);
+        NOVA_REQUIRE(h.min_solved_temperature_kelvin >= 300.0 - 1e-8);
+        NOVA_REQUIRE(h.max_solved_temperature_kelvin >= h.min_solved_temperature_kelvin);
+        NOVA_REQUIRE(h.max_normalized_residual >= 0.0);
+        NOVA_REQUIRE(h.max_fixed_point_residual_kelvin >= 0.0);
+        if (i + 1 < r.history.size()) {
+            NOVA_REQUIRE_NEAR(h.relaxation_applied, 0.7, 0.0);
+        } else {
+            NOVA_REQUIRE_NEAR(h.relaxation_applied, 0.0, 0.0);
+        }
+    }
+    NOVA_REQUIRE_NEAR(r.history.back().max_fixed_point_residual_kelvin,
+                      r.max_fixed_point_residual_kelvin, 0.0);
+    NOVA_REQUIRE_NEAR(r.history.back().max_normalized_residual,
+                      r.max_normalized_residual, 0.0);
+}
+
+NOVA_TEST(nonlinear_electrothermal_3d_adaptive_damping_is_bounded_and_traceable) {
+    auto p = plate();
+    // Strong but positive temperature coefficient; restrict the iteration
+    // horizon so this does not assume global nonlinear convergence.
+    p.conductivity_scale = [](double t) {
+        return 1.0 + 0.8 * std::max(0.0, t - 300.0);
+    };
+    NonlinearElectrothermal3DOptions options;
+    options.adaptive_relaxation = true;
+    options.relaxation = 1.0;
+    options.minimum_relaxation = 0.125;
+    options.max_iterations = 5;
+    const auto r = solve_nonlinear_electrothermal_3d(p, options);
+    NOVA_REQUIRE(r.history.size() == r.iterations);
+    NOVA_REQUIRE(!r.history.empty());
+    NOVA_REQUIRE(r.iterations <= options.max_iterations);
+    NOVA_REQUIRE_NEAR(r.history.back().relaxation_applied, 0.0, 0.0);
+    for (std::size_t i = 0; i < r.history.size(); ++i) {
+        const auto& h = r.history[i];
+        NOVA_REQUIRE(h.iteration == i + 1);
+        NOVA_REQUIRE(std::isfinite(h.max_normalized_residual));
+        NOVA_REQUIRE(std::isfinite(h.max_fixed_point_residual_kelvin));
+        NOVA_REQUIRE(std::isfinite(h.total_joule_power_watts));
+        NOVA_REQUIRE(std::isfinite(h.signed_thermal_balance_defect_watts));
+        if (i + 1 == r.history.size()) continue;
+        NOVA_REQUIRE(h.relaxation_applied >= options.minimum_relaxation);
+        NOVA_REQUIRE(h.relaxation_applied <= options.relaxation);
+        if (i == 0) {
+            NOVA_REQUIRE_NEAR(h.relaxation_applied, options.relaxation, 0.0);
+        } else {
+            const auto& prev = r.history[i - 1];
+            const long double curr =
+                static_cast<long double>(h.max_normalized_residual);
+            const long double prior =
+                static_cast<long double>(prev.max_normalized_residual);
+            if (curr > 1.05L * prior) {
+                NOVA_REQUIRE_NEAR(
+                    h.relaxation_applied,
+                    std::max(options.minimum_relaxation, 0.5 * prev.relaxation_applied),
+                    1e-14);
+            } else if (curr < 0.8L * prior) {
+                NOVA_REQUIRE_NEAR(
+                    h.relaxation_applied,
+                    std::min(options.relaxation, 1.2 * prev.relaxation_applied),
+                    1e-14);
+            } else {
+                NOVA_REQUIRE_NEAR(h.relaxation_applied, prev.relaxation_applied, 0.0);
+            }
+        }
+    }
+}
+
+NOVA_TEST(nonlinear_electrothermal_3d_history_on_iteration_cap_and_invalid_damping) {
+    const auto p = plate();
+    NonlinearElectrothermal3DOptions options;
+    options.max_iterations = 1;
+    options.adaptive_relaxation = true;
+    const auto r = solve_nonlinear_electrothermal_3d(p, options);
+    NOVA_REQUIRE(!r.converged);
+    NOVA_REQUIRE(r.iterations == 1);
+    NOVA_REQUIRE(r.history.size() == 1);
+    NOVA_REQUIRE_NEAR(r.history.front().relaxation_applied, 0.0, 0.0);
+    NOVA_REQUIRE_NEAR(r.history.front().max_normalized_residual,
+                      r.max_normalized_residual, 0.0);
+    options.minimum_relaxation = 0.8;
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_nonlinear_electrothermal_3d(p, options);
+    }));
+    options.minimum_relaxation = 0.0;
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_nonlinear_electrothermal_3d(p, options);
+    }));
+    options.minimum_relaxation = std::numeric_limits<double>::quiet_NaN();
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_nonlinear_electrothermal_3d(p, options);
+    }));
+}
+
+NOVA_TEST(nonlinear_electrothermal_3d_adaptive_matches_fixed_converged_dual_material) {
+    auto p = plate();
+    p.conductivity_scale = [](double t) {
+        return 1.0 + 0.001 * (t - 300.0);
+    };
+    p.thermal_conductivity_scale = [](double t) {
+        return 1.0 + 0.005 * (t - 300.0);
+    };
+    const auto fixed = solve_nonlinear_electrothermal_3d(p);
+    NonlinearElectrothermal3DOptions options;
+    options.adaptive_relaxation = true;
+    const auto adaptive = solve_nonlinear_electrothermal_3d(p, options);
+    NOVA_REQUIRE(fixed.converged);
+    NOVA_REQUIRE(adaptive.converged);
+    NOVA_REQUIRE(adaptive.history.size() == adaptive.iterations);
+    NOVA_REQUIRE_NEAR(fixed.fields.total_joule_power_watts,
+                      adaptive.fields.total_joule_power_watts, 1e-5);
+    NOVA_REQUIRE_NEAR(adaptive.fields.thermal_balance.signed_balance_defect,
+                      0.0, 1e-6);
+    for (std::size_t i = 0; i < fixed.fields.thermal_solution.values.size(); ++i) {
+        NOVA_REQUIRE_NEAR(fixed.fields.thermal_solution.values[i],
+                          adaptive.fields.thermal_solution.values[i], 1e-6);
+    }
+}

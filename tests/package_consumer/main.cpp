@@ -140,6 +140,21 @@ int main() {
         std::abs(dual_material.fields.thermal_balance.signed_balance_defect) > 1.0e-7)
         return 25;
 
+    // Exercise optional adaptive relaxation and public per-iteration history
+    // through the installed SDK, including diagnostic field consistency.
+    nova::physics::NonlinearElectrothermal3DOptions adaptive_options;
+    adaptive_options.adaptive_relaxation = true;
+    adaptive_options.minimum_relaxation = 0.1;
+    const auto diagnosed = nova::physics::solve_nonlinear_electrothermal_3d(
+        feedback, adaptive_options);
+    if (!diagnosed.converged ||
+        diagnosed.history.size() != diagnosed.iterations ||
+        diagnosed.history.size() < 2 ||
+        diagnosed.history.back().relaxation_applied != 0.0 ||
+        std::abs(diagnosed.history.back().max_normalized_residual -
+                 diagnosed.max_normalized_residual) > 1.0e-15)
+        return 26;
+
     // Exercise the installed Neumann-boundary residual overload and link symbol.
     std::vector<NeumannResidualFace3D> natural_faces;
     for (const auto& face : box.boundary_faces) {

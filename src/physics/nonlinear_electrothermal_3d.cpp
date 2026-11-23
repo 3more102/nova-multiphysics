@@ -26,7 +26,11 @@ void validate_options(const NonlinearElectrothermal3DProblem& problem,
         !std::isfinite(options.relative_tolerance) ||
         options.relative_tolerance < 0.0 ||
         (options.absolute_tolerance_kelvin == 0.0 &&
-         options.relative_tolerance == 0.0)) {
+         options.relative_tolerance == 0.0) ||
+        (options.adaptive_relaxation &&
+         (!std::isfinite(options.minimum_relaxation) ||
+          options.minimum_relaxation <= 0.0 ||
+          options.minimum_relaxation > options.relaxation))) {
         throw std::invalid_argument("Invalid electrothermal Picard solver options.");
     }
 
@@ -116,6 +120,8 @@ NonlinearElectrothermal3DResult solve_nonlinear_electrothermal_3d(
     std::vector<double> temperature(n, problem.initial_temperature_kelvin);
 
     NonlinearElectrothermal3DResult result;
+    result.history.reserve(options.max_iterations);
+    double relaxation = options.relaxation;
     for (std::size_t iteration = 1; iteration <= options.max_iterations; ++iteration) {
         auto trial = problem.base;
         update_scaled_cell_material(
@@ -152,14 +158,49 @@ NonlinearElectrothermal3DResult solve_nonlinear_electrothermal_3d(
             result.max_normalized_residual = std::max(
                 result.max_normalized_residual, diff / threshold);
         }
+        if (!std::isfinite(result.max_normalized_residual)) {
+            throw std::overflow_error("Electrothermal normalized residual overflows.");
+        }
+        if (solved.empty()) {
+            throw std::runtime_error("Electrothermal temperature field is empty.");
+        }
+        const auto [minimum, maximum] = std::minmax_element(
+            solved.begin(), solved.end());
+        NonlinearElectrothermal3DIteration diagnostic;
+        diagnostic.iteration = iteration;
+        diagnostic.max_fixed_point_residual_kelvin =
+            result.max_fixed_point_residual_kelvin;
+        diagnostic.max_normalized_residual = result.max_normalized_residual;
+        diagnostic.total_joule_power_watts = result.fields.total_joule_power_watts;
+        diagnostic.signed_thermal_balance_defect_watts =
+            result.fields.thermal_balance.signed_balance_defect;
+        diagnostic.min_solved_temperature_kelvin = *minimum;
+        diagnostic.max_solved_temperature_kelvin = *maximum;
         if (result.max_normalized_residual <= 1.0) {
             result.converged = true;
+            result.history.push_back(diagnostic);
             return result;
         }
-        if (iteration == options.max_iterations) break;
+        if (iteration == options.max_iterations) {
+            result.history.push_back(diagnostic);
+            break;
+        }
+        if (options.adaptive_relaxation && !result.history.empty()) {
+            const long double current =
+                static_cast<long double>(result.max_normalized_residual);
+            const long double previous =
+                static_cast<long double>(result.history.back().max_normalized_residual);
+            if (current > 1.05L * previous) {
+                relaxation = std::max(options.minimum_relaxation, 0.5 * relaxation);
+            } else if (current < 0.8L * previous) {
+                relaxation = std::min(options.relaxation, 1.2 * relaxation);
+            }
+        }
+        diagnostic.relaxation_applied = relaxation;
+        result.history.push_back(diagnostic);
         for (std::size_t node = 0; node < n; ++node) {
             // Convex update limits overshoot; no state from the caller is changed.
-            temperature[node] += options.relaxation * (solved[node] - temperature[node]);
+            temperature[node] += relaxation * (solved[node] - temperature[node]);
             if (!std::isfinite(temperature[node])) {
                 throw std::overflow_error("Electrothermal relaxed temperature overflows.");
             }
