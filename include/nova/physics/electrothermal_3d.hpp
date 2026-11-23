@@ -17,6 +17,21 @@ struct Electrothermal3DProblem {
     fem::ScalarDiffusion3DProblem thermal;    // k [W/(m K)], T [K].
 };
 
+// Reusable DC electric conduction and P1 cellwise Joule dissipation.
+// Does not solve any thermal problem or require thermal boundary anchoring.
+struct DCJouleHeating3DResult {
+    fem::ScalarDiffusion3DResult electrical_solution;
+    std::vector<fem::Point3D> electric_field;
+    std::vector<fem::Point3D> current_density;
+    std::vector<double> joule_density;
+    double total_joule_power_watts{};
+};
+
+[[nodiscard]] DCJouleHeating3DResult solve_dc_joule_heating_3d(
+    const fem::ScalarDiffusion3DProblem& electrical,
+    const linalg::SolverOptions& electrical_options = {}
+);
+
 struct Electrothermal3DResult {
     fem::ScalarDiffusion3DResult electrical_solution;
     std::vector<fem::Point3D> electric_field;  // -grad(V), [V/m].
