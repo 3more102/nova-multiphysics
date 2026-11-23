@@ -145,3 +145,49 @@ The installed C++20 SDK consumer uses both exported symbols.
 
 These are discrete reproducibility tests, not continuum accuracy
 certification or a demonstration of COMSOL/ANSYS equivalence.
+
+## Transactional file persistence (C++20 SDK)
+
+The original stream APIs above remain unchanged. To avoid truncating the last
+usable checkpoint when an ordinary write fails, the separate public header
+`nova/io/adaptive_electrothermal_checkpoint_file_3d.hpp` exposes:
+
+```cpp
+#include "nova/io/adaptive_electrothermal_checkpoint_file_3d.hpp"
+
+nova::io::save_adaptive_electrothermal_checkpoint_file_3d(
+    "checkpoint.dat", mesh, model_id, options,
+    {step.time, accepted_temperature, step.next_time_step});
+
+// Recreate the original model/options before reading:
+const auto state =
+    nova::io::load_adaptive_electrothermal_checkpoint_file_3d(
+        "checkpoint.dat", mesh, model_id, options);
+```
+
+The save function **validates and stages the complete version-1 record in
+memory**, reserves a unique temporary directory adjacent to the destination,
+writes and closes a binary file, reads it back through the strict existing
+checkpoint validator, and then replaces the destination. Invalid models,
+settings, meshes, temperatures or incomplete writes are rejected before the
+last committed checkpoint is replaced. Temporary files are cleaned up after
+normal failures. The parent directory must exist; destination symlinks and
+non-file destinations are rejected.
+
+On POSIX filesystems the final same-filesystem rename is an atomic name
+replacement. Windows uses `ReplaceFileW` for an existing destination and
+`MoveFileExW` for first creation. Actual guarantees depend on the OS and
+filesystem; this is **not** a promise of storage-media durability after power
+loss. In particular, the helper does not perform file or directory `fsync`,
+and neither cross-process locking nor multiple-writer coordination is
+provided. Use one writer per destination, and keep external backups for
+critical studies. A process crash can leave an orphan staging directory
+(`.nova-electrothermal-*`) which must not be mistaken for a committed
+checkpoint.
+
+The load function is a strict disk-to-object wrapper around the unchanged
+version-1 reader. It does not mutate the simulation model or carry prior
+attempt counters/energy history across a restart; those remain future work.
+The unit tests cover first creation, replacement, exact state roundtrip,
+invalid-read rejection, preservation on input validation failure, symlink
+rejection where supported, and installed-SDK linking on Windows/Linux.
