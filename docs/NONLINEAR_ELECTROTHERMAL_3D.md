@@ -1,0 +1,101 @@
+# Experimental 3D nonlinear stationary electrothermal feedback
+
+Public API: `nova/physics/nonlinear_electrothermal_3d.hpp`,
+`solve_nonlinear_electrothermal_3d`.
+
+This builds on the separately merged, one-way electrical/Joule/thermal FEM
+workflow. It is a **stationary temperature-dependent electrical conductivity**
+Picard iteration. It is not a transient or fully monolithic multiphysics
+solver.
+
+## Model and units
+
+For each electrical P1 tetrahedron `e`, the reference conductivity is
+a positive isotropic cell scalar or a symmetric-positive-definite cell tensor.
+At iteration `n`:
+
+- `Tbar_e^n = (T_i^n + T_j^n + T_k^n + T_l^n)/4` kelvin.
+- `sigma_e^n = sigma_ref_e * scale(Tbar_e^n)`, where `scale` is
+  a caller-provided, finite, **strictly positive**, dimensionless law.
+- Solve `-div(sigma^n grad(V^n)) = s_I`, with electrical boundary data.
+- Calculate `E=-grad(V)`, `J=sigma^n E`, and `q_J=E dot J >= 0`
+  using the existing one-way flux/heat assembly.
+- Solve `-div(k grad(T_solved^n)) = q_base + q_J` with thermal boundary data.
+- If not converged, set `T^(n+1) = T^n + relaxation*(T_solved^n-T^n)`.
+
+The two physics must use **identical** tetrahedral connectivity and coordinates.
+Electrical conductivity must be provided entirely by
+`electrical.cell_diffusivity` or `electrical.cell_diffusivity_tensors`.
+Spatial callbacks are intentionally rejected because this API samples a
+cell-average nodal temperature, not the quadrature-point temperature.
+Thermal scalar/tensor/cellwise materials and supported Dirichlet/Neumann/Robin
+boundary conditions remain available through the underlying solver.
+
+The solver checks **unrelaxed** differences, so tiny relaxation cannot
+misleadingly declare success:
+
+```text
+max_i |T_solved_i - T_iter_i| /
+       (abs_tol_K + rel_tol * max(|T_solved_i|, |T_iter_i|)) <= 1
+```
+
+Both tolerances must be finite and nonnegative, and at least one positive.
+The relaxation is in (0,1], and the iteration cap is positive. Invalid inputs
+and failed inner linear solves throw. Reaching the cap returns a result with
+`converged=false`, the final fields, the last temperature iterate, the raw
+maximum fixed-point defect and its normalized measure. Check `converged`
+before using results for scientific interpretation.
+
+## C++ usage
+
+```cpp
+#include "nova/physics/nonlinear_electrothermal_3d.hpp"
+
+nova::physics::NonlinearElectrothermal3DProblem p;
+p.base = existing_one_way_problem; // electrical + thermal, identical mesh
+// The electrical reference material must be a complete per-cell array:
+p.base.electrical.diffusivity = {};
+p.base.electrical.cell_diffusivity.assign(
+    p.base.electrical.mesh.elements.size(), 2.0); // S/m
+p.initial_temperature_kelvin = 300.0;
+p.conductivity_scale = [](double t_kelvin) {
+    return 1.0 + 0.003 * (t_kelvin - 300.0);
+};
+const auto result = nova::physics::solve_nonlinear_electrothermal_3d(p);
+if (!result.converged) {
+    // Inspect result.iterations and result.max_fixed_point_residual_kelvin.
+}
+```
+
+## Verification
+
+`tests/test_nonlinear_electrothermal_3d.cpp` covers:
+
+- Zero-feedback equivalence to the established one-way plate benchmark
+  (200 W for 2 S/m, 10 V across a unit cube, and 4 W/(m K)).
+- Positive feedback, conductivity consistency and voltage gauge invariance.
+- Constant-voltage SPD tensor support with additive 10 W base heating.
+- Iteration-cap nonconvergence and tiny-relaxation false-convergence guard.
+- Invalid laws, material representations, data lengths, initial conditions,
+  and nonlinear solver options.
+- `tests/package_consumer/main.cpp` links the public symbol from the
+  installed SDK.
+
+Run the project's Ubuntu/Windows build, CTest, installed-SDK consumer and
+Linux ASan/LSan/UBSan jobs on the **exact branch head** before marking the PR
+ready for review. Tests and CI status are not asserted as passing until
+verified in GitHub Actions.
+
+## Current limitations
+
+- Conductivity is held **constant inside each cell**, based on the cell
+  average of the P1 nodal temperature. This is a discretization choice;
+  finer cellwise material resolution can change the result.
+- Electrical conductivity may depend on temperature, but thermal conductivity
+  and other coefficients do not vary with temperature inside this algorithm.
+- Fixed-point convergence is **not proof of uniqueness**, continuum accuracy,
+  energy-norm convergence or global nonlinear stability. No automatic line
+  search, Newton Jacobian, temperature-dependent contact resistance, radiation,
+  Seebeck or Peltier coupling.
+- No mesh-to-mesh transfer, different physics meshes, transient thermal
+  feedback, automatic continuation, or certified error estimate.
