@@ -46,23 +46,20 @@ void require_same_mesh(const fem::TetrahedralMesh3D& a,
 
 } // namespace
 
-Electrothermal3DResult solve_one_way_electrothermal_3d(
-    const Electrothermal3DProblem& problem,
-    const linalg::SolverOptions& electrical_options,
-    const linalg::SolverOptions& thermal_options
+DCJouleHeating3DResult solve_dc_joule_heating_3d(
+    const fem::ScalarDiffusion3DProblem& electrical,
+    const linalg::SolverOptions& electrical_options
 ) {
-    require_same_mesh(problem.electrical.mesh, problem.thermal.mesh);
-
-    Electrothermal3DResult result;
+    DCJouleHeating3DResult result;
     result.electrical_solution =
-        fem::solve_scalar_diffusion_3d(problem.electrical, electrical_options);
+        fem::solve_scalar_diffusion_3d(electrical, electrical_options);
     if (!result.electrical_solution.linear_solver.converged) {
         throw std::runtime_error("Electrothermal 3D electrical solve did not converge.");
     }
     // Flux averages use precisely the conductivity selection and quadrature
     // of the stationary P1 electrical stiffness assembly, scalar or SPD tensor.
     const auto fluxes = fem::evaluate_p1_tetrahedral_flux_3d(
-        problem.electrical, result.electrical_solution.values);
+        electrical, result.electrical_solution.values);
     result.electric_field.reserve(fluxes.size());
     result.current_density.reserve(fluxes.size());
     result.joule_density.reserve(fluxes.size());
@@ -90,7 +87,7 @@ Electrothermal3DResult solve_one_way_electrothermal_3d(
         const double density = checked_double(
             nonnegative, "Electrothermal 3D Joule density exceeds double range.");
         const auto basis = fem::evaluate_tetrahedron_p1_physical_gradients_3d(
-            problem.electrical.mesh, element);
+            electrical.mesh, element);
         const long double volume =
             std::abs(static_cast<long double>(basis.signed_jacobian_determinant))
             / 6.0L;
@@ -102,13 +99,29 @@ Electrothermal3DResult solve_one_way_electrothermal_3d(
     result.total_joule_power_watts = checked_double(
         integrated_power, "Electrothermal 3D total Joule power overflows.");
 
+    return result;
+}
+
+Electrothermal3DResult solve_one_way_electrothermal_3d(
+    const Electrothermal3DProblem& problem,
+    const linalg::SolverOptions& electrical_options,
+    const linalg::SolverOptions& thermal_options
+) {
+    require_same_mesh(problem.electrical.mesh, problem.thermal.mesh);
+    auto joule = solve_dc_joule_heating_3d(problem.electrical, electrical_options);
+    Electrothermal3DResult result;
+    result.electrical_solution = std::move(joule.electrical_solution);
+    result.electric_field = std::move(joule.electric_field);
+    result.current_density = std::move(joule.current_density);
+    result.joule_density = std::move(joule.joule_density);
+    result.total_joule_power_watts = joule.total_joule_power_watts;
     result.heated_thermal_problem = problem.thermal;
     auto& sources = result.heated_thermal_problem.cell_source;
-    if (!sources.empty() && sources.size() != fluxes.size()) {
+    if (!sources.empty() && sources.size() != result.joule_density.size()) {
         throw std::invalid_argument(
             "Electrothermal 3D thermal cell source count must equal cell count.");
     }
-    if (sources.empty()) sources.assign(fluxes.size(), 0.0);
+    if (sources.empty()) sources.assign(result.joule_density.size(), 0.0);
     for (std::size_t i = 0; i < sources.size(); ++i) {
         if (!std::isfinite(sources[i])) {
             throw std::invalid_argument(
