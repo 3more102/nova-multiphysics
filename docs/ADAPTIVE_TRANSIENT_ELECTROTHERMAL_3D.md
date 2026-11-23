@@ -68,6 +68,8 @@ nonlinear success and acceptance. `accepted_steps` records physical dt,
 error, nonlinear iteration cost for three solves, Joule power and energy.
 `rejected_steps` counts attempts not accepted. The nonlinear iteration
 count includes the discarded full-step comparison (cost diagnostic).
+Each accepted step also reports `next_time_step`, the bounded proposed dt for
+the next trial (not necessarily the final truncated physical interval).
 
 ## Example
 
@@ -91,6 +93,46 @@ if (!r.completed) {
 }
 ```
 
+## Checkpointing and step-boundary recovery
+
+An optional `options.on_accepted_step(step, temperature)` callback runs exactly
+**once after each accepted two-half-step state is committed**. It never runs
+for rejected trials or discarded full-step comparison candidates. Its
+`temperature` argument is the complete accepted P1 nodal field;
+`step.time` is the physical checkpoint time, and `step.next_time_step`
+is the suggested next controller timestep. Exceptions thrown by the
+observer propagate to the caller; NOVA does not retry the observer.
+
+For a mesh-validated checkpoint, save the accepted field and time with
+`nova::io::write_transient_heat_checkpoint_3d` and save
+`step.next_time_step` alongside it in an application-managed metadata
+record. The existing thermal checkpoint format does **not** contain that
+controller-specific timestep; NOVA does not yet provide an atomic
+multi-file or full-simulation checkpoint.
+
+At restart, validate the mesh with
+`nova::io::read_transient_heat_checkpoint_3d`, assign its temperature
+to `problem.thermal.initial_temperature`, its time to
+`options.coupling.thermal_time.start_time`, and the stored timestep
+to `options.initial_time_step`. Keep the original final `end_time`,
+physical model, nonlinear tolerances, material laws and controller
+settings unchanged. This resumes the adaptive sequence at an accepted
+**step boundary**; it does not restore prior attempt counters, electrical
+diagnostics or old accepted-step history. If the run was interrupted in
+the middle of a candidate, only the last saved accepted state is safe.
+Callbacks used by the model should be deterministic to support replay.
+
+Example callback (caller owns the output stream and metadata storage):
+
+```cpp
+options.on_accepted_step = [&](const auto& step, const auto& temperature) {
+    nova::io::write_transient_heat_checkpoint_3d(
+        checkpoint_stream, transient_electrothermal_problem.electrical.mesh,
+        step.time, temperature);
+    saved_next_time_step = step.next_time_step;
+};
+```
+
 ## Numerical verification cases
 
 `tests/test_transient_electrothermal_3d.cpp` exercises:
@@ -108,7 +150,11 @@ if (!r.completed) {
   300 K initial state without silently advancing time.
 - Independent attempt/accepted-step limits, short final subminimum
   interval, invalid step controls, input immutability, energy accounting.
-- Installed SDK consumer compiles, links and uses public step history.
+- Installed SDK consumer compiles, links and uses public step history and
+  accepted-step observer.
+- Acceptance-only checkpoint observer saves a nonlinear 3D adaptive state;
+  mesh-validated round-trip followed by a resumed solve agrees with a
+  continuous run at the same accepted step boundaries.
 
 ## Limitations
 
@@ -128,6 +174,8 @@ if (!r.completed) {
 - Strong nonlinear instability may cause minimum-step termination;
   automatic controller success is not a proof of nonlinear uniqueness
   or physical fidelity.
+- Observer callbacks are synchronous and should avoid slow I/O for
+  latency-sensitive solves; writing a file is the caller's responsibility.
 - Experimental numerical code; not commercially validated.
 
 Run exact-head Ubuntu, Windows, installed SDK and Linux
