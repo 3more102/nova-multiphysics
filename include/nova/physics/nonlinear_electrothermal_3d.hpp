@@ -29,6 +29,26 @@ struct NonlinearElectrothermal3DOptions {
     double relaxation{0.7};  // (0, 1], applied to the temperature iterate
     double absolute_tolerance_kelvin{1.0e-8};
     double relative_tolerance{1.0e-9};
+    // Optional residual-responsive damping. The method shrinks relaxation
+    // when the *unrelaxed* normalized fixed-point residual grows by >5%,
+    // and cautiously restores it after a >20% decrease. It is a heuristic,
+    // not a globalized Newton or sufficient-decrease line search.
+    bool adaptive_relaxation{false};
+    double minimum_relaxation{0.1}; // (0, relaxation] if adaptive
+};
+
+// One entry for each completed pair of electrical and thermal linear solves.
+// relaxation_applied is the fraction used to advance FROM this iteration
+// toward its raw solved temperature (zero if converged or iteration-limited).
+struct NonlinearElectrothermal3DIteration {
+    std::size_t iteration{};
+    double relaxation_applied{};
+    double max_fixed_point_residual_kelvin{};
+    double max_normalized_residual{};
+    double total_joule_power_watts{};
+    double signed_thermal_balance_defect_watts{};
+    double min_solved_temperature_kelvin{};
+    double max_solved_temperature_kelvin{};
 };
 
 struct NonlinearElectrothermal3DResult {
@@ -39,6 +59,8 @@ struct NonlinearElectrothermal3DResult {
     // conductivity on the last solve.
     std::vector<double> last_temperature_iterate;
     std::size_t iterations{};
+    // Recorded for every completed solve, including nonconvergence.
+    std::vector<NonlinearElectrothermal3DIteration> history;
     // Difference between raw solved temperature and last iterate, before
     // relaxation (avoids false convergence at very small relaxation).
     double max_fixed_point_residual_kelvin{};
