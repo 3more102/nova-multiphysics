@@ -62,6 +62,7 @@ add_library(nova_core
     src/io/vtk_series.cpp
     src/io/thermal_checkpoint_3d.cpp
     src/io/adaptive_electrothermal_checkpoint_3d.cpp
+    src/io/adaptive_electrothermal_checkpoint_file_3d.cpp
     src/fem/mesh_refinement_2d.cpp
     src/fem/mesh_refinement_3d.cpp
     src/fem/poisson_1d.cpp
@@ -178,6 +179,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_transient_heat_3d_restart.cpp
         tests/test_thermal_checkpoint_3d.cpp
         tests/test_adaptive_electrothermal_checkpoint_3d.cpp
+        tests/test_adaptive_electrothermal_checkpoint_file_3d.cpp
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_gmsh41_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
