@@ -4,6 +4,9 @@
 #include "nova/physics/adaptive_transient_electrothermal_3d.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <cmath>
 #include <iomanip>
 #include <ios>
@@ -19,6 +22,30 @@ namespace {
 using namespace nova::fem;
 using namespace nova::io;
 using namespace nova::physics;
+
+class CheckpointTestDirectory {
+public:
+    CheckpointTestDirectory() {
+        const auto root = std::filesystem::temp_directory_path();
+        for (int i = 0; i < 64; ++i) {
+            auto p = root / ("nova-checkpoint-test-" +
+                std::to_string(std::chrono::steady_clock::now()
+                    .time_since_epoch().count()) + "-" + std::to_string(i));
+            if (std::filesystem::create_directory(p)) {
+                path_ = p;
+                return;
+            }
+        }
+        throw std::runtime_error("Cannot create isolated checkpoint test directory.");
+    }
+    ~CheckpointTestDirectory() {
+        std::error_code ignored;
+        if (!path_.empty()) std::filesystem::remove_all(path_, ignored);
+    }
+    const std::filesystem::path& path() const { return path_; }
+private:
+    std::filesystem::path path_;
+};
 
 class CommaDecimal final : public std::numpunct<char> {
 protected:
@@ -275,4 +302,89 @@ NOVA_TEST(adaptive_electrothermal_checkpoint_3d_nonlinear_restart_matches_contin
     for (std::size_t i = 0; i < resumed.temperature.size(); ++i) {
         NOVA_REQUIRE_NEAR(resumed.temperature[i], continuous.temperature[i], 1e-8);
     }
+}
+
+
+NOVA_TEST(adaptive_electrothermal_checkpoint_3d_atomic_file_replacement) {
+    CheckpointTestDirectory directory;
+    const auto path = directory.path() / "restart.dat";
+    const auto mesh = unit_tetra();
+    AdaptiveTransientElectrothermal3DOptions options;
+    options.end_time = 1.0;
+    const AdaptiveElectrothermalCheckpoint3D before{0.2, {300, 301, 302, 303}, 0.05};
+    const AdaptiveElectrothermalCheckpoint3D after{0.4, {305, 306, 307, 308}, 0.1};
+
+    write_adaptive_electrothermal_checkpoint_3d_file_atomic(
+        path, mesh, "unit_cube_v1", options, before);
+    auto loaded = read_adaptive_electrothermal_checkpoint_3d_file(
+        path, mesh, "unit_cube_v1", options);
+    NOVA_REQUIRE(loaded.time == before.time);
+    NOVA_REQUIRE(loaded.temperature == before.temperature);
+    NOVA_REQUIRE(loaded.next_time_step == before.next_time_step);
+
+    write_adaptive_electrothermal_checkpoint_3d_file_atomic(
+        path, mesh, "unit_cube_v1", options, after);
+    loaded = read_adaptive_electrothermal_checkpoint_3d_file(
+        path, mesh, "unit_cube_v1", options);
+    NOVA_REQUIRE(loaded.time == after.time);
+    NOVA_REQUIRE(loaded.temperature == after.temperature);
+    NOVA_REQUIRE(loaded.next_time_step == after.next_time_step);
+
+    std::size_t entries = 0U;
+    for (const auto& entry : std::filesystem::directory_iterator(directory.path())) {
+        NOVA_REQUIRE(entry.path() == path);
+        ++entries;
+    }
+    NOVA_REQUIRE(entries == 1U);
+}
+
+NOVA_TEST(adaptive_electrothermal_checkpoint_3d_failed_publish_keeps_old_file) {
+    CheckpointTestDirectory directory;
+    const auto path = directory.path() / "restart.dat";
+    const auto mesh = unit_tetra();
+    AdaptiveTransientElectrothermal3DOptions options;
+    options.end_time = 1.0;
+    const AdaptiveElectrothermalCheckpoint3D state{0.2, {300, 301, 302, 303}, 0.05};
+
+    write_adaptive_electrothermal_checkpoint_3d_file_atomic(
+        path, mesh, "unit_cube_v1", options, state);
+    auto invalid = state;
+    invalid.temperature[0] = std::numeric_limits<double>::infinity();
+    NOVA_REQUIRE(rejects([&] {
+        write_adaptive_electrothermal_checkpoint_3d_file_atomic(
+            path, mesh, "unit_cube_v1", options, invalid);
+    }));
+    NOVA_REQUIRE(rejects([&] {
+        write_adaptive_electrothermal_checkpoint_3d_file_atomic(
+            path, mesh, "invalid model id", options, state);
+    }));
+
+    // Publishing a file over a nonempty directory is invalid on both POSIX
+    // and Windows. Confirm cleanup and untouched unrelated contents.
+    const auto blocked = directory.path() / "occupied";
+    std::filesystem::create_directory(blocked);
+    {
+        std::ofstream sentinel(blocked / "keep.txt");
+        sentinel << "untouched";
+    }
+    NOVA_REQUIRE(rejects([&] {
+        write_adaptive_electrothermal_checkpoint_3d_file_atomic(
+            blocked, mesh, "unit_cube_v1", options, state);
+    }));
+    NOVA_REQUIRE(std::filesystem::exists(blocked / "keep.txt"));
+    const auto restored = read_adaptive_electrothermal_checkpoint_3d_file(
+        path, mesh, "unit_cube_v1", options);
+    NOVA_REQUIRE(restored.time == state.time);
+    NOVA_REQUIRE(restored.temperature == state.temperature);
+    NOVA_REQUIRE(restored.next_time_step == state.next_time_step);
+    std::size_t entries = 0U;
+    for (const auto& entry : std::filesystem::directory_iterator(directory.path())) {
+        NOVA_REQUIRE(entry.path() == path || entry.path() == blocked);
+        ++entries;
+    }
+    NOVA_REQUIRE(entries == 2U);
+    NOVA_REQUIRE(rejects([&] {
+        (void)read_adaptive_electrothermal_checkpoint_3d_file(
+            directory.path() / "missing.dat", mesh, "unit_cube_v1", options);
+    }));
 }

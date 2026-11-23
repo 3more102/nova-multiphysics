@@ -62,6 +62,7 @@ add_library(nova_core
     src/io/vtk_series.cpp
     src/io/thermal_checkpoint_3d.cpp
     src/io/adaptive_electrothermal_checkpoint_3d.cpp
+    src/io/adaptive_electrothermal_atomic_file_3d.cpp
     src/fem/mesh_refinement_2d.cpp
     src/fem/mesh_refinement_3d.cpp
     src/fem/poisson_1d.cpp

@@ -28,30 +28,22 @@ untouched; a failed physical stream write can still leave a partial file.
 ```cpp
 #include "nova/io/adaptive_electrothermal_checkpoint_3d.hpp"
 #include "nova/physics/adaptive_transient_electrothermal_3d.hpp"
-#include <fstream>
 
-// Reconstruct the same mesh and physics model in both processes.
-// The model ID is provided by the caller, not computed by NOVA.
+// Recreate the same physical model in both processes.
 constexpr auto model_id = "my-electrothermal-study-v1";
 nova::physics::AdaptiveTransientElectrothermal3DOptions options;
 options.end_time = 1.0;
 
-// In the callback used for accepted adaptive steps only:
+// Called only after an accepted adaptive step:
 options.on_accepted_step = [&](const auto& step, const auto& field) {
-    std::ofstream output("checkpoint.tmp", std::ios::trunc);
-    nova::io::write_adaptive_electrothermal_checkpoint_3d(
-        output, problem.electrical.mesh, model_id, options,
+    nova::io::write_adaptive_electrothermal_checkpoint_3d_file_atomic(
+        "checkpoint.dat", problem.electrical.mesh, model_id, options,
         {step.time, field, step.next_time_step});
-    output.close();
-    if (!output) throw std::runtime_error("Checkpoint file write failed");
-    // Verify and atomically replace the prior checkpoint at the application
-    // layer, if the platform/filesystem supports atomic replacement.
 };
 
-// For a restart, reconstruct the *original* model and controller options:
-std::ifstream input("checkpoint.dat");
-const auto state = nova::io::read_adaptive_electrothermal_checkpoint_3d(
-    input, problem.electrical.mesh, model_id, options);
+// Load before changing the starting time or proposed next dt:
+const auto state = nova::io::read_adaptive_electrothermal_checkpoint_3d_file(
+    "checkpoint.dat", problem.electrical.mesh, model_id, options);
 problem.thermal.initial_temperature = state.temperature;
 options.coupling.thermal_time.start_time = state.time;
 options.initial_time_step = state.next_time_step;
@@ -60,11 +52,9 @@ const auto resumed =
         problem, options);
 ```
 
-The example requires `<stdexcept>` and assumes `problem` is a configured
-`TransientElectrothermal3DProblem`. It intentionally leaves final-file
-replacement to the application; merely writing `checkpoint.tmp` does not
-create `checkpoint.dat`. The accepted-step callback remains registered
-on restart, so it will continue writing subsequent checkpoints.
+The example assumes \`problem\` is a configured
+\`TransientElectrothermal3DProblem\`. The original stream APIs remain
+available. The accepted-step callback stays registered after restart.
 
 **Load before changing** `start_time` or `initial_time_step`. These two
 values are dynamic and intentionally not compared against the record.
@@ -128,12 +118,23 @@ is required for cumulative compute-budget auditing and history/energy
 accounting. No MPI state, adaptive mesh genealogy, time-dependent
 external solver state or implicit state in callbacks is captured.
 
-The API stages serialization in memory, not an atomic filesystem
-transaction. Write a new temporary file, close and verify it, then
-replace the old checkpoint safely using your platform's file APIs. To
-avoid periodic memory spikes, consider checkpoint frequency and
-application-level rotation. The reader rejects malformed, nonfinite,
-truncated, version-incompatible or unexpectedly appended content.
+The stream writer stages serialization in memory only. The new
+\`write_adaptive_electrothermal_checkpoint_3d_file_atomic\` path API
+serializes the same version-1 record, reserves a unique sibling staging
+directory, writes and closes a file, and renames it over the destination.
+Failed validation, write, or rename operations leave an existing destination
+unchanged, and normal failures clean up staging files. The path-level
+\`read_adaptive_electrothermal_checkpoint_3d_file\` uses the same strict parser.
+
+**Filesystem limits:** Replacement atomicity depends on host filesystem
+rename semantics. The implementation does not fsync file data or parent
+directory metadata, so it is **not a power-loss durability guarantee**.
+Abrupt process death may leave stale \`.nova-stage-*\` directories beside
+the destination; remove only when no writer is active. Concurrent writers
+targeting the same destination are not coordinated. The implementation
+still does not persist cumulative attempt counters or accepted energy
+history, and does not reconstruct material/source callbacks. Treat any
+uncertain filesystem failure as a failed publish.
 
 ## Verification
 
@@ -141,7 +142,7 @@ The dedicated tests validate exact-double roundtrip, expected-model and
 controller incompatibility, altered mesh ordering/coordinates, version
 corruption, trailing/truncated records, invalid writes without partial
 stream output and a nonlinear electrothermal full-vs-restarted integration.
-The installed C++20 SDK consumer uses both exported symbols.
+The installed C++20 SDK consumer exercises both stream and path-level symbols.
 
 These are discrete reproducibility tests, not continuum accuracy
 certification or a demonstration of COMSOL/ANSYS equivalence.
