@@ -53,6 +53,50 @@ and failed inner linear solves throw. Reaching the cap returns a result with
 maximum fixed-point defect and its normalized measure. Check `converged`
 before using results for scientific interpretation.
 
+## Optional adaptive relaxation and iteration history
+
+Default behavior remains **fixed relaxation** (0.7), preserving existing
+solves. When `options.adaptive_relaxation=true`, the solver compares the
+unrelaxed, tolerance-normalized Picard fixed-point defect with the preceding
+iteration:
+
+- If the current residual exceeds **105%** of the previous residual, halve
+  the relaxation, not below `minimum_relaxation`.
+- If the residual falls below **80%** of the previous residual, increase
+  relaxation by 20%, not above the original `options.relaxation`.
+- Otherwise retain the current relaxation.
+
+The damping decision is made **after** the current full electrical/thermal
+solve and affects the update to the next iterate. It does not attempt an
+extra trial solve, and does **not guarantee monotonic residual reduction**,
+convergence, uniqueness, or a thermodynamically admissible solution.
+Adaptive minimum relaxation must be finite, positive and no greater than
+the initial `relaxation`.
+
+Each completed paired solve appends one
+`NonlinearElectrothermal3DIteration` record to `result.history` with:
+iteration number, relaxation applied *after* that solve (0 on convergence
+or iteration cap), max absolute fixed-point residual in kelvin, normalized
+residual, generated Joule watts, discrete weak-form thermal-balance defect
+in watts, and minimum/maximum solved nodal temperatures in kelvin.
+`result.history.size() == result.iterations` on normal return.
+On nonconvergence, the full history is returned with `converged=false`.
+
+Example:
+
+```cpp
+nova::physics::NonlinearElectrothermal3DOptions opts;
+opts.max_iterations = 60;
+opts.relaxation = 0.7;
+opts.adaptive_relaxation = true;
+opts.minimum_relaxation = 0.1;
+auto result = nova::physics::solve_nonlinear_electrothermal_3d(p, opts);
+for (const auto& step : result.history) {
+    // step.iteration, step.max_normalized_residual,
+    // step.relaxation_applied, step.total_joule_power_watts
+}
+```
+
 ## C++ usage
 
 ```cpp
@@ -97,6 +141,8 @@ if (!result.converged) {
 - Backward-compatible thermal spatial callback when `k(T)` is absent.
 - Invalid thermal scaling laws, mixed thermal materials and incomplete arrays.
 - Iteration-cap nonconvergence and tiny-relaxation false-convergence guard.
+- Bounded adaptive damping, iteration-by-iteration telemetry and installed-SDK
+  access to the exported diagnostics.
 - Invalid laws, material representations, data lengths, initial conditions,
   and nonlinear solver options.
 - `tests/package_consumer/main.cpp` links the public symbol from the
