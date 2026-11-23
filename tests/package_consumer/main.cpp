@@ -186,6 +186,15 @@ int main() {
     adaptive_thermal.initial_time_step = 0.02;
     adaptive_thermal.maximum_time_step = 0.02;
     adaptive_thermal.absolute_error_kelvin = 0.1;
+    std::size_t accepted_observer_calls = 0U;
+    adaptive_thermal.on_accepted_step = [&](const auto& step,
+                                             const std::vector<double>& field) {
+        if (step.next_time_step >= adaptive_thermal.minimum_time_step &&
+            step.next_time_step <= adaptive_thermal.maximum_time_step &&
+            field.size() == box.mesh.nodes.size()) {
+            ++accepted_observer_calls;
+        }
+    };
     const auto adaptive_solution =
         nova::physics::solve_adaptive_transient_electrothermal_3d(
             transient_coupling, adaptive_thermal);
@@ -194,7 +203,9 @@ int main() {
         adaptive_solution.rejected_steps != 0U ||
         std::abs(adaptive_solution.final_time - 0.02) > 1e-12 ||
         std::abs(adaptive_solution.accepted_steps.front()
-                     .heat_budget.balance_residual) > 1e-7)
+                     .heat_budget.balance_residual) > 1e-7 ||
+        accepted_observer_calls != 1U ||
+        adaptive_solution.accepted_steps.front().next_time_step <= 0.0)
         return 28;
 
     // Exercise the installed Neumann-boundary residual overload and link symbol.

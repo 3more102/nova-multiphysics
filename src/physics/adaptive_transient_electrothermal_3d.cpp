@@ -207,6 +207,8 @@ AdaptiveTransientElectrothermal3DResult solve_adaptive_transient_electrothermal_
                         accepted_step.time_step = h;
                         accepted_step.max_normalized_local_error =
                             attempt.max_normalized_local_error;
+                        accepted_step.next_time_step = next_time_step(
+                            h, attempt.max_normalized_local_error, options, true, true);
                         accepted_step.nonlinear_iterations =
                             full.accepted_steps.front().coupling_iterations +
                             d1.coupling_iterations + d2.coupling_iterations;
@@ -218,8 +220,14 @@ AdaptiveTransientElectrothermal3DResult solve_adaptive_transient_electrothermal_
                         result.last_electrical = std::move(second.last_electrical);
                         result.final_time = end;
                         result.accepted_steps.push_back(accepted_step);
-                        dt = next_time_step(
-                            h, attempt.max_normalized_local_error, options, true, true);
+                        dt = accepted_step.next_time_step;
+                        // The only side-effecting observer is reached after
+                        // acceptance; discarded nonlinear candidates cannot
+                        // trigger a checkpoint or external output.
+                        if (options.on_accepted_step) {
+                            options.on_accepted_step(
+                                result.accepted_steps.back(), result.temperature);
+                        }
                         continue;
                     }
                 }

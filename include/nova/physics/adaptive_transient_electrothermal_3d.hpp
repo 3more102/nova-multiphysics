@@ -3,9 +3,12 @@
 #include "nova/physics/transient_electrothermal_3d.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace nova::physics {
+
+struct AdaptiveTransientElectrothermal3DStep;
 
 // Experimental adaptive-step, fixed-mesh, Backward Euler electrothermal
 // coupling. Each trial compares one full step to two independently
@@ -23,6 +26,12 @@ struct AdaptiveTransientElectrothermal3DOptions {
     double maximum_growth_factor{2.0}; // >1
     std::size_t maximum_attempts{10000U};
     std::size_t maximum_accepted_steps{5000U};
+    // Invoked exactly once AFTER an accepted step is committed, never for
+    // full-step comparisons or rejected trials. The temperature is the
+    // accepted two-half-step field, and can be serialized with the existing
+    // mesh-validated transient heat checkpoint writer. Exceptions propagate.
+    std::function<void(const AdaptiveTransientElectrothermal3DStep&,
+                       const std::vector<double>&)> on_accepted_step;
 };
 
 enum class AdaptiveTransientElectrothermal3DStopReason {
@@ -47,6 +56,10 @@ struct AdaptiveTransientElectrothermal3DStep {
     double time{};
     double time_step{};
     double max_normalized_local_error{};
+    // Controller's proposed dt for the NEXT attempt, clamped to the
+    // configured [minimum_time_step, maximum_time_step]. Save alongside
+    // the accepted time/temperature for deterministic step-boundary restart.
+    double next_time_step{};
     // Sum of all nonlinear iterations over the full/half-step comparison,
     // including the discarded full-step candidate.
     std::size_t nonlinear_iterations{};
