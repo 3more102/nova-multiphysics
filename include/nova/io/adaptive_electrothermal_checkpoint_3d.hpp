@@ -3,6 +3,7 @@
 #include "nova/fem/mesh3d.hpp"
 #include "nova/physics/adaptive_transient_electrothermal_3d.hpp"
 
+#include <filesystem>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -42,6 +43,25 @@ void write_adaptive_electrothermal_checkpoint_3d(
 [[nodiscard]] AdaptiveElectrothermalCheckpoint3D
 read_adaptive_electrothermal_checkpoint_3d(
     std::istream& input,
+    const fem::TetrahedralMesh3D& expected_mesh,
+    const std::string& expected_model_id,
+    const physics::AdaptiveTransientElectrothermal3DOptions& expected_options
+);
+
+// Path API: publish a fully written sibling staged file through rename.
+// Replacement atomicity depends on the platform/filesystem. No fsync or
+// cross-process writer arbitration is performed.
+void write_adaptive_electrothermal_checkpoint_3d_file_atomic(
+    const std::filesystem::path& destination,
+    const fem::TetrahedralMesh3D& mesh,
+    const std::string& model_id,
+    const physics::AdaptiveTransientElectrothermal3DOptions& options,
+    const AdaptiveElectrothermalCheckpoint3D& checkpoint
+);
+
+[[nodiscard]] AdaptiveElectrothermalCheckpoint3D
+read_adaptive_electrothermal_checkpoint_3d_file(
+    const std::filesystem::path& source,
     const fem::TetrahedralMesh3D& expected_mesh,
     const std::string& expected_model_id,
     const physics::AdaptiveTransientElectrothermal3DOptions& expected_options
