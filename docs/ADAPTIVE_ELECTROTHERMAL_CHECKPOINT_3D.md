@@ -38,20 +38,14 @@ options.end_time = 1.0;
 
 // In the callback used for accepted adaptive steps only:
 options.on_accepted_step = [&](const auto& step, const auto& field) {
-    std::ofstream output("checkpoint.tmp", std::ios::trunc);
-    nova::io::write_adaptive_electrothermal_checkpoint_3d(
-        output, problem.electrical.mesh, model_id, options,
+    nova::io::save_adaptive_electrothermal_checkpoint_file_3d(
+        "checkpoint.dat", problem.electrical.mesh, model_id, options,
         {step.time, field, step.next_time_step});
-    output.close();
-    if (!output) throw std::runtime_error("Checkpoint file write failed");
-    // Verify and atomically replace the prior checkpoint at the application
-    // layer, if the platform/filesystem supports atomic replacement.
 };
 
 // For a restart, reconstruct the *original* model and controller options:
-std::ifstream input("checkpoint.dat");
-const auto state = nova::io::read_adaptive_electrothermal_checkpoint_3d(
-    input, problem.electrical.mesh, model_id, options);
+const auto state = nova::io::load_adaptive_electrothermal_checkpoint_file_3d(
+    "checkpoint.dat", problem.electrical.mesh, model_id, options);
 problem.thermal.initial_temperature = state.temperature;
 options.coupling.thermal_time.start_time = state.time;
 options.initial_time_step = state.next_time_step;
@@ -61,9 +55,8 @@ const auto resumed =
 ```
 
 The example requires `<stdexcept>` and assumes `problem` is a configured
-`TransientElectrothermal3DProblem`. It intentionally leaves final-file
-replacement to the application; merely writing `checkpoint.tmp` does not
-create `checkpoint.dat`. The accepted-step callback remains registered
+`TransientElectrothermal3DProblem`. The filesystem convenience API handles a single-writer primary/backup
+rotation with the limitations explained below. The accepted-step callback remains registered
 on restart, so it will continue writing subsequent checkpoints.
 
 **Load before changing** `start_time` or `initial_time_step`. These two
@@ -128,12 +121,41 @@ is required for cumulative compute-budget auditing and history/energy
 accounting. No MPI state, adaptive mesh genealogy, time-dependent
 external solver state or implicit state in callbacks is captured.
 
-The API stages serialization in memory, not an atomic filesystem
-transaction. Write a new temporary file, close and verify it, then
-replace the old checkpoint safely using your platform's file APIs. To
-avoid periodic memory spikes, consider checkpoint frequency and
-application-level rotation. The reader rejects malformed, nonfinite,
-truncated, version-incompatible or unexpectedly appended content.
+The low-level stream API stages serialization in memory, not an atomic
+filesystem transaction. For a single-writer filesystem application, use
+the recovery-aware convenience functions below. To avoid periodic memory
+spikes, consider checkpoint frequency and application-level rotation.
+The reader rejects malformed, nonfinite, truncated, version-incompatible
+or unexpectedly appended content.
+
+## Recoverable filesystem API (single writer)
+
+```cpp
+nova::io::save_adaptive_electrothermal_checkpoint_file_3d(
+    "electrothermal.chk", problem.electrical.mesh, model_id, options,
+    {step.time, field, step.next_time_step});
+
+const auto restored = nova::io::load_adaptive_electrothermal_checkpoint_file_3d(
+    "electrothermal.chk", problem.electrical.mesh, model_id, options);
+```
+
+The saver serializes and validates **before** touching disk, writes
+`electrothermal.chk.tmp`, checks the flush/close result, renames a prior
+primary to `electrothermal.chk.bak`, and installs the new primary. It
+attempts to restore the backup if installation fails. The loader always
+tries the primary first, then validates the backup against the **same**
+mesh, model ID, options and format, ignoring an unfinished `.tmp` file.
+Recovering the backup may roll the physical state back one accepted
+checkpoint; it is not a promise of recovering the newest attempted state.
+
+This is crash **recovery**, not a transaction or a durability guarantee.
+There is no file/directory `fsync` or equivalent; OS buffers, disk caches,
+power loss, cross-filesystem moves, concurrent writers/readers, external
+processes and network filesystems can defeat durability or consistency.
+Use one writer with trusted destination paths on a local filesystem.
+The stream API and version-1 record remain unchanged; no checksum is
+present, so only structural, physical and compatibility validation detects
+record corruption.
 
 ## Verification
 

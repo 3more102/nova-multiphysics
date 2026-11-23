@@ -4,6 +4,8 @@
 
 #include <charconv>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <istream>
 #include <limits>
@@ -260,6 +262,100 @@ AdaptiveElectrothermalCheckpoint3D read_adaptive_electrothermal_checkpoint_3d(
     result.temperature = std::move(thermal.temperature);
     validate_state(expected_options, result);
     return result;
+}
+
+void save_adaptive_electrothermal_checkpoint_file_3d(
+    const std::filesystem::path& path,
+    const fem::TetrahedralMesh3D& mesh,
+    const std::string& model_id,
+    const physics::AdaptiveTransientElectrothermal3DOptions& options,
+    const AdaptiveElectrothermalCheckpoint3D& checkpoint
+) {
+    if (path.empty()) {
+        throw std::invalid_argument("Adaptive electrothermal checkpoint path is empty.");
+    }
+    // Validate the entire record before touching an existing on-disk state.
+    std::ostringstream staged;
+    write_adaptive_electrothermal_checkpoint_3d(
+        staged, mesh, model_id, options, checkpoint);
+    const std::string record = staged.str();
+    if (record.size() > static_cast<std::size_t>(
+            std::numeric_limits<std::streamsize>::max())) {
+        throw std::length_error("Adaptive checkpoint is too large for file output.");
+    }
+
+    auto temporary = path;
+    temporary += ".tmp";
+    auto backup = path;
+    backup += ".bak";
+    if (std::filesystem::is_symlink(temporary) ||
+        (std::filesystem::exists(temporary) &&
+         !std::filesystem::is_regular_file(temporary)) ||
+        (std::filesystem::exists(path) &&
+         !std::filesystem::is_regular_file(path))) {
+        throw std::invalid_argument("Adaptive checkpoint file path is not regular.");
+    }
+
+    {
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error("Cannot open adaptive checkpoint temporary file.");
+        out.write(record.data(), static_cast<std::streamsize>(record.size()));
+        out.flush();
+        if (!out) throw std::runtime_error("Failed writing adaptive checkpoint temporary file.");
+        out.close();
+        if (!out) throw std::runtime_error("Failed closing adaptive checkpoint temporary file.");
+    }
+
+    // A backup is kept during the primary replacement gap. The reader
+    // never considers .tmp, which may be incomplete after a process crash.
+    if (std::filesystem::exists(path)) {
+        if (std::filesystem::exists(backup)) {
+            if (!std::filesystem::is_regular_file(backup) ||
+                std::filesystem::is_symlink(backup)) {
+                throw std::invalid_argument("Adaptive checkpoint backup path is not regular.");
+            }
+            std::filesystem::remove(backup);
+        }
+        std::filesystem::rename(path, backup);
+        try {
+            std::filesystem::rename(temporary, path);
+        } catch (...) {
+            // Best effort rollback, preserving the original exception.
+            try { std::filesystem::rename(backup, path); } catch (...) {}
+            throw;
+        }
+    } else {
+        std::filesystem::rename(temporary, path);
+    }
+}
+
+AdaptiveElectrothermalCheckpoint3D load_adaptive_electrothermal_checkpoint_file_3d(
+    const std::filesystem::path& path,
+    const fem::TetrahedralMesh3D& expected_mesh,
+    const std::string& expected_model_id,
+    const physics::AdaptiveTransientElectrothermal3DOptions& expected_options
+) {
+    if (path.empty()) {
+        throw std::invalid_argument("Adaptive electrothermal checkpoint path is empty.");
+    }
+    const auto read_one = [&](const std::filesystem::path& candidate) {
+        std::ifstream in(candidate, std::ios::binary);
+        if (!in) throw std::runtime_error("Cannot open adaptive electrothermal checkpoint.");
+        return read_adaptive_electrothermal_checkpoint_3d(
+            in, expected_mesh, expected_model_id, expected_options);
+    };
+    try {
+        return read_one(path);
+    } catch (const std::exception&) {
+        auto backup = path;
+        backup += ".bak";
+        try {
+            return read_one(backup);
+        } catch (const std::exception&) {
+            throw std::runtime_error(
+                "Neither primary nor backup adaptive electrothermal checkpoint is valid.");
+        }
+    }
 }
 
 } // namespace nova::io

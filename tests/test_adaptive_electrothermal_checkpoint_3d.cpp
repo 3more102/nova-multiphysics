@@ -5,6 +5,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <ios>
 #include <limits>
@@ -275,4 +278,78 @@ NOVA_TEST(adaptive_electrothermal_checkpoint_3d_nonlinear_restart_matches_contin
     for (std::size_t i = 0; i < resumed.temperature.size(); ++i) {
         NOVA_REQUIRE_NEAR(resumed.temperature[i], continuous.temperature[i], 1e-8);
     }
+}
+
+NOVA_TEST(adaptive_electrothermal_checkpoint_3d_filesystem_backup_and_recovery) {
+    namespace fs = std::filesystem;
+    const auto dir = fs::temp_directory_path() /
+        ("nova_checkpoint_recovery_" + std::to_string(
+            std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directory(dir);
+    const auto path = dir / "electrothermal.chk";
+    auto backup = path;
+    backup += ".bak";
+    auto temporary = path;
+    temporary += ".tmp";
+    const auto mesh = unit_tetra();
+    AdaptiveTransientElectrothermal3DOptions options;
+    options.end_time = 0.5;
+    const AdaptiveElectrothermalCheckpoint3D first{
+        0.1, {300, 301, 302, 303}, 0.05
+    };
+    auto second = first;
+    second.time = 0.2;
+    second.temperature[0] = 310;
+
+    save_adaptive_electrothermal_checkpoint_file_3d(
+        path, mesh, "unit_cube_v1", options, first);
+    NOVA_REQUIRE(fs::exists(path));
+    NOVA_REQUIRE(!fs::exists(backup));
+    NOVA_REQUIRE(load_adaptive_electrothermal_checkpoint_file_3d(
+        path, mesh, "unit_cube_v1", options).temperature == first.temperature);
+
+    auto invalid = second;
+    invalid.temperature[0] = std::numeric_limits<double>::quiet_NaN();
+    NOVA_REQUIRE(rejects([&] {
+        save_adaptive_electrothermal_checkpoint_file_3d(
+            path, mesh, "unit_cube_v1", options, invalid);
+    }));
+    NOVA_REQUIRE(!fs::exists(temporary));
+    NOVA_REQUIRE(load_adaptive_electrothermal_checkpoint_file_3d(
+        path, mesh, "unit_cube_v1", options).time == first.time);
+
+    save_adaptive_electrothermal_checkpoint_file_3d(
+        path, mesh, "unit_cube_v1", options, second);
+    NOVA_REQUIRE(fs::exists(backup));
+    NOVA_REQUIRE(load_adaptive_electrothermal_checkpoint_file_3d(
+        path, mesh, "unit_cube_v1", options).temperature == second.temperature);
+
+    // Stray partial temporary files must never be accepted.
+    { std::ofstream out(temporary); out << "INCOMPLETE"; }
+    NOVA_REQUIRE(load_adaptive_electrothermal_checkpoint_file_3d(
+        path, mesh, "unit_cube_v1", options).temperature == second.temperature);
+
+    // A corrupt newest record falls back only to a fully validated prior one.
+    { std::ofstream out(path, std::ios::trunc); out << "CORRUPT"; }
+    const auto recovered = load_adaptive_electrothermal_checkpoint_file_3d(
+        path, mesh, "unit_cube_v1", options);
+    NOVA_REQUIRE(recovered.time == first.time);
+    NOVA_REQUIRE(recovered.temperature == first.temperature);
+    NOVA_REQUIRE(rejects([&] {
+        (void)load_adaptive_electrothermal_checkpoint_file_3d(
+            path, mesh, "wrong_model_id", options);
+    }));
+
+    // A crash between rotating the primary and installing the new file
+    // can be recovered from the retained backup alone.
+    fs::remove(path);
+    NOVA_REQUIRE(load_adaptive_electrothermal_checkpoint_file_3d(
+        path, mesh, "unit_cube_v1", options).time == first.time);
+
+    { std::ofstream out(backup, std::ios::trunc); out << "CORRUPT"; }
+    NOVA_REQUIRE(rejects([&] {
+        (void)load_adaptive_electrothermal_checkpoint_file_3d(
+            path, mesh, "unit_cube_v1", options);
+    }));
+    fs::remove_all(dir);
 }

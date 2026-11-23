@@ -3,6 +3,7 @@
 #include "nova/fem/mesh3d.hpp"
 #include "nova/physics/adaptive_transient_electrothermal_3d.hpp"
 
+#include <filesystem>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -42,6 +43,28 @@ void write_adaptive_electrothermal_checkpoint_3d(
 [[nodiscard]] AdaptiveElectrothermalCheckpoint3D
 read_adaptive_electrothermal_checkpoint_3d(
     std::istream& input,
+    const fem::TetrahedralMesh3D& expected_mesh,
+    const std::string& expected_model_id,
+    const physics::AdaptiveTransientElectrothermal3DOptions& expected_options
+);
+
+// Filesystem convenience API for one trusted single-writer process.
+// A full record is staged before writing <path>.tmp in the same directory.
+// On replacement the prior primary becomes <path>.bak. The reader validates
+// the primary first and then tries its backup; it never reads a partial .tmp.
+// This provides application-level recoverability, NOT fsync durability,
+// cross-platform atomic replacement, concurrency safety or power-loss guarantees.
+void save_adaptive_electrothermal_checkpoint_file_3d(
+    const std::filesystem::path& path,
+    const fem::TetrahedralMesh3D& mesh,
+    const std::string& model_id,
+    const physics::AdaptiveTransientElectrothermal3DOptions& options,
+    const AdaptiveElectrothermalCheckpoint3D& checkpoint
+);
+
+[[nodiscard]] AdaptiveElectrothermalCheckpoint3D
+load_adaptive_electrothermal_checkpoint_file_3d(
+    const std::filesystem::path& path,
     const fem::TetrahedralMesh3D& expected_mesh,
     const std::string& expected_model_id,
     const physics::AdaptiveTransientElectrothermal3DOptions& expected_options
