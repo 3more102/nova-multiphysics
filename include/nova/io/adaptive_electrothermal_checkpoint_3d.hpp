@@ -15,11 +15,17 @@ struct AdaptiveElectrothermalCheckpoint3D {
     double time{};
     std::vector<double> temperature;
     double next_time_step{};
+    physics::AdaptiveTransientElectrothermal3DProgress progress{};
+    // False only for a legacy v1 record: earlier attempt counts and energy
+    // integrals cannot be reconstructed from temperature/time alone.
+    bool progress_complete{true};
 };
 
-// Single versioned text record: validated mesh and temperatures, physical
+// Versioned v2 text record: validated mesh and temperatures, physical
 // time, next timestep, caller-assigned model identity and all numerical
-// settings that affect the adaptive controller and its nested solvers.
+// settings that affect the adaptive controller and its nested solvers. v2
+// additionally stores cumulative attempt counters and energy integrals;
+// v1 input remains readable but marks progress_complete=false.
 // Input model functions, source/BC callbacks and full attempt history are
 // NOT serializable. model_id is an external identity token, not a computed
 // physics checksum. The caller must recreate an equivalent physical model.
