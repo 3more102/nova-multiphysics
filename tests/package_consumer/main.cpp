@@ -218,13 +218,19 @@ int main() {
     nova::io::write_adaptive_electrothermal_checkpoint_3d(
         adaptive_checkpoint_text, box.mesh, "sdk_probe_v1", adaptive_thermal,
         {adaptive_solution.final_time, adaptive_solution.temperature,
-         adaptive_solution.accepted_steps.front().next_time_step});
+         adaptive_solution.accepted_steps.front().next_time_step,
+         adaptive_solution.progress});
     std::istringstream adaptive_checkpoint_stream(adaptive_checkpoint_text.str());
     const auto recovered = nova::io::read_adaptive_electrothermal_checkpoint_3d(
         adaptive_checkpoint_stream, box.mesh, "sdk_probe_v1", adaptive_thermal);
     if (recovered.temperature != adaptive_solution.temperature ||
         recovered.time != adaptive_solution.final_time ||
-        recovered.next_time_step != adaptive_solution.accepted_steps.front().next_time_step)
+        recovered.next_time_step != adaptive_solution.accepted_steps.front().next_time_step ||
+        !recovered.progress_complete ||
+        recovered.progress.attempted_steps != 1U ||
+        recovered.progress.accepted_steps != 1U ||
+        recovered.progress.rejected_steps != 0U ||
+        recovered.progress.source_energy != adaptive_solution.progress.source_energy)
         return 29;
 
     // Installed SDK exports safe on-disk checkpoint save/load entrypoints.
@@ -236,7 +242,8 @@ int main() {
     nova::io::save_adaptive_electrothermal_checkpoint_file_3d(
         durable_checkpoint_path, box.mesh, "sdk_probe_v1", adaptive_thermal,
         {adaptive_solution.final_time, adaptive_solution.temperature,
-         adaptive_solution.accepted_steps.front().next_time_step});
+         adaptive_solution.accepted_steps.front().next_time_step,
+         adaptive_solution.progress});
     const auto durable_recovered =
         nova::io::load_adaptive_electrothermal_checkpoint_file_3d(
             durable_checkpoint_path, box.mesh, "sdk_probe_v1", adaptive_thermal);
@@ -245,7 +252,9 @@ int main() {
     if (checkpoint_cleanup_error ||
         durable_recovered.time != recovered.time ||
         durable_recovered.temperature != recovered.temperature ||
-        durable_recovered.next_time_step != recovered.next_time_step)
+        durable_recovered.next_time_step != recovered.next_time_step ||
+        durable_recovered.progress.accepted_steps != recovered.progress.accepted_steps ||
+        durable_recovered.progress.source_energy != recovered.progress.source_energy)
         return 30;
 
     // Exercise the installed Neumann-boundary residual overload and link symbol.

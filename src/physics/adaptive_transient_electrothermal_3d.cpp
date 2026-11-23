@@ -10,6 +10,58 @@
 namespace nova::physics {
 namespace {
 
+void validate_progress(const AdaptiveTransientElectrothermal3DProgress& progress) {
+    if (progress.accepted_steps > progress.attempted_steps ||
+        progress.rejected_steps !=
+            progress.attempted_steps - progress.accepted_steps) {
+        throw std::invalid_argument("Invalid cumulative electrothermal attempt counts.");
+    }
+    for (const double value : {progress.source_energy, progress.neumann_energy,
+                               progress.robin_energy, progress.dirichlet_energy,
+                               progress.balance_residual, progress.latest_heat_content}) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument("Nonfinite cumulative electrothermal energy.");
+        }
+    }
+}
+
+void advance_attempt(AdaptiveTransientElectrothermal3DProgress& progress) {
+    if (progress.attempted_steps == std::numeric_limits<std::size_t>::max()) {
+        throw std::overflow_error("Cumulative electrothermal attempt count overflows.");
+    }
+    ++progress.attempted_steps;
+}
+
+void accumulate_accepted_step(
+    AdaptiveTransientElectrothermal3DProgress& progress,
+    const AdaptiveTransientElectrothermal3DStep& step
+) {
+    if (progress.accepted_steps == std::numeric_limits<std::size_t>::max() ||
+        progress.nonlinear_iterations >
+            std::numeric_limits<std::size_t>::max() - step.nonlinear_iterations) {
+        throw std::overflow_error("Cumulative electrothermal counters overflow.");
+    }
+    auto next = progress;
+    ++next.accepted_steps;
+    next.nonlinear_iterations += step.nonlinear_iterations;
+    const auto add = [](double lhs, double rhs) {
+        const double sum = lhs + rhs;
+        if (!std::isfinite(sum)) {
+            throw std::overflow_error("Cumulative electrothermal energy overflows.");
+        }
+        return sum;
+    };
+    next.source_energy = add(next.source_energy, step.heat_budget.source_energy);
+    next.neumann_energy = add(next.neumann_energy, step.heat_budget.neumann_energy);
+    next.robin_energy = add(next.robin_energy, step.heat_budget.robin_energy);
+    next.dirichlet_energy = add(next.dirichlet_energy, step.heat_budget.dirichlet_energy);
+    next.balance_residual = add(next.balance_residual,
+                                step.heat_budget.balance_residual);
+    next.latest_heat_content = step.heat_budget.heat_content;
+    progress = next;
+}
+
+
 void validate(const TransientElectrothermal3DProblem& problem,
               const AdaptiveTransientElectrothermal3DOptions& o) {
     const double start = o.coupling.thermal_time.start_time;
@@ -38,6 +90,7 @@ void validate(const TransientElectrothermal3DProblem& problem,
         o.coupling.thermal_time.on_step) {
         throw std::invalid_argument("Invalid adaptive electrothermal step-control options.");
     }
+    validate_progress(o.previous_progress);
     if (problem.thermal.initial_temperature.size() !=
         problem.electrical.mesh.nodes.size()) {
         throw std::invalid_argument("Adaptive electrothermal initial field size mismatch.");
@@ -135,6 +188,7 @@ AdaptiveTransientElectrothermal3DResult solve_adaptive_transient_electrothermal_
 ) {
     validate(problem, options);
     AdaptiveTransientElectrothermal3DResult result;
+    result.progress = options.previous_progress;
     result.temperature = problem.thermal.initial_temperature;
     result.final_time = options.coupling.thermal_time.start_time;
     result.attempts.reserve(std::min<std::size_t>(options.maximum_attempts, 10000U));
@@ -164,6 +218,7 @@ AdaptiveTransientElectrothermal3DResult solve_adaptive_transient_electrothermal_
             result.stop_reason = AdaptiveTransientElectrothermal3DStopReason::TimeResolution;
             return result;
         }
+        advance_attempt(result.progress);
         AdaptiveTransientElectrothermal3DAttempt attempt;
         attempt.start_time = start;
         attempt.attempted_step = h;
@@ -216,6 +271,8 @@ AdaptiveTransientElectrothermal3DResult solve_adaptive_transient_electrothermal_
                         accepted_step.heat_budget =
                             sum_half_step_budgets(d1.heat_budget, d2.heat_budget);
 
+                        accumulate_accepted_step(result.progress, accepted_step);
+                        accepted_step.progress = result.progress;
                         result.temperature = std::move(second.temperature);
                         result.last_electrical = std::move(second.last_electrical);
                         result.final_time = end;
@@ -235,6 +292,11 @@ AdaptiveTransientElectrothermal3DResult solve_adaptive_transient_electrothermal_
         }
         // Failed nonlinear or temporal error-control trial: roll back.
         ++result.rejected_steps;
+        if (result.progress.rejected_steps ==
+            std::numeric_limits<std::size_t>::max()) {
+            throw std::overflow_error("Cumulative electrothermal rejection count overflows.");
+        }
+        ++result.progress.rejected_steps;
         if (h <= options.minimum_time_step) {
             result.stop_reason =
                 AdaptiveTransientElectrothermal3DStopReason::MinimumTimeStep;

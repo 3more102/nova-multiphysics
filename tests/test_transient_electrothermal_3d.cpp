@@ -194,6 +194,9 @@ NOVA_TEST(adaptive_transient_electrothermal_3d_constant_joule_ramp_energy) {
     NOVA_REQUIRE(r.rejected_steps == 0);
     NOVA_REQUIRE(r.accepted_steps.size() == 2);
     NOVA_REQUIRE(r.attempts.size() == 2);
+    NOVA_REQUIRE(r.progress.attempted_steps == 2U);
+    NOVA_REQUIRE(r.progress.accepted_steps == 2U);
+    NOVA_REQUIRE(r.progress.rejected_steps == 0U);
     NOVA_REQUIRE_NEAR(r.final_time, 0.14, 1e-14);
     for (const double t : r.temperature) {
         NOVA_REQUIRE_NEAR(t, 314.0, 2e-8);
@@ -212,6 +215,9 @@ NOVA_TEST(adaptive_transient_electrothermal_3d_constant_joule_ramp_energy) {
     }
     NOVA_REQUIRE_NEAR(elapsed, 0.14, 1e-14);
     NOVA_REQUIRE_NEAR(integrated_joules, 28.0, 2e-8);
+    NOVA_REQUIRE_NEAR(r.progress.source_energy, integrated_joules, 1e-9);
+    NOVA_REQUIRE_NEAR(r.progress.latest_heat_content, 2.0 * 314.0, 2e-7);
+    NOVA_REQUIRE(r.accepted_steps.back().progress.accepted_steps == 2U);
     NOVA_REQUIRE_NEAR(r.accepted_steps.back().heat_budget.heat_content,
                       2.0 * 314.0, 2e-7);
     for (const auto t : p.thermal.initial_temperature)
@@ -238,6 +244,9 @@ NOVA_TEST(adaptive_transient_electrothermal_3d_rejects_and_improves_nonlinear_od
     NOVA_REQUIRE(r.rejected_steps >= 1U);
     NOVA_REQUIRE(r.accepted_steps.size() >= 3U);
     NOVA_REQUIRE(r.attempts.size() == r.accepted_steps.size() + r.rejected_steps);
+    NOVA_REQUIRE(r.progress.attempted_steps == r.attempts.size());
+    NOVA_REQUIRE(r.progress.rejected_steps == r.rejected_steps);
+    NOVA_REQUIRE(r.progress.accepted_steps == r.accepted_steps.size());
     NOVA_REQUIRE(r.attempts.front().nonlinear_converged);
     NOVA_REQUIRE(!r.attempts.front().accepted);
     NOVA_REQUIRE(r.attempts.front().max_normalized_local_error > 1.0);
@@ -432,4 +441,21 @@ NOVA_TEST(adaptive_transient_electrothermal_checkpoint_observer_and_restart) {
     for (double t : p.thermal.initial_temperature) {
         NOVA_REQUIRE_NEAR(t, 300.0, 0.0);
     }
+}
+
+
+NOVA_TEST(adaptive_transient_electrothermal_3d_rejects_invalid_prior_progress) {
+    const auto p = make_unit_coupling();
+    AdaptiveTransientElectrothermal3DOptions options;
+    options.previous_progress.attempted_steps = 1U;
+    // A recorded attempt must be either accepted or rejected.
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_adaptive_transient_electrothermal_3d(p, options);
+    }));
+    options.previous_progress.rejected_steps = 1U;
+    options.previous_progress.source_energy =
+        std::numeric_limits<double>::infinity();
+    NOVA_REQUIRE(rejects([&] {
+        (void)solve_adaptive_transient_electrothermal_3d(p, options);
+    }));
 }

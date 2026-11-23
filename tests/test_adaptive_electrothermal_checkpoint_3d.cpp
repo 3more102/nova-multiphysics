@@ -117,7 +117,7 @@ NOVA_TEST(adaptive_electrothermal_checkpoint_3d_roundtrip_exact_and_stream_safe)
         output, mesh, "unit_cube_v1", options, state);
     NOVA_REQUIRE(output.flags() == flags);
     NOVA_REQUIRE(output.precision() == 2);
-    NOVA_REQUIRE(output.str().find("version 1") != std::string::npos);
+    NOVA_REQUIRE(output.str().find("version 2") != std::string::npos);
     NOVA_REQUIRE(output.str().find("thermal_state\nNOVA_THERMAL_CHECKPOINT_3D 1") !=
                  std::string::npos);
 
@@ -128,6 +128,8 @@ NOVA_TEST(adaptive_electrothermal_checkpoint_3d_roundtrip_exact_and_stream_safe)
     NOVA_REQUIRE(loaded.time == state.time);
     NOVA_REQUIRE(loaded.next_time_step == state.next_time_step);
     NOVA_REQUIRE(loaded.temperature == state.temperature);
+    NOVA_REQUIRE(loaded.progress_complete);
+    NOVA_REQUIRE(loaded.progress.attempted_steps == 0U);
 }
 
 NOVA_TEST(adaptive_electrothermal_checkpoint_3d_rejects_mismatched_options_model_and_mesh) {
@@ -190,7 +192,7 @@ NOVA_TEST(adaptive_electrothermal_checkpoint_3d_rejects_bad_records_without_part
     const std::string good = write_test_record(mesh, options, state);
     const std::vector<std::string> corrupt{
         "",
-        replaced(good, "version 1", "version 2"),
+        replaced(good, "version 2", "version 3"),
         change_field(good, "min_dt ", "-1"),
         change_field(good, "next_dt ", "nan"),
         replaced(good, "thermal_state\n", "thermal_state\nBROKEN\n"),
@@ -243,7 +245,7 @@ NOVA_TEST(adaptive_electrothermal_checkpoint_3d_nonlinear_restart_matches_contin
         if (callbacks == 1U) {
             write_adaptive_electrothermal_checkpoint_3d(
                 output, problem.electrical.mesh, "unit_cube_v1", options,
-                {step.time, field, step.next_time_step});
+                {step.time, field, step.next_time_step, step.progress});
         }
     };
     const auto continuous = solve_adaptive_transient_electrothermal_3d(problem, options);
@@ -261,10 +263,25 @@ NOVA_TEST(adaptive_electrothermal_checkpoint_3d_nonlinear_restart_matches_contin
     auto resumed_options = options;
     resumed_options.coupling.thermal_time.start_time = state.time;
     resumed_options.initial_time_step = state.next_time_step;
+    resumed_options.previous_progress = state.progress;
     resumed_options.on_accepted_step = {};
     const auto resumed = solve_adaptive_transient_electrothermal_3d(
         resumed_problem, resumed_options);
     NOVA_REQUIRE(resumed.completed);
+    NOVA_REQUIRE(resumed.progress.attempted_steps ==
+                 continuous.progress.attempted_steps);
+    NOVA_REQUIRE(resumed.progress.accepted_steps ==
+                 continuous.progress.accepted_steps);
+    NOVA_REQUIRE(resumed.progress.rejected_steps ==
+                 continuous.progress.rejected_steps);
+    NOVA_REQUIRE(resumed.progress.nonlinear_iterations ==
+                 continuous.progress.nonlinear_iterations);
+    NOVA_REQUIRE_NEAR(resumed.progress.source_energy,
+                      continuous.progress.source_energy, 1e-9);
+    NOVA_REQUIRE_NEAR(resumed.progress.balance_residual,
+                      continuous.progress.balance_residual, 1e-9);
+    NOVA_REQUIRE_NEAR(resumed.progress.latest_heat_content,
+                      continuous.progress.latest_heat_content, 1e-9);
     NOVA_REQUIRE_NEAR(resumed.final_time, continuous.final_time, 1e-14);
     NOVA_REQUIRE(resumed.accepted_steps.size() + 1U ==
                  continuous.accepted_steps.size());
@@ -275,4 +292,70 @@ NOVA_TEST(adaptive_electrothermal_checkpoint_3d_nonlinear_restart_matches_contin
     for (std::size_t i = 0; i < resumed.temperature.size(); ++i) {
         NOVA_REQUIRE_NEAR(resumed.temperature[i], continuous.temperature[i], 1e-8);
     }
+}
+
+
+NOVA_TEST(adaptive_electrothermal_checkpoint_3d_v2_progress_and_legacy_v1) {
+    const auto mesh = unit_tetra();
+    AdaptiveTransientElectrothermal3DOptions options;
+    options.end_time = 1.0;
+    AdaptiveElectrothermalCheckpoint3D state{
+        0.25, {300, 301, 302, 303}, 0.1
+    };
+    state.progress.attempted_steps = 5U;
+    state.progress.accepted_steps = 3U;
+    state.progress.rejected_steps = 2U;
+    state.progress.nonlinear_iterations = 42U;
+    state.progress.source_energy = 17.25;
+    state.progress.neumann_energy = -1.5;
+    state.progress.robin_energy = 0.125;
+    state.progress.dirichlet_energy = 2.0;
+    state.progress.balance_residual = 1e-12;
+    state.progress.latest_heat_content = 603.25;
+    const auto record = write_test_record(mesh, options, state);
+    std::istringstream in(record);
+    const auto loaded = read_adaptive_electrothermal_checkpoint_3d(
+        in, mesh, "unit_cube_v1", options);
+    NOVA_REQUIRE(loaded.progress_complete);
+    NOVA_REQUIRE(loaded.progress.attempted_steps == 5U);
+    NOVA_REQUIRE(loaded.progress.accepted_steps == 3U);
+    NOVA_REQUIRE(loaded.progress.rejected_steps == 2U);
+    NOVA_REQUIRE(loaded.progress.nonlinear_iterations == 42U);
+    NOVA_REQUIRE(loaded.progress.source_energy == state.progress.source_energy);
+    NOVA_REQUIRE(loaded.progress.neumann_energy == state.progress.neumann_energy);
+    NOVA_REQUIRE(loaded.progress.robin_energy == state.progress.robin_energy);
+    NOVA_REQUIRE(loaded.progress.dirichlet_energy == state.progress.dirichlet_energy);
+    NOVA_REQUIRE(loaded.progress.balance_residual == state.progress.balance_residual);
+    NOVA_REQUIRE(loaded.progress.latest_heat_content ==
+                 state.progress.latest_heat_content);
+
+    auto corrupt = change_field(record, "progress_rejected ", "1");
+    std::istringstream invalid_counts(corrupt);
+    NOVA_REQUIRE(rejects([&] {
+        (void)read_adaptive_electrothermal_checkpoint_3d(
+            invalid_counts, mesh, "unit_cube_v1", options);
+    }));
+    corrupt = change_field(record, "progress_source_energy ", "inf");
+    std::istringstream invalid_energy(corrupt);
+    NOVA_REQUIRE(rejects([&] {
+        (void)read_adaptive_electrothermal_checkpoint_3d(
+            invalid_energy, mesh, "unit_cube_v1", options);
+    }));
+
+    // The old v1 format has no history totals. Readers accept it while
+    // explicitly marking cumulative progress incomplete.
+    auto legacy = change_field(record, "version ", "1");
+    const auto first = legacy.find("progress_attempted ");
+    const auto last = legacy.find("thermal_state\n");
+    NOVA_REQUIRE(first != std::string::npos);
+    NOVA_REQUIRE(last != std::string::npos && last > first);
+    legacy.erase(first, last - first);
+    std::istringstream old_input(legacy);
+    const auto old_state = read_adaptive_electrothermal_checkpoint_3d(
+        old_input, mesh, "unit_cube_v1", options);
+    NOVA_REQUIRE(!old_state.progress_complete);
+    NOVA_REQUIRE(old_state.progress.attempted_steps == 0U);
+    NOVA_REQUIRE(rejects([&] {
+        (void)write_test_record(mesh, options, old_state);
+    }));
 }
