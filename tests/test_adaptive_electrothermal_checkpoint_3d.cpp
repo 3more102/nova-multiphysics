@@ -59,7 +59,7 @@ std::string change_field(std::string text, const std::string& label,
                          const std::string& value) {
     const auto first = text.find(label);
     NOVA_REQUIRE(first != std::string::npos);
-    const auto end = text.find('\\n', first);
+    const auto end = text.find('\n', first);
     NOVA_REQUIRE(end != std::string::npos);
     text.replace(first, end - first, label + value);
     return text;
