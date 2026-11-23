@@ -32,7 +32,7 @@ untouched; a failed physical stream write can still leave a partial file.
 
 // Reconstruct the same mesh and physics model in both processes.
 // The model ID is provided by the caller, not computed by NOVA.
-constexpr auto model_id = "my-eletrothermal-study-v1";
+constexpr auto model_id = "my-electrothermal-study-v1";
 nova::physics::AdaptiveTransientElectrothermal3DOptions options;
 options.end_time = 1.0;
 
