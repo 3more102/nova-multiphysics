@@ -55,6 +55,16 @@ std::string replaced(std::string text,
     return text;
 }
 
+std::string change_field(std::string text, const std::string& label,
+                         const std::string& value) {
+    const auto first = text.find(label);
+    NOVA_REQUIRE(first != std::string::npos);
+    const auto end = text.find('\\n', first);
+    NOVA_REQUIRE(end != std::string::npos);
+    text.replace(first, end - first, label + value);
+    return text;
+}
+
 bool face_at_x(const TetrahedralMesh3D& mesh,
                const BoundaryFace3D& face, double x) {
     return std::all_of(face.begin(), face.end(),
@@ -181,8 +191,8 @@ NOVA_TEST(adaptive_electrothermal_checkpoint_3d_rejects_bad_records_without_part
     const std::vector<std::string> corrupt{
         "",
         replaced(good, "version 1", "version 2"),
-        replaced(good, "min_dt 9.9999999999999995e-07", "min_dt -1"),
-        replaced(good, "next_dt 0.050000000000000003", "next_dt nan"),
+        change_field(good, "min_dt ", "-1"),
+        change_field(good, "next_dt ", "nan"),
         replaced(good, "thermal_state\n", "thermal_state\nBROKEN\n"),
         good.substr(0, good.size() - 4),
         good + "trailing\n"
