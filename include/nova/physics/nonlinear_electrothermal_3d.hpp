@@ -15,7 +15,12 @@ namespace nova::physics {
 // The scalar positive scale is dimensionless and takes temperature in kelvin.
 struct NonlinearElectrothermal3DProblem {
     Electrothermal3DProblem base;
+    // Required positive electrical conductivity multiplier sigma(T)/sigma_ref.
     std::function<double(double)> conductivity_scale;
+    // Optional positive thermal conductivity multiplier k(T)/k_ref.
+    // When empty, the supplied thermal material remains unchanged.
+    // When set, thermal material must be a complete per-cell scalar or tensor.
+    std::function<double(double)> thermal_conductivity_scale;
     double initial_temperature_kelvin{300.0};
 };
 
@@ -30,7 +35,8 @@ struct NonlinearElectrothermal3DResult {
     // Fields evaluated with the last temperature iterate, not with a
     // post-hoc conductivity approximation.
     Electrothermal3DResult fields;
-    // Temperature used to evaluate electrical conductivity on last solve.
+    // Temperature used to evaluate electrical and (if enabled) thermal
+    // conductivity on the last solve.
     std::vector<double> last_temperature_iterate;
     std::size_t iterations{};
     // Difference between raw solved temperature and last iterate, before
