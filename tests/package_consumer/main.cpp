@@ -16,8 +16,11 @@
 #include "nova/io/gmsh_tetrahedral.hpp"
 #include "nova/io/thermal_checkpoint_3d.hpp"
 #include "nova/io/adaptive_electrothermal_checkpoint_3d.hpp"
+#include "nova/io/adaptive_electrothermal_checkpoint_file_3d.hpp"
 
 #include <array>
+#include <chrono>
+#include <filesystem>
 #include <cmath>
 #include <sstream>
 #include <string>
@@ -229,6 +232,30 @@ int main() {
         recovered.progress.rejected_steps != 0U ||
         recovered.progress.source_energy != adaptive_solution.progress.source_energy)
         return 29;
+
+    // Installed SDK exports safe on-disk checkpoint save/load entrypoints.
+    const auto durable_checkpoint_path =
+        std::filesystem::temp_directory_path() /
+        ("nova_sdk_electrothermal_" +
+         std::to_string(std::chrono::steady_clock::now()
+                            .time_since_epoch().count()) + ".dat");
+    nova::io::save_adaptive_electrothermal_checkpoint_file_3d(
+        durable_checkpoint_path, box.mesh, "sdk_probe_v1", adaptive_thermal,
+        {adaptive_solution.final_time, adaptive_solution.temperature,
+         adaptive_solution.accepted_steps.front().next_time_step,
+         adaptive_solution.progress});
+    const auto durable_recovered =
+        nova::io::load_adaptive_electrothermal_checkpoint_file_3d(
+            durable_checkpoint_path, box.mesh, "sdk_probe_v1", adaptive_thermal);
+    std::error_code checkpoint_cleanup_error;
+    std::filesystem::remove(durable_checkpoint_path, checkpoint_cleanup_error);
+    if (checkpoint_cleanup_error ||
+        durable_recovered.time != recovered.time ||
+        durable_recovered.temperature != recovered.temperature ||
+        durable_recovered.next_time_step != recovered.next_time_step ||
+        durable_recovered.progress.accepted_steps != recovered.progress.accepted_steps ||
+        durable_recovered.progress.source_energy != recovered.progress.source_energy)
+        return 30;
 
     // Exercise the installed Neumann-boundary residual overload and link symbol.
     std::vector<NeumannResidualFace3D> natural_faces;
