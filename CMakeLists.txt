@@ -49,6 +49,7 @@ add_library(nova_core
     src/fem/conservative_face_heat_3d.cpp
     src/physics/linear_elasticity_3d.cpp
     src/physics/electrostatics_3d.cpp
+    src/physics/electrothermal_3d.cpp
     src/physics/electrode_charge_3d.cpp
     src/physics/floating_electrodes_3d.cpp
     src/physics/floating_conductor_schur_3d.cpp
@@ -116,6 +117,10 @@ if(NOVA_BUILD_EXAMPLES)
     target_link_libraries(nova_electrostatics_3d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_electrostatics_3d)
 
+    add_executable(nova_electrothermal_3d examples/electrothermal_3d/main.cpp)
+    target_link_libraries(nova_electrothermal_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_electrothermal_3d)
+
     add_executable(nova_transient_heat_2d examples/transient_heat_2d/main.cpp)
     target_link_libraries(nova_transient_heat_2d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_transient_heat_2d)
@@ -158,6 +163,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_conservative_face_heat_3d.cpp
         tests/test_linear_elasticity_3d.cpp
         tests/test_electrostatics_3d.cpp
+        tests/test_electrothermal_3d.cpp
         tests/test_floating_electrodes_3d.cpp
         tests/test_floating_conductor_schur_3d.cpp
         tests/test_floating_schur_convergence_3d.cpp
@@ -280,6 +286,7 @@ if(NOVA_BUILD_TESTS)
         endif()
         add_test(NAME nova_transient_heat_3d_smoke COMMAND nova_transient_heat_3d)
         add_test(NAME nova_electrostatics_3d_smoke COMMAND nova_electrostatics_3d)
+        add_test(NAME nova_electrothermal_3d_smoke COMMAND nova_electrothermal_3d)
         set_tests_properties(nova_transient_heat_3d_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "NOVA 3D transient heat demonstration")
         if(Python3_Interpreter_FOUND)
@@ -325,7 +332,7 @@ if(NOVA_BUILD_EXAMPLES)
     foreach(example IN ITEMS
         nova_poisson_1d nova_diffusion_2d nova_diffusion_3d
         nova_adaptive_diffusion_3d nova_gmsh_diffusion_3d nova_transient_heat_3d
-        nova_gmsh_transient_heat_3d nova_electrostatics_3d nova_transient_heat_2d nova_transient_flux_2d
+        nova_gmsh_transient_heat_3d nova_electrostatics_3d nova_electrothermal_3d nova_transient_heat_2d nova_transient_flux_2d
         nova_adaptive_heat_2d nova_nonlinear_diffusion_1d)
         nova_assert_unique_target_sources(${example})
     endforeach()
