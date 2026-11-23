@@ -1,4 +1,5 @@
 #include "nova/physics/electrothermal_3d.hpp"
+#include "nova/physics/nonlinear_electrothermal_3d.hpp"
 #include "nova/fem/adaptive_diffusion_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
@@ -104,6 +105,21 @@ int main() {
         std::abs(coupled.thermal_balance.generated_heat - 1.0) > 1.0e-8 ||
         std::abs(coupled.thermal_balance.signed_balance_defect) > 1.0e-7)
         return 23;
+
+    // Exercise the installed nonlinear electrothermal symbol and temperature
+    // feedback independently of the public one-way solve.
+    nova::physics::NonlinearElectrothermal3DProblem feedback;
+    feedback.base = electrothermal;
+    feedback.base.electrical.diffusivity = {};
+    feedback.base.electrical.cell_diffusivity.assign(
+        box.mesh.elements.size(), 1.0);
+    feedback.conductivity_scale = [](double) { return 1.0; };
+    const auto nonlinear = nova::physics::solve_nonlinear_electrothermal_3d(feedback);
+    if (!nonlinear.converged ||
+        nonlinear.iterations < 2 ||
+        std::abs(nonlinear.fields.total_joule_power_watts - 1.0) > 1.0e-8 ||
+        std::abs(nonlinear.fields.thermal_balance.signed_balance_defect) > 1.0e-7)
+        return 24;
 
     // Exercise the installed Neumann-boundary residual overload and link symbol.
     std::vector<NeumannResidualFace3D> natural_faces;
