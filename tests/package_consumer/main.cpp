@@ -126,6 +126,11 @@ int main() {
     feedback.thermal_conductivity_scale = [](double t) {
         return 1.0 + 0.01 * (t - 300.0);
     };
+    // k(T) intentionally requires complete cellwise reference conductivity:
+    // the prior SDK exercise used a spatial callback for constant k.
+    feedback.base.thermal.diffusivity = {};
+    feedback.base.thermal.cell_diffusivity.assign(
+        box.mesh.elements.size(), 4.0);
     const auto dual_material =
         nova::physics::solve_nonlinear_electrothermal_3d(feedback);
     if (!dual_material.converged ||
