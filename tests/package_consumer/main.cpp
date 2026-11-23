@@ -1,5 +1,6 @@
 #include "nova/physics/electrothermal_3d.hpp"
 #include "nova/physics/nonlinear_electrothermal_3d.hpp"
+#include "nova/physics/transient_electrothermal_3d.hpp"
 #include "nova/fem/adaptive_diffusion_3d.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/poisson_1d.hpp"
@@ -154,6 +155,27 @@ int main() {
         std::abs(diagnosed.history.back().max_normalized_residual -
                  diagnosed.max_normalized_residual) > 1.0e-15)
         return 26;
+
+    // Installed C++20 SDK: transient electrothermal joule source + BE heat.
+    nova::physics::TransientElectrothermal3DProblem transient_coupling;
+    transient_coupling.electrical = electrothermal.electrical;
+    transient_coupling.thermal.diffusion = electrothermal.thermal;
+    transient_coupling.thermal.cell_volumetric_capacity.assign(
+        box.mesh.elements.size(), 2.0);
+    transient_coupling.thermal.initial_temperature.assign(
+        box.mesh.nodes.size(), 300.0);
+    nova::physics::TransientElectrothermal3DOptions transient_options;
+    transient_options.thermal_time.time_step = 0.02;
+    transient_options.thermal_time.steps = 2U;
+    const auto transient_solution =
+        nova::physics::solve_transient_electrothermal_3d(
+            transient_coupling, transient_options);
+    if (!transient_solution.converged ||
+        transient_solution.accepted_steps.size() != 2U ||
+        std::abs(transient_solution.last_electrical.total_joule_power_watts - 1.0) > 1e-8 ||
+        std::abs(transient_solution.accepted_steps.back().heat_budget.balance_residual)
+             > 1e-7)
+        return 27;
 
     // Exercise the installed Neumann-boundary residual overload and link symbol.
     std::vector<NeumannResidualFace3D> natural_faces;
