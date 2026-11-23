@@ -408,3 +408,28 @@ NOVA_TEST(nonlinear_electrothermal_3d_history_on_iteration_cap_and_invalid_dampi
         (void)solve_nonlinear_electrothermal_3d(p, options);
     }));
 }
+
+NOVA_TEST(nonlinear_electrothermal_3d_adaptive_matches_fixed_converged_dual_material) {
+    auto p = plate();
+    p.conductivity_scale = [](double t) {
+        return 1.0 + 0.001 * (t - 300.0);
+    };
+    p.thermal_conductivity_scale = [](double t) {
+        return 1.0 + 0.005 * (t - 300.0);
+    };
+    const auto fixed = solve_nonlinear_electrothermal_3d(p);
+    NonlinearElectrothermal3DOptions options;
+    options.adaptive_relaxation = true;
+    const auto adaptive = solve_nonlinear_electrothermal_3d(p, options);
+    NOVA_REQUIRE(fixed.converged);
+    NOVA_REQUIRE(adaptive.converged);
+    NOVA_REQUIRE(adaptive.history.size() == adaptive.iterations);
+    NOVA_REQUIRE_NEAR(fixed.fields.total_joule_power_watts,
+                      adaptive.fields.total_joule_power_watts, 1e-5);
+    NOVA_REQUIRE_NEAR(adaptive.fields.thermal_balance.signed_balance_defect,
+                      0.0, 1e-6);
+    for (std::size_t i = 0; i < fixed.fields.thermal_solution.values.size(); ++i) {
+        NOVA_REQUIRE_NEAR(fixed.fields.thermal_solution.values[i],
+                          adaptive.fields.thermal_solution.values[i], 1e-6);
+    }
+}
