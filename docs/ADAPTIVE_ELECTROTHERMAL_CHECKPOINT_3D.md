@@ -52,8 +52,8 @@ const auto resumed =
         problem, options);
 ```
 
-The example assumes \`problem\` is a configured
-\`TransientElectrothermal3DProblem\`. The original stream APIs remain
+The example assumes `problem` is a configured
+`TransientElectrothermal3DProblem`. The original stream APIs remain
 available. The accepted-step callback stays registered after restart.
 
 **Load before changing** `start_time` or `initial_time_step`. These two
@@ -119,17 +119,17 @@ accounting. No MPI state, adaptive mesh genealogy, time-dependent
 external solver state or implicit state in callbacks is captured.
 
 The stream writer stages serialization in memory only. The new
-\`write_adaptive_electrothermal_checkpoint_3d_file_atomic\` path API
+`write_adaptive_electrothermal_checkpoint_3d_file_atomic` path API
 serializes the same version-1 record, reserves a unique sibling staging
 directory, writes and closes a file, and renames it over the destination.
 Failed validation, write, or rename operations leave an existing destination
 unchanged, and normal failures clean up staging files. The path-level
-\`read_adaptive_electrothermal_checkpoint_3d_file\` uses the same strict parser.
+`read_adaptive_electrothermal_checkpoint_3d_file` uses the same strict parser.
 
 **Filesystem limits:** Replacement atomicity depends on host filesystem
 rename semantics. The implementation does not fsync file data or parent
 directory metadata, so it is **not a power-loss durability guarantee**.
-Abrupt process death may leave stale \`.nova-stage-*\` directories beside
+Abrupt process death may leave stale `.nova-stage-*` directories beside
 the destination; remove only when no writer is active. Concurrent writers
 targeting the same destination are not coordinated. The implementation
 still does not persist cumulative attempt counters or accepted energy
