@@ -52,6 +52,7 @@ add_library(nova_core
     src/physics/electrothermal_3d.cpp
     src/physics/nonlinear_electrothermal_3d.cpp
     src/physics/transient_electrothermal_3d.cpp
+    src/physics/adaptive_transient_electrothermal_3d.cpp
     src/physics/electrode_charge_3d.cpp
     src/physics/floating_electrodes_3d.cpp
     src/physics/floating_conductor_schur_3d.cpp
