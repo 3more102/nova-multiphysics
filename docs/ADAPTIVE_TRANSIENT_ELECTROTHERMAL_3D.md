@@ -103,35 +103,19 @@ for rejected trials or discarded full-step comparison candidates. Its
 is the suggested next controller timestep. Exceptions thrown by the
 observer propagate to the caller; NOVA does not retry the observer.
 
-For a mesh-validated checkpoint, save the accepted field and time with
-`nova::io::write_transient_heat_checkpoint_3d` and save
-`step.next_time_step` alongside it in an application-managed metadata
-record. The existing thermal checkpoint format does **not** contain that
-controller-specific timestep; NOVA does not yet provide an atomic
-multi-file or full-simulation checkpoint.
+For a single-record, versioned checkpoint of the accepted physical state,
+proposed controller timestep, numerical options and mesh, see
+[Adaptive electrothermal checkpoint](ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D.md).
+It reuses the exact mesh-validated thermal checkpoint internally and requires
+a caller-assigned model identity. The older thermal-state-only API remains
+available but requires separate application-managed timestep metadata.
 
-At restart, validate the mesh with
-`nova::io::read_transient_heat_checkpoint_3d`, assign its temperature
-to `problem.thermal.initial_temperature`, its time to
-`options.coupling.thermal_time.start_time`, and the stored timestep
-to `options.initial_time_step`. Keep the original final `end_time`,
-physical model, nonlinear tolerances, material laws and controller
-settings unchanged. This resumes the adaptive sequence at an accepted
-**step boundary**; it does not restore prior attempt counters, electrical
-diagnostics or old accepted-step history. If the run was interrupted in
-the middle of a candidate, only the last saved accepted state is safe.
-Callbacks used by the model should be deterministic to support replay.
-
-Example callback (caller owns the output stream and metadata storage):
-
-```cpp
-options.on_accepted_step = [&](const auto& step, const auto& temperature) {
-    nova::io::write_transient_heat_checkpoint_3d(
-        checkpoint_stream, transient_electrothermal_problem.electrical.mesh,
-        step.time, temperature);
-    saved_next_time_step = step.next_time_step;
-};
-```
+The accepted-state callback can call the new checkpoint writer using
+`{step.time, temperature, step.next_time_step}`. A restart reads/validates
+the snapshot **before** updating `problem.thermal.initial_temperature`,
+`options.coupling.thermal_time.start_time` and
+`options.initial_time_step`. It does not serialize the physical model,
+side-effecting callback state or cumulative attempt history.
 
 ## Numerical verification cases
 
