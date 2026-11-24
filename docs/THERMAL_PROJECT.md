@@ -6,9 +6,12 @@ The installed C++20 `nova-run` process reads a self-contained SI model. It build
 
 ~~~sh
 nova-run check convecting_wall.nova
+nova-run show convecting_wall.nova
 nova-run save-as convecting_wall.nova saved.nova
 nova-run solve saved.nova --vtk wall.vtk
 ~~~
+
+The `show` operation emits the canonical versioned model to standard output. [Desktop authoring and field probes](THERMAL_DESKTOP.md) · [Numerical verification report](verification/thermal-project-v1.md).
 
 The SDK installs the runner in `bin` and the example in `share/nova/projects` under the default install layout. A CMake consumer can use `NOVA::Runner` and `NOVA_PROJECT_EXAMPLE_DIR`. Open the VTK unstructured grid in ParaView to inspect point temperature in K and cell heat flux in W/m². Material tag 1 designates the single homogeneous solid.
 

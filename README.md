@@ -4,7 +4,7 @@
 
 **NOVA Multiphysics** is an independent, C++20-based finite-element simulation project focused on building a verifiable numerical foundation for next-generation computer-aided engineering (CAE) software. Its long-term direction is a modular multiphysics platform spanning model definition, meshing, numerical solution, postprocessing, and a desktop engineering environment.
 
-**Current release track:** `0.8.0` development SDK · **Platforms:** Windows and Linux · **Interface:** C++ library, native thermal project runner and command-line examples
+**Current release track:** `0.8.0` development SDK · **Platforms:** Windows and Linux · **Interface:** C++ SDK, native thermal project runner, optional Qt thermal desktop and command-line examples
 
 > [!IMPORTANT]
 > **Research and development software.** NOVA is an experimental numerical platform, **not** a certified, production-ready or general-purpose multiphysics product. Features have different levels of maturity, results require independent verification, and no claim of equivalence to commercial CAE packages is made.
@@ -38,7 +38,7 @@ The following reflects functionality represented in the current source tree. **E
 | **Numerical solvers** | CSR sparse algebra; CG, BiCGSTAB, restarted GMRES; Jacobi and CG-only IC(0); Newton nonlinear solves | Core components |
 | **Interoperability / output** | First-order Gmsh MSH 2.2/4.1 ASCII import; legacy VTK, ParaView PVD time series; installable CMake SDK | Supported development workflows |
 
-**Important scope boundaries:** NOVA contains experimental dedicated electrothermal coupling, but not a unified general-purpose multiphysics coupling framework. The project does not currently provide an integrated desktop GUI, general CAD kernel, automatic production-grade 3D meshing, validated fluid/EM solvers, or commercial engineering certification.
+**Important scope boundaries:** NOVA contains experimental dedicated electrothermal coupling, but not a unified general-purpose multiphysics coupling framework. The optional Qt desktop supports native stationary thermal box studies. General CAD, automatic production-grade 3D meshing, qualified fluid/EM workflows and commercial release remain open.
 
 ### Physics and numerical documentation
 
@@ -85,6 +85,8 @@ ctest --test-dir build -C Release --output-on-failure
 On Windows with a multi-configuration generator, executables are typically found in `build/Release/`; with the default Ninja preset, they are in `build/`. A successful compilation is not a substitute for running the tests.
 
 ## Run a saved thermal project
+
+Open **NOVA Thermal** to create, save, solve and probe a supported box study. [Desktop installation and user guide](docs/THERMAL_DESKTOP.md).
 
 The installed `nova-run` executable opens a versioned `.nova` model, generates a tetrahedral box mesh and solves stationary heat conduction. The example runs without custom C++ or an external mesher.
 
@@ -208,7 +210,7 @@ cmake/             Build configuration and SDK package infrastructure
 
 **Present:** an independently built FEM-oriented C++ core, solver library, mesh I/O, physics prototypes and installable SDK.
 
-**Planned—not yet an integrated product:** desktop UI, geometry/CAD services, generalized material and field registries, segregated/monolithic multiphysics coupling, broader physics, advanced postprocessing and automation.
+**Further development:** general geometry/CAD services, material and field registries, coupled native projects, broader physics, advanced postprocessing and automation.
 
 Explore the [architecture design](docs/ARCHITECTURE.md) and [milestone roadmap](docs/ROADMAP.md). Milestones require documented acceptance tests and verification evidence; an implemented prototype alone does not signify product readiness.
 
