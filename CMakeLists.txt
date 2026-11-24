@@ -53,6 +53,7 @@ add_library(nova_core
     src/fem/conservative_face_heat_3d.cpp
     src/physics/linear_elasticity_3d.cpp
     src/physics/optics.cpp
+    src/physics/optical_helmholtz_1d.cpp
     src/physics/electrostatics_3d.cpp
     src/physics/electrothermal_3d.cpp
     src/physics/nonlinear_electrothermal_3d.cpp
@@ -213,6 +214,11 @@ if(NOVA_BUILD_TESTS)
     nova_enable_warnings(nova_optics_reference_tests)
     nova_assert_unique_target_sources(nova_optics_reference_tests)
     add_test(NAME nova_optics_reference_tests COMMAND nova_optics_reference_tests)
+    add_executable(nova_optical_helmholtz_1d_tests tests/test_optical_helmholtz_1d.cpp)
+    target_link_libraries(nova_optical_helmholtz_1d_tests PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_optical_helmholtz_1d_tests)
+    nova_assert_unique_target_sources(nova_optical_helmholtz_1d_tests)
+    add_test(NAME nova_optical_helmholtz_1d_tests COMMAND nova_optical_helmholtz_1d_tests)
     add_executable(nova_polarization_reference_tests tests/test_polarization.cpp)
     target_link_libraries(nova_polarization_reference_tests PRIVATE NOVA::Core)
     nova_enable_warnings(nova_polarization_reference_tests)
