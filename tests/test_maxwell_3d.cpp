@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "nova/physics/maxwell_3d.hpp"
+#include "nova/physics/optical_dispersion.hpp"
 
 #include <algorithm>
 #include <complex>
@@ -246,4 +247,90 @@ NOVA_TEST(maxwell_pec_smooth_manufactured_h_convergence) {
         if (previous>0.0) NOVA_REQUIRE(std::log2(previous/relative)>0.8);
         previous=relative;
     }
+}
+
+
+NOVA_TEST(optical_drude_analytic_passive_negative_epsilon) {
+    const std::array<DrudePole,1> poles{{{4.0,1.0}}};
+    const auto eps=drude_lorentz_permittivity(2.0,1.0,poles);
+    NOVA_REQUIRE_NEAR(eps.real(),-2.2,1e-14);
+    NOVA_REQUIRE_NEAR(eps.imag(),1.6,1e-14);
+    const std::array<DrudePole,1> lossless{{{4.0,0.0}}};
+    const auto e0=drude_lorentz_permittivity(2.0,1.0,lossless);
+    NOVA_REQUIRE_NEAR(e0.real(),-3.0,1e-14);
+    NOVA_REQUIRE_NEAR(e0.imag(),0.0,0.0);
+}
+
+NOVA_TEST(optical_lorentz_resonance_and_superposition) {
+    const std::array<LorentzPole,1> poles{{{4.0,2.0,0.5}}};
+    const auto eps=drude_lorentz_permittivity(4.0,1.5,{},poles);
+    NOVA_REQUIRE_NEAR(eps.real(),1.5,1e-14);
+    NOVA_REQUIRE_NEAR(eps.imag(),16.0,1e-14);
+    const std::array<DrudePole,1> d{{{8.0,2.0}}};
+    const auto both=drude_lorentz_permittivity(4.0,1.5,d,poles);
+    NOVA_REQUIRE_NEAR(both.real(),-1.7,1e-14);
+    NOVA_REQUIRE_NEAR(both.imag(),17.6,1e-14);
+}
+
+NOVA_TEST(optical_tabulated_index_and_wavelength_units) {
+    const std::array<OpticalIndexSample,2> samples{{{1e-6,2.0,0.0},{2e-6,4.0,2.0}}};
+    const auto m=interpolate_optical_index(samples,1.5e-6);
+    NOVA_REQUIRE_NEAR(m.relative_permittivity.real(),8.0,1e-13);
+    NOVA_REQUIRE_NEAR(m.relative_permittivity.imag(),6.0,1e-13);
+    NOVA_REQUIRE_NEAR(m.relative_permeability,1.0,0.0);
+    NOVA_REQUIRE_NEAR(std::abs(interpolate_optical_index(samples,2e-6).relative_permittivity-
+                              std::complex<double>(12.0,16.0)),0.0,1e-13);
+    NOVA_REQUIRE_NEAR(optical_angular_frequency(1e-6)*1e-6/
+                      (2*std::numbers::pi),299792458.0,1e-6);
+}
+
+NOVA_TEST(optical_rejects_invalid_poles_tables_and_extrapolation) {
+    const auto rejects=[](auto fn) {
+        bool rejected=false;
+        try { fn(); } catch (const std::exception&) { rejected=true; }
+        NOVA_REQUIRE(rejected);
+    };
+    rejects([]{ (void)optical_angular_frequency(0.0); });
+    rejects([]{ (void)optical_material_from_nk(1.0,-1.0); });
+    rejects([]{ (void)drude_lorentz_permittivity(1.0,1.0,
+        std::array<DrudePole,1>{{{2.0,-1.0}}}); });
+    rejects([]{ (void)drude_lorentz_permittivity(1.0,1.0,{},
+        std::array<LorentzPole,1>{{{1.0,1.0,0.0}}}); });
+    rejects([]{ (void)interpolate_optical_index(
+        std::array<OpticalIndexSample,2>{{{1.0,1.0,0.0},{1.0,2.0,0.0}}},1.0); });
+    rejects([]{ (void)interpolate_optical_index(
+        std::array<OpticalIndexSample,1>{{{1.0,1.0,0.0}}},2.0); });
+    rejects([]{ (void)optical_material_from_nk(std::numeric_limits<double>::infinity(),0.0); });
+}
+
+NOVA_TEST(optical_dispersive_material_maxwell_manufactured_solution) {
+    using C=std::complex<double>;
+    const auto mesh=unit_cell();
+    constexpr double k0=2.0;
+    constexpr double omega=k0*optical_speed_of_light;
+    const std::array<DrudePole,1> poles{{{2*omega,0.5*omega}}};
+    const auto material=optical_drude_lorentz_material(2*std::numbers::pi/k0,1.0,poles);
+    NOVA_REQUIRE(material.relative_permittivity.real()<0.0);
+    NOVA_REQUIRE(material.relative_permittivity.imag()>0.0);
+    const std::array<MaxwellCellMaterial3D,1> materials{material};
+    const auto sys=assemble_maxwell_3d(mesh,materials,k0,false);
+    const ComplexVector3D exact{C(1.0,0.2),C(-0.3,0.4),C(0.5,-0.1)};
+    ComplexVector3D f{};
+    for (std::size_t i=0;i<3;++i)
+        f[i]=-k0*k0*material.relative_permittivity*exact[i];
+    const std::array<ComplexVector3D,1> sources{f};
+    nova::linalg::GmresOptions opts;
+    opts.solver.relative_tolerance=1e-12;
+    const auto result=solve_maxwell_3d(sys,assemble_maxwell_cell_load_3d(mesh,sources,sys),opts);
+    NOVA_REQUIRE(result.diagnostics.converged);
+    for (std::size_t i=0;i<sys.edges.size();++i) {
+        const auto a=mesh.nodes[sys.edges[i][0]], b=mesh.nodes[sys.edges[i][1]];
+        const C expected=exact[0]*(b.x-a.x)+exact[1]*(b.y-a.y)+exact[2]*(b.z-a.z);
+        NOVA_REQUIRE_NEAR(std::abs(result.edge_field[i]-expected),0.0,1e-10);
+    }
+    const auto q=integrate_maxwell_absorption_3d(mesh,materials,k0,sys,result.edge_field);
+    const double expected=0.5*omega*8.8541878128e-12*material.relative_permittivity.imag()*
+        (std::norm(exact[0])+std::norm(exact[1])+std::norm(exact[2]))/6.0;
+    NOVA_REQUIRE(q[0]>0.0);
+    NOVA_REQUIRE_NEAR(q[0],expected,1e-12);
 }
