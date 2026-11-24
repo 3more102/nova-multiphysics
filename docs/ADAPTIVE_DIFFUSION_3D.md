@@ -12,8 +12,9 @@ reached. The one-cycle sequence is:
    prescribed or implicitly insulated natural boundary residuals.
 3. Mark the smallest prefix reaching `theta * sum(eta_K^2)`.
 4. Refine all marked tetrahedra conformingly, with boundary-parent maps.
-5. Interpolate coarse nodal P1 values and replicate per-cell conductivity.
-6. Transfer exterior face Dirichlet/Neumann callbacks and vertex constraints.
+5. Interpolate coarse nodal P1 values and transfer cellwise scalar/tensor
+   conductivity and additive cell-source data.
+6. Transfer Dirichlet, Neumann and Robin callbacks plus vertex constraints.
 7. Solve the refined system and recompute its residual indicators.
 
 Use:
@@ -22,8 +23,8 @@ Use:
 #include "nova/fem/adaptive_diffusion_3d.hpp"
 
 nova::fem::ScalarDiffusion3DProblem problem;
-// Supply mesh, one positive cell_diffusivity per tetrahedron, and
-// selected Dirichlet faces (with optional spatial source/Neumann flux).
+// Supply a mesh, exactly one supported scalar/tensor material field, and
+// any supported source and boundary conditions.
 const auto cycle =
     nova::fem::solve_adaptive_diffusion_step_3d(problem, 0.5);
 ```
