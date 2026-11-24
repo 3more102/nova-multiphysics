@@ -226,14 +226,6 @@ NOVA_TEST(adaptive_diffusion_3d_rejects_unrepresented_physics) {
     NOVA_REQUIRE(rejects([&] {
         (void)nova::fem::solve_adaptive_diffusion_step_3d(modified, 0.5);
     }));
-    modified = problem;
-    modified.robin_faces.push_back({
-        box.boundary_faces.front(),
-        [](double, double, double) { return 1.0; },
-        [](double, double, double) { return 0.0; }});
-    NOVA_REQUIRE(rejects([&] {
-        (void)nova::fem::solve_adaptive_diffusion_step_3d(modified, 0.5);
-    }));
 }
 
 
@@ -415,4 +407,107 @@ NOVA_TEST(adaptive_diffusion_3d_preserves_vertex_only_dirichlet_faces) {
                               p.y, 1.0e-8);
         }
     }
+}
+
+
+NOVA_TEST(adaptive_diffusion_3d_spatial_tensor_reconstructs_exact_off_diagonal_flux) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const nova::fem::SymmetricTensor3D tensor{4.0, 3.0, 2.0, 0.5, 0.1, 0.2};
+    nova::fem::ScalarDiffusion3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.diffusivity_tensor = [tensor](double, double, double) { return tensor; };
+    for (std::size_t node = 0; node < box.mesh.nodes.size(); ++node) {
+        const auto& point = box.mesh.nodes[node];
+        problem.dirichlet_constraints.push_back({
+            node, point.x + 2.0 * point.y - 3.0 * point.z});
+    }
+
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(problem, 0.5);
+    NOVA_REQUIRE(result.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.refined_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.coarse_indicators.total_error < 1.0e-10);
+
+    const auto fields = nova::fem::evaluate_p1_tetrahedral_flux_3d(
+        problem, result.coarse_solution.values);
+    NOVA_REQUIRE(fields.size() == box.mesh.elements.size());
+    for (const auto& field : fields) {
+        NOVA_REQUIRE_NEAR(field.gradient.x, 1.0, 1.0e-11);
+        NOVA_REQUIRE_NEAR(field.gradient.y, 2.0, 1.0e-11);
+        NOVA_REQUIRE_NEAR(field.gradient.z, -3.0, 1.0e-11);
+        NOVA_REQUIRE_NEAR(field.flux.x, -4.7, 1.0e-10);
+        NOVA_REQUIRE_NEAR(field.flux.y, -5.9, 1.0e-10);
+        NOVA_REQUIRE_NEAR(field.flux.z, 5.5, 1.0e-10);
+    }
+}
+
+NOVA_TEST(adaptive_diffusion_3d_transfers_cell_tensors_and_robin_neumann_faces) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const nova::fem::SymmetricTensor3D tensor{4.0, 3.0, 2.0, 0.5, 0.1, 0.2};
+    nova::fem::ScalarDiffusion3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.cell_diffusivity_tensors.assign(box.mesh.elements.size(), tensor);
+    problem.source = [](double, double, double) { return 4.0; };
+
+    const auto on_y = [&](const nova::fem::BoundaryFace3D& face, double y) {
+        return box.mesh.nodes[face[0]].y == y &&
+               box.mesh.nodes[face[1]].y == y &&
+               box.mesh.nodes[face[2]].y == y;
+    };
+    for (const auto& face : box.boundary_faces) {
+        if (is_x_plate(box.mesh, face, 0.0) || is_x_plate(box.mesh, face, 1.0)) {
+            problem.dirichlet_faces.push_back({
+                face, [](double, double, double) { return 0.0; }});
+        } else if (on_y(face, 1.0)) {
+            problem.robin_faces.push_back({
+                face,
+                [](double, double, double) { return 1.5; },
+                [](double, double, double) { return 0.25; }});
+        } else if (on_y(face, 0.0)) {
+            problem.neumann_faces.push_back({
+                face, [](double, double, double) { return 0.5; }});
+        }
+    }
+
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(problem, 1.0);
+    NOVA_REQUIRE(result.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.refined_solution.linear_solver.converged);
+    NOVA_REQUIRE(!result.adaptation.marked_elements.empty());
+    NOVA_REQUIRE(result.refined_problem.cell_diffusivity_tensors.size() ==
+                 result.refined_problem.mesh.elements.size());
+    NOVA_REQUIRE(result.refined_problem.robin_faces.size() > problem.robin_faces.size());
+    NOVA_REQUIRE(result.refined_problem.neumann_faces.size() > problem.neumann_faces.size());
+
+    const auto& refinement = result.adaptation.refinement;
+    NOVA_REQUIRE(refinement.parent_elements.size() ==
+                 result.refined_problem.cell_diffusivity_tensors.size());
+    for (std::size_t child = 0; child < refinement.parent_elements.size(); ++child) {
+        const auto parent = refinement.parent_elements[child];
+        NOVA_REQUIRE(parent < problem.cell_diffusivity_tensors.size());
+        const auto& actual = result.refined_problem.cell_diffusivity_tensors[child];
+        const auto& expected = problem.cell_diffusivity_tensors[parent];
+        NOVA_REQUIRE_NEAR(actual.xx, expected.xx, 1.0e-14);
+        NOVA_REQUIRE_NEAR(actual.yy, expected.yy, 1.0e-14);
+        NOVA_REQUIRE_NEAR(actual.zz, expected.zz, 1.0e-14);
+        NOVA_REQUIRE_NEAR(actual.xy, expected.xy, 1.0e-14);
+        NOVA_REQUIRE_NEAR(actual.xz, expected.xz, 1.0e-14);
+        NOVA_REQUIRE_NEAR(actual.yz, expected.yz, 1.0e-14);
+    }
+
+    bool saw_robin_residual = false;
+    bool saw_neumann_residual = false;
+    for (const auto& face : result.refined_problem.robin_faces) {
+        NOVA_REQUIRE_NEAR(face.transfer_coefficient(0.25, 1.0, 0.5), 1.5, 1.0e-14);
+        NOVA_REQUIRE_NEAR(face.ambient_value(0.25, 1.0, 0.5), 0.25, 1.0e-14);
+    }
+    for (const auto& face : result.refined_indicators.boundary_residual_faces) {
+        saw_robin_residual = saw_robin_residual ||
+            face.kind == nova::fem::BoundaryResidualKind3D::Robin;
+        saw_neumann_residual = saw_neumann_residual ||
+            face.kind == nova::fem::BoundaryResidualKind3D::Neumann;
+    }
+    NOVA_REQUIRE(saw_robin_residual);
+    NOVA_REQUIRE(saw_neumann_residual);
+    NOVA_REQUIRE(std::isfinite(result.refined_indicators.total_error));
 }
