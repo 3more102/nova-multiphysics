@@ -164,6 +164,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_h1_space_3d.cpp
         tests/test_maxwell_3d.cpp
         tests/test_photothermal_3d.cpp
+        tests/test_maxwell_power_audit_3d.cpp
         tests/test_maxwell_cavity_3d.cpp
         tests/test_diffusion_3d.cpp
         tests/test_cell_conduction_3d.cpp
