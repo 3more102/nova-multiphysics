@@ -30,7 +30,8 @@ The following reflects functionality represented in the current source tree. **E
 | **2D transient heat** | Consistent capacity matrix; Backward Euler and Crank–Nicolson; time-dependent loads and boundary data; adaptive timestep control and restart | Experimental |
 | **3D steady diffusion / conduction** | Continuous P1 tetrahedra; isotropic or SPD tensor coefficients; material regions, heat sources, mixed boundaries and flux diagnostics | Experimental |
 | **3D transient heat** | P1 tetrahedra; implicit time integration, adaptive steps, per-step energy accounting, time-varying boundary data, state checkpoints | Experimental |
-| **3D electrothermal FEM** | Stationary DC conduction → Joule heating → thermal diffusion; temperature-dependent sigma(T)/k(T), segregated implicit transient coupling, adaptive step doubling and versioned step-boundary restart | Experimental C++ APIs |\n| **Optics reference models** | Normal-incidence multilayer scattering, passive Drude dispersion, planar SPP and prescribed-intensity Kerr phase | Experimental analytical C++ API; not Maxwell FEM |
+| **3D electrothermal FEM** | Stationary DC conduction → Joule heating → thermal diffusion; temperature-dependent sigma(T)/k(T), segregated implicit transient coupling, adaptive step doubling and versioned step-boundary restart | Experimental C++ APIs |
+| **Optics reference models** | Normal-incidence multilayer scattering, passive Drude dispersion, planar SPP and prescribed-intensity Kerr phase | Experimental analytical C++ API; not Maxwell FEM |
 | **3D electrostatics** | Scalar/tensor permittivity, electric potential, field/displacement and energy; electrode-charge and capacitance diagnostics; restricted floating-terminal Schur workflow | Experimental |
 | **3D linear elasticity** | Small-strain isotropic P1 tetrahedral solver with fully prescribed nodal displacements, body forces, face tractions, and stress/strain recovery | Experimental C++ API |
 | **Mesh infrastructure** | Validated 2D triangle/3D tetrahedron topology, quality metrics, 2D uniform refinement, 3D uniform and marked local refinement, field transfer | Developing |
@@ -50,7 +51,8 @@ See [optics reference models and limitations](docs/OPTICS_FOUNDATION.md).
 | Transient 3D heat, time integrators and energy diagnostics | [Transient 3D heat](docs/TRANSIENT_HEAT_3D.md) |
 | Imported-mesh transient CLI | [Gmsh transient heat](docs/GMSH_TRANSIENT_HEAT_3D.md) |
 | 2D/3D temporal adaptation | [Adaptive heat 2D](docs/ADAPTIVE_HEAT_2D.md) · [Adaptive heat 3D](docs/ADAPTIVE_HEAT_3D.md) |
-| Electrothermal adaptive stepping and restart | [Adaptive electrothermal integration](docs/ADAPTIVE_TRANSIENT_ELECTROTHERMAL_3D.md) · [Versioned checkpoint](docs/ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D.md) |\n| Electrostatics, capacitance and floating conductors | [3D electrostatics](docs/ELECTROSTATICS_3D.md) |
+| Electrothermal adaptive stepping and restart | [Adaptive electrothermal integration](docs/ADAPTIVE_TRANSIENT_ELECTROTHERMAL_3D.md) · [Versioned checkpoint](docs/ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D.md) |
+| Electrostatics, capacitance and floating conductors | [3D electrostatics](docs/ELECTROSTATICS_3D.md) |
 | 3D mesh refinement and residual indicators | [Tetrahedral refinement](docs/UNIFORM_TETRA_REFINEMENT_3D.md) · [Residual error indicators](docs/RESIDUAL_ERROR_ESTIMATOR_3D.md) |
 | Conventions and analytical verification | [Numerical conventions](docs/NUMERICAL_CONVENTIONS.md) · [3D spatial error norms](docs/VERIFICATION_3D_ERROR_NORMS.md) |
 
