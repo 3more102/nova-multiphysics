@@ -1,9 +1,11 @@
 # Adaptive stationary diffusion cycle on 3D P1 tetrahedra (experimental)
 
-The public function `nova::fem::solve_adaptive_diffusion_step_3d`
+The one-cycle function `nova::fem::solve_adaptive_diffusion_step_3d`
 connects the existing 3D stationary FEM solver, residual estimator,
 Dörfler bulk marking, conforming local refinement, and P1/cell transfer.
-The sequence is:
+The multi-cycle driver `nova::fem::solve_adaptive_diffusion_3d` repeats that
+cycle until an indicator tolerance is met or a configured cycle limit is
+reached. The one-cycle sequence is:
 
 1. Solve the coarse scalar diffusion problem.
 2. Evaluate element source, interior normal flux-jump, and all explicitly
@@ -31,6 +33,32 @@ Inspect `cycle.adaptation.marked_elements`,
 `cycle.refined_problem`, `cycle.refined_solution`, and the two
 `*_indicators` objects. An identically zero estimator returns the
 original problem and solution without a redundant second linear solve.
+
+
+
+## Multi-cycle adaptive driver
+
+Use `solve_adaptive_diffusion_3d` when the mesh should be refined repeatedly
+without manually wiring each refined problem into the next solve:
+
+```cpp
+nova::fem::AdaptiveDiffusionOptions3D options;
+options.dorfler_theta = 0.5;
+options.absolute_tolerance = 1.0e-6;
+options.relative_tolerance = 1.0e-3;
+options.max_cycles = 8;
+
+const auto run = nova::fem::solve_adaptive_diffusion_3d(problem, options);
+```
+
+The stopping target is
+`max(absolute_tolerance, relative_tolerance * initial_indicator)`, where
+`initial_indicator` is the first coarse solve's total residual indicator.
+The result contains the final problem, solution, indicators, and a compact
+per-cycle history of mesh sizes, marked elements, and indicator values.
+Stop reasons distinguish a satisfied tolerance, no further refinement, and
+the maximum-cycle limit. These tolerances apply to the heuristic indicator;
+they do not certify the continuum solution error.
 
 ## Supported boundary and material conditions
 
@@ -61,10 +89,9 @@ original problem and solution without a redundant second linear solve.
   to all of its children. Spatial material callbacks remain attached to the
   refined problem and are re-evaluated by the FEM quadrature.
 
-Higher-order bases, curved boundary geometry, and automatic multicycle
-stopping are not implemented by this wrapper. The caller may feed
-`refined_problem` into a later cycle if the model remains in this supported
-subset.
+Higher-order bases and curved boundary geometry remain unsupported. The
+multi-cycle driver automates repeated calls to the same one-cycle workflow
+without changing the estimator's heuristic status.
 
 The estimator is a **heuristic spatial error indicator**, not a certified
 bound on the continuum solution. Refinement does not guarantee a lower
@@ -144,3 +171,9 @@ and verifies exact parent-to-child source transfer.
 The indicator remains heuristic. For spatially varying coefficients, the
 current cell residual does not include within-cell coefficient-gradient terms,
 and the estimator is not a certified continuum error bound.
+
+
+The multi-cycle regressions verify early termination for a zero-indicator
+manufactured case, invalid cycle-limit rejection, and a two-cycle source-loaded
+wall run that respects the configured cap while reporting mesh and indicator
+progress without assuming monotonic error reduction.
