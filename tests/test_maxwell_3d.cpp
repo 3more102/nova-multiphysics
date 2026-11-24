@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "nova/physics/maxwell_3d.hpp"
+#include "nova/physics/maxwell_uniaxial_3d.hpp"
 
 #include <algorithm>
 #include <complex>
@@ -246,4 +247,78 @@ NOVA_TEST(maxwell_pec_smooth_manufactured_h_convergence) {
         if (previous>0.0) NOVA_REQUIRE(std::log2(previous/relative)>0.8);
         previous=relative;
     }
+}
+
+NOVA_TEST(maxwell_uniaxial_isotropic_limit_and_director_invariance) {
+    auto mesh=unit_cell();
+    const std::array<MaxwellCellMaterial3D,1> iso{{{{2.0,0.3},1.2}}};
+    std::array<MaxwellUniaxialMaterial3D,1> mat{{{{2.0,0.3},{2.0,0.3},{1,2,3},1.2}}};
+    const auto a=assemble_maxwell_3d(mesh,iso,1.7,false);
+    const auto b=assemble_maxwell_uniaxial_3d(mesh,mat,1.7,false);
+    NOVA_REQUIRE(a.edges==b.edges && a.free_edges==b.free_edges);
+    for (std::size_t i=0;i<a.real_block.rows();++i)
+        for (std::size_t j=0;j<a.real_block.columns();++j)
+            NOVA_REQUIRE_NEAR(a.real_block.at(i,j),b.real_block.at(i,j),1e-13);
+    mat[0].extraordinary_permittivity={-3.0,0.9};
+    const auto c=assemble_maxwell_uniaxial_3d(mesh,mat,1.7,false);
+    mat[0].optic_axis={-2,-4,-6};
+    mesh.elements[0]={2,0,3,1};
+    const auto d=assemble_maxwell_uniaxial_3d(mesh,mat,1.7,false);
+    NOVA_REQUIRE(c.edges==d.edges);
+    for (std::size_t i=0;i<c.real_block.rows();++i)
+        for (std::size_t j=0;j<c.real_block.columns();++j)
+            NOVA_REQUIRE_NEAR(c.real_block.at(i,j),d.real_block.at(i,j),1e-13);
+}
+
+NOVA_TEST(maxwell_uniaxial_rotated_manufactured_field_and_loss) {
+    using C=std::complex<double>;
+    const auto mesh=unit_cell();
+    // Director (1,1,0)/sqrt(2): eps_xy=(eps_e-eps_o)/2.
+    const C eo(2.0,0.2), ee(4.0,0.8);
+    const std::array<MaxwellUniaxialMaterial3D,1> mat{{{eo,ee,{1,1,0},1.0}}};
+    const ComplexVector3D field{C(1,0),C(0,1),C(2,0)};
+    const double k=2.3;
+    const ComplexVector3D source{
+        -k*k*((eo+ee)/2.0*field[0]+(ee-eo)/2.0*field[1]),
+        -k*k*((ee-eo)/2.0*field[0]+(eo+ee)/2.0*field[1]),
+        -k*k*eo*field[2]};
+    const auto system=assemble_maxwell_uniaxial_3d(mesh,mat,k,false);
+    const std::array<ComplexVector3D,1> sources{source};
+    const auto load=assemble_maxwell_cell_load_3d(mesh,sources,system);
+    nova::linalg::GmresOptions options;
+    options.restart=12;
+    options.solver.max_iterations=100;
+    options.solver.relative_tolerance=1e-12;
+    const auto sol=solve_maxwell_3d(system,load,options);
+    NOVA_REQUIRE(sol.diagnostics.converged);
+    for (std::size_t e=0;e<system.edges.size();++e) {
+        const auto a=mesh.nodes[system.edges[e][0]],b=mesh.nodes[system.edges[e][1]];
+        const C exact=field[0]*(b.x-a.x)+field[1]*(b.y-a.y)+field[2]*(b.z-a.z);
+        NOVA_REQUIRE_NEAR(std::abs(sol.edge_field[e]-exact),0.0,1e-10);
+    }
+    const auto loss=integrate_maxwell_uniaxial_absorption_3d(mesh,mat,k,system,sol.edge_field);
+    // |E_parallel|^2=1, |E_perpendicular|^2=5, volume=1/6.
+    const double expected=0.5*k*299792458.0*8.8541878128e-12*(0.2*5+0.8)/6.0;
+    NOVA_REQUIRE_NEAR(loss[0],expected,1e-12);
+}
+
+NOVA_TEST(maxwell_uniaxial_pec_and_invalid_material) {
+    const auto mesh=make_box_mesh_3d(0,1,0,1,0,1,1,1,1).mesh;
+    std::vector<MaxwellUniaxialMaterial3D> mat(mesh.elements.size(),{{2,0.2},{3,0.4},{0,0,1},1});
+    const auto sys=assemble_maxwell_uniaxial_3d(mesh,mat,2.0,true);
+    NOVA_REQUIRE(sys.free_edges.size()==1);
+    const auto result=solve_maxwell_3d(sys,std::vector<std::complex<double>>(sys.edges.size()));
+    NOVA_REQUIRE(result.diagnostics.converged);
+    for (const auto& e : result.edge_field) NOVA_REQUIRE_NEAR(std::abs(e),0.0,0.0);
+    mat[0].optic_axis={0,0,0};
+    bool rejected=false;
+    try { (void)assemble_maxwell_uniaxial_3d(mesh,mat,2.0,true); }
+    catch (const std::invalid_argument&) { rejected=true; }
+    NOVA_REQUIRE(rejected);
+    mat[0].optic_axis={0,0,1};
+    mat[0].extraordinary_permittivity={3,-0.1};
+    rejected=false;
+    try { (void)assemble_maxwell_uniaxial_3d(mesh,mat,2.0,true); }
+    catch (const std::invalid_argument&) { rejected=true; }
+    NOVA_REQUIRE(rejected);
 }

@@ -1,5 +1,6 @@
 #include "nova/physics/maxwell_3d.hpp"
 #include "nova/physics/maxwell_cavity_3d.hpp"
+#include "nova/physics/maxwell_uniaxial_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -256,6 +257,137 @@ std::vector<double> integrate_maxwell_absorption_3d(
     return result;
 }
 
+
+
+namespace {
+constexpr double uq_a=0.5854101966249685, uq_b=0.1381966011250105;
+constexpr std::array<std::array<double,3>,4> uniaxial_points{{
+    {uq_b,uq_b,uq_b},{uq_a,uq_b,uq_b},{uq_b,uq_a,uq_b},{uq_b,uq_b,uq_a}
+}};
+
+fem::EdgeVector3D checked_axis(const MaxwellUniaxialMaterial3D& m) {
+    if (!finite(m.ordinary_permittivity) || !finite(m.extraordinary_permittivity)
+        || m.ordinary_permittivity.imag()<0.0 || m.extraordinary_permittivity.imag()<0.0
+        || !(m.relative_permeability>0.0) || !std::isfinite(m.relative_permeability))
+        throw std::invalid_argument("Invalid passive uniaxial material.");
+    double scale=0.0;
+    for (double x : m.optic_axis) {
+        if (!std::isfinite(x)) throw std::invalid_argument("Nonfinite optic axis.");
+        scale=std::max(scale,std::abs(x));
+    }
+    if (scale==0.0) throw std::invalid_argument("Zero optic axis.");
+    auto axis=m.optic_axis;
+    for (auto& x : axis) x/=scale;
+    const double norm=std::hypot(axis[0],axis[1],axis[2]);
+    for (auto& x : axis) x/=norm;
+    return axis;
+}
+}
+
+MaxwellSystem3D assemble_maxwell_uniaxial_3d(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellUniaxialMaterial3D> materials,
+    double vacuum_wavenumber, bool pec_on_exterior) {
+    mesh.validate();
+    const double k2=vacuum_wavenumber*vacuum_wavenumber;
+    if (!(vacuum_wavenumber>0.0) || !(k2>0.0) || !std::isfinite(k2)
+        || materials.size()!=mesh.elements.size())
+        throw std::invalid_argument("Invalid uniaxial Maxwell frequency or material count.");
+    const auto map=edge_map(mesh);
+    auto out=make_topology(mesh,map,pec_on_exterior);
+    const auto n=out.free_edges.size();
+    const auto invalid=std::numeric_limits<std::size_t>::max();
+    const auto reduced=make_reduced(out);
+    std::vector<linalg::Triplet> entries;
+    for (std::size_t c=0;c<mesh.elements.size();++c) {
+        const auto& m=materials[c];
+        const auto axis=checked_axis(m);
+        const auto cell=fem::make_nedelec_tetrahedron_3d(mesh,c);
+        const auto local=fem::nedelec_element_matrices_3d(cell);
+        std::array<std::array<Complex,6>,6> mass{};
+        // Degree-two exact quadrature of the affine vector basis products.
+        for (const auto& p : uniaxial_points) {
+            auto perp=fem::evaluate_nedelec_basis_3d(cell,p[0],p[1],p[2]);
+            std::array<double,6> parallel{};
+            for (std::size_t e=0;e<6;++e) {
+                for (std::size_t d=0;d<3;++d) parallel[e]+=perp[e][d]*axis[d];
+                for (std::size_t d=0;d<3;++d) perp[e][d]-=parallel[e]*axis[d];
+            }
+            for (std::size_t e=0;e<6;++e)
+                for (std::size_t g=0;g<6;++g) {
+                    double dot=0.0;
+                    for (std::size_t d=0;d<3;++d) dot+=perp[e][d]*perp[g][d];
+                    mass[e][g]+=cell.volume/4.0*(m.ordinary_permittivity*dot+
+                        m.extraordinary_permittivity*parallel[e]*parallel[g]);
+                }
+        }
+        for (std::size_t e=0;e<6;++e) {
+            const auto i=reduced[map.at(cell.edges[e])];
+            if (i==invalid) continue;
+            for (std::size_t g=0;g<6;++g) {
+                const auto j=reduced[map.at(cell.edges[g])];
+                if (j==invalid) continue;
+                const Complex a=local.curl_curl[e][g]/m.relative_permeability-k2*mass[e][g];
+                if (!finite(a)) throw std::overflow_error("Uniaxial Maxwell matrix overflow.");
+                if (a.real()!=0.0) {
+                    entries.push_back({i,j,a.real()});
+                    entries.push_back({i+n,j+n,a.real()});
+                }
+                if (a.imag()!=0.0) {
+                    entries.push_back({i,j+n,-a.imag()});
+                    entries.push_back({i+n,j,a.imag()});
+                }
+            }
+        }
+    }
+    out.real_block=linalg::CsrMatrix::from_triplets(2*n,2*n,entries);
+    return out;
+}
+
+std::vector<double> integrate_maxwell_uniaxial_absorption_3d(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellUniaxialMaterial3D> materials,
+    double vacuum_wavenumber,const MaxwellSystem3D& system,
+    std::span<const Complex> edge_field) {
+    mesh.validate();
+    const double omega=vacuum_wavenumber*light_speed;
+    if (!(omega>0.0) || !std::isfinite(omega))
+        throw std::invalid_argument("Invalid uniaxial Maxwell frequency.");
+    const auto map=edge_map(mesh);
+    if (materials.size()!=mesh.elements.size() || system.edges.size()!=map.size()
+        || edge_field.size()!=map.size())
+        throw std::invalid_argument("Uniaxial absorption dimensions mismatch.");
+    for (const auto& [edge,id] : map)
+        if (system.edges[id]!=edge || !finite(edge_field[id]))
+            throw std::invalid_argument("Invalid uniaxial absorption edge data.");
+    std::vector<double> result(mesh.elements.size());
+    for (std::size_t c=0;c<mesh.elements.size();++c) {
+        const auto& m=materials[c];
+        const auto axis=checked_axis(m);
+        const auto cell=fem::make_nedelec_tetrahedron_3d(mesh,c);
+        for (const auto& p : uniaxial_points) {
+            const auto basis=fem::evaluate_nedelec_basis_3d(cell,p[0],p[1],p[2]);
+            ComplexVector3D field{};
+            for (std::size_t e=0;e<6;++e)
+                for (std::size_t d=0;d<3;++d)
+                    field[d]+=edge_field[map.at(cell.edges[e])]*basis[e][d];
+            Complex parallel{};
+            for (std::size_t d=0;d<3;++d) parallel+=field[d]*axis[d];
+            double loss=0.0;
+            if (m.ordinary_permittivity.imag()>0.0)
+                for (std::size_t d=0;d<3;++d)
+                    loss+=m.ordinary_permittivity.imag()*std::norm(field[d]-parallel*axis[d]);
+            if (m.extraordinary_permittivity.imag()>0.0)
+                loss+=m.extraordinary_permittivity.imag()*std::norm(parallel);
+            for (auto z : field)
+                if (!finite(z)) throw std::overflow_error("Uniaxial field overflow.");
+            result[c]+=cell.volume/4.0*0.5*omega*vacuum_epsilon*loss;
+        }
+        if (!std::isfinite(result[c]))
+            throw std::overflow_error("Uniaxial integrated loss overflow.");
+    }
+    return result;
+}
 
 MaxwellCavityMatrices3D assemble_maxwell_cavity_3d(
     const fem::TetrahedralMesh3D& mesh,
