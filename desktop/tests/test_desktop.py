@@ -149,6 +149,30 @@ class DesktopWorkflow(unittest.TestCase):
         with self.assertRaises(ValueError):
             NodalField.read(corrupted, (8, 3, 2))
 
+        records = self.win.vtk.read_text(encoding="ascii").splitlines()
+        cells = 6 * 8 * 3 * 2
+        first_cell = records.index(f"CELLS {cells} {5 * cells}") + 1
+        for name, bad_record in (
+            ("duplicate-node", "4 0 0 1 2"),
+            ("out-of-range-node", "4 0 1 2 108"),
+            ("nonlocal-tetrahedron", "4 0 1 2 107"),
+            # Four corners with x+y=1 are coplanar but span the cell in x, y and z.
+            ("invalid-local-tetrahedron", "4 1 9 37 45"),
+        ):
+            damaged_records = records.copy()
+            damaged_records[first_cell] = bad_record
+            damaged = self.directory / f"{name}.vtk"
+            damaged.write_text("\n".join(damaged_records) + "\n", encoding="ascii")
+            with self.subTest(connectivity=name), self.assertRaises(ValueError):
+                NodalField.read(damaged, (8, 3, 2))
+
+        duplicate_records = records.copy()
+        duplicate_records[first_cell + 1] = duplicate_records[first_cell]
+        duplicate = self.directory / "duplicate-tetrahedron.vtk"
+        duplicate.write_text("\n".join(duplicate_records) + "\n", encoding="ascii")
+        with self.assertRaisesRegex(ValueError, "Duplicate tetrahedron"):
+            NodalField.read(duplicate, (8, 3, 2))
+
     def test_round_trip_all_settings_and_boundary_types(self):
         editor = self.win.editor
         for name, value in {"mesh": "mesh-two", "geometry": "new-box", "material": "sample",
