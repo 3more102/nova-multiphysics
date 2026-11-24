@@ -30,7 +30,8 @@ The following reflects functionality represented in the current source tree. **E
 | **2D transient heat** | Consistent capacity matrix; Backward Euler and Crank–Nicolson; time-dependent loads and boundary data; adaptive timestep control and restart | Experimental |
 | **3D steady diffusion / conduction** | Continuous P1 tetrahedra; isotropic or SPD tensor coefficients; material regions, heat sources, mixed boundaries and flux diagnostics | Experimental |
 | **3D transient heat** | P1 tetrahedra; implicit time integration, adaptive steps, per-step energy accounting, time-varying boundary data, state checkpoints | Experimental |
-| **3D electrothermal FEM** | Stationary DC conduction → Joule heating → thermal diffusion; temperature-dependent sigma(T)/k(T), segregated implicit transient coupling, adaptive step doubling and versioned step-boundary restart | Experimental C++ APIs |\n| **3D electrostatics** | Scalar/tensor permittivity, electric potential, field/displacement and energy; electrode-charge and capacitance diagnostics; restricted floating-terminal Schur workflow | Experimental |
+| **3D electrothermal FEM** | Stationary DC conduction → Joule heating → thermal diffusion; temperature-dependent sigma(T)/k(T), segregated implicit transient coupling, adaptive step doubling and versioned step-boundary restart | Experimental C++ APIs |\n| **Optics reference models** | Normal-incidence multilayer scattering, passive Drude dispersion, planar SPP and prescribed-intensity Kerr phase | Experimental analytical C++ API; not Maxwell FEM |
+| **3D electrostatics** | Scalar/tensor permittivity, electric potential, field/displacement and energy; electrode-charge and capacitance diagnostics; restricted floating-terminal Schur workflow | Experimental |
 | **3D linear elasticity** | Small-strain isotropic P1 tetrahedral solver with fully prescribed nodal displacements, body forces, face tractions, and stress/strain recovery | Experimental C++ API |
 | **Mesh infrastructure** | Validated 2D triangle/3D tetrahedron topology, quality metrics, 2D uniform refinement, 3D uniform and marked local refinement, field transfer | Developing |
 | **3D error indicators / adaptation** | P1 cell residuals, interior flux jumps and selected natural-boundary residuals; restricted one-cycle solve–estimate–mark–refine–resolve workflow | Experimental |
@@ -40,6 +41,8 @@ The following reflects functionality represented in the current source tree. **E
 **Important scope boundaries:** NOVA contains experimental dedicated electrothermal coupling, but not a unified general-purpose multiphysics coupling framework. The project does not currently provide an integrated desktop GUI, general CAD kernel, automatic production-grade 3D meshing, validated fluid/EM solvers, or commercial engineering certification.
 
 ### Physics and numerical documentation
+
+See [optics reference models and limitations](docs/OPTICS_FOUNDATION.md).
 
 | Topic | Technical reference |
 | --- | --- |
