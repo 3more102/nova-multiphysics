@@ -53,6 +53,53 @@ int main() {
         near(kr.index_shift,2e-7,1e-19,"Kerr index");
         near(kr.phase_shift_rad,k*2e-9,1e-13,"Kerr phase");
         near(kerr_phase(lambda,-2e-19,1e12,0.01).index_shift,-2e-7,1e-19,"negative Kerr");
+
+        // Oblique incidence: independent single-interface Fresnel and power checks.
+        const double theta = std::numbers::pi_v<double>/6.0;
+        const double ci = std::cos(theta), ct = std::sqrt(1-std::pow(std::sin(theta)/1.5,2));
+        const auto te = oblique_incidence_stack(lambda,1,1.5,theta,Polarization::te,{});
+        const auto tm = oblique_incidence_stack(lambda,1,1.5,theta,Polarization::tm,{});
+        near(te.reflectance,std::pow((ci-1.5*ct)/(ci+1.5*ct),2),1e-13,"oblique TE Fresnel");
+        near(tm.reflectance,std::pow((1.5*ci-ct)/(1.5*ci+ct),2),1e-13,"oblique TM Fresnel");
+        const auto brewster = oblique_incidence_stack(lambda,1,1.5,std::atan(1.5),Polarization::tm,{});
+        near(brewster.reflectance,0,1e-13,"Brewster reflection");
+        near(brewster.transmittance,1,1e-13,"Brewster transmission");
+        const std::array<Layer,1> gap{{{1.0,lambda/10}}};
+        const std::array<Layer,1> wide_gap{{{1.0,lambda*10}}};
+        const std::array<Layer,1> film{{{2.0,lambda/7}}};
+        const std::array<Layer,1> zero{{{1.0,0}}};
+        for (const auto pol : {Polarization::te,Polarization::tm}) {
+            const auto parity = oblique_incidence_stack(lambda,1,1,0,pol,dbr);
+            near(std::abs(parity.reflection-br.reflection),0,1e-12,"normal amplitude parity");
+            near(std::abs(parity.transmission-br.transmission),0,1e-12,"normal transmission parity");
+            const auto tir = oblique_incidence_stack(lambda,1.5,1,1.0,pol,{});
+            near(tir.reflectance,1,1e-13,"TIR");
+            near(tir.transmittance,0,1e-13,"evanescent exit flux");
+            const auto tunnel = oblique_incidence_stack(lambda,1.5,1.5,1.0,pol,gap);
+            const auto wide = oblique_incidence_stack(lambda,1.5,1.5,1.0,pol,wide_gap);
+            require(tunnel.transmittance>0.1 && tunnel.transmittance<1,"frustrated TIR");
+            require(wide.transmittance<tunnel.transmittance*1e-6,"evanescent attenuation");
+            near(tunnel.reflectance+tunnel.transmittance,1,1e-12,"tunnel balance");
+            const auto slab = oblique_incidence_stack(lambda,1,1,theta,pol,film);
+            // Independent symmetric Fabry-Perot intensity formula.
+            const double q0=ci, q1=std::sqrt(4-std::pow(std::sin(theta),2));
+            const double y0=pol==Polarization::te?q0:1/q0;
+            const double y1=pol==Polarization::te?q1:4/q1;
+            const double rr=std::pow((y0-y1)/(y0+y1),2);
+            const double F=4*rr/std::pow(1-rr,2);
+            const double expected=1/(1+F*std::pow(std::sin(k*q1*film[0].thickness_m),2));
+            near(slab.transmittance,expected,1e-12,"Fabry-Perot T");
+            near(slab.reflectance+slab.transmittance,1,1e-12,"slab balance");
+            const auto oblique_loss=oblique_incidence_stack(lambda,1,1,theta,pol,lossy);
+            near(oblique_loss.transmittance,0,1e-12,"thick oblique absorption T");
+            require(oblique_loss.absorptance>0,"thick oblique absorption");
+            const auto skipped=oblique_incidence_stack(lambda,1.5,1.5,1.0,pol,zero);
+            near(skipped.transmittance,1,1e-13,"zero thickness layer");
+        }
+        bool bad_angle=false;
+        try { (void)oblique_incidence_stack(lambda,1,1,-1,Polarization::te,{}); }
+        catch (const std::invalid_argument&) { bad_angle=true; }
+        require(bad_angle,"reject negative angle");
         bool rejected=false;
         try { (void)planar_surface_plasmon(lambda,1,{-0.5,0}); }
         catch (const std::invalid_argument&) { rejected=true; }
