@@ -70,6 +70,41 @@ void reciprocity_and_normal_limit(std::span<const Layer> layers) {
         require(std::abs(normal.cell_absorptance[j]-te.cell_absorptance[j])<1e-12,
             "normal and TE cell loss agree");
 }
+// Independent lossless symmetric barrier benchmark. Inside the barrier
+// the longitudinal wavenumber is imaginary, but both ports propagate.
+void frustrated_total_internal_reflection() {
+    constexpr double n=1.5, barrier=1.0, theta=0.95;
+    const double b=n*std::sin(theta);
+    const double q=std::sqrt(n*n-b*b);
+    const double kappa=std::sqrt(b*b-barrier*barrier);
+    for(auto pol:{Polarization::te,Polarization::tm}) {
+        const double g=pol==Polarization::te?q:q/(n*n);
+        const double v=pol==Polarization::te?kappa:kappa/(barrier*barrier);
+        double previous=1.0;
+        for(double d:{0.05,0.25,0.75,1.5}) {
+            const double s=std::sinh(2*std::numbers::pi*kappa*d);
+            const double factor=(g*g+v*v)/(2*g*v);
+            const double exact=1/(1+factor*factor*s*s);
+            const std::array<Layer,1> layers{{{barrier,d*wavelength}}};
+            const auto coarse=run(n,n,theta,pol,layers,100);
+            const auto fine=run(n,n,theta,pol,layers,400);
+            require(fine.transmittance>0 && fine.transmittance<previous,
+                "finite evanescent barrier transmits with thickness decay");
+            require(std::abs(fine.transmittance-exact)<3e-7,
+                "independent frustrated TIR transmission");
+            require(std::abs(fine.reflectance-(1-exact))<3e-7,
+                "independent frustrated TIR reflection");
+            require(std::abs(fine.transmittance-exact)<0.09*
+                std::abs(coarse.transmittance-exact)+1e-10,
+                "frustrated TIR mesh convergence");
+            require(std::abs(fine.absorptance)<1e-12,
+                "lossless evanescent barrier does not absorb");
+            require(std::abs(fine.power_balance_residual)<1e-9,
+                "frustrated TIR power conservation");
+            previous=fine.transmittance;
+        }
+    }
+}
 void compare(double ni,double nt,double angle,std::span<const Layer> layers) {
     for(auto pol:{Polarization::te,Polarization::tm}) {
         const auto exact=oblique_incidence_stack(wavelength,ni,nt,angle,pol,layers);
@@ -98,6 +133,7 @@ int main() {
         reciprocity_and_normal_limit(lossy);
         const std::array<Layer,1> tir{{{1.2,0.25*wavelength}}};
         compare(1.5,1.0,0.95,tir);
+        frustrated_total_internal_reflection();
         const std::array<Layer,1> brewster{{{1.5,0.2*wavelength}}};
         const double angle=std::atan(1.5);
         compare(1.0,1.5,angle,brewster);
