@@ -24,7 +24,8 @@ struct MicroringResult {
     const C one_minus_z{2*s*s, -2*s*c};
     const double g = a*t1*t2;
     const C den = (1-g) + g*one_minus_z;
-    if (den == C{}) throw std::domain_error("singular lossless uncoupled ring");
+    if (den == C{} || (g == 1 && std::remainder(phase_rad,
+        2*std::numbers::pi_v<double>) == 0)) throw std::domain_error("singular lossless uncoupled ring");
     const double k1 = std::sqrt((1-t1)*(1+t1));
     const double k2 = std::sqrt((1-t2)*(1+t2));
     const C through = ((t1-a*t2) + a*t2*one_minus_z)/den;
