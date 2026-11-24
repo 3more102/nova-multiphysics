@@ -133,12 +133,20 @@ std::string canonical(const ThermalProject& p) {
     std::ostringstream out;
     out.imbue(std::locale::classic());
     out << std::setprecision(std::numeric_limits<double>::max_digits10)
-        << "NOVA_PROJECT 1\nproject " << p.id << "\ngeometry " << p.geometry.id << " box";
+        << "NOVA_PROJECT " << (p.material.conductivity_tensor_w_m_k ? 2 : 1)
+        << "\\nproject " << p.id << "\\ngeometry " << p.geometry.id << " box";
     for (double length : p.geometry.lengths_m) out << ' ' << length;
     out << "\nmesh " << p.mesh.id << ' ' << p.geometry.id << " structured_tet";
     for (auto count : p.mesh.divisions) out << ' ' << count;
-    out << "\nmaterial " << p.material.id << " isotropic " << p.material.conductivity_w_m_k
-        << "\nstudy " << p.study_id << " steady_heat " << p.mesh.id << ' ' << p.material.id
+    out << "\nmaterial " << p.material.id << ' ';
+    if (p.material.conductivity_tensor_w_m_k) {
+        const auto& k = *p.material.conductivity_tensor_w_m_k;
+        out << "anisotropic " << k.xx << ' ' << k.yy << ' ' << k.zz << ' '
+            << k.xy << ' ' << k.xz << ' ' << k.yz;
+    } else {
+        out << "isotropic " << p.material.conductivity_w_m_k;
+    }
+    out << "\nstudy " << p.study_id << " steady_heat " << p.mesh.id << ' ' << p.material.id
         << "\nsource " << p.study_id << ' ' << p.generation_w_m3
         << "\nsolver " << p.study_id << " cg " << preconditioner_name(p.solver.preconditioner)
         << ' ' << p.solver.max_iterations << ' ' << p.solver.relative_tolerance << ' '
@@ -166,7 +174,10 @@ std::string canonical(const ThermalProject& p) {
 model::ThermalProject read_thermal_project(std::istream& input) {
     ProjectReader reader(input);
     const auto header = reader.take("NOVA_PROJECT", 2);
-    if (header.words[1] != "1") header.fail("Unsupported NOVA project schema '" + header.words[1] + "'.");
+    const auto& schema = header.words[1];
+    if (schema != "1" && schema != "2") {
+        header.fail("Unsupported NOVA project schema '" + schema + "'.");
+    }
 
     model::ThermalProject p;
     p.id = reader.take("project", 2).words[1];
@@ -181,9 +192,23 @@ model::ThermalProject read_thermal_project(std::istream& input) {
         p.geometry.lengths_m[axis] = geometry.number<double>(3 + axis);
         p.mesh.divisions[axis] = mesh.number<std::size_t>(4 + axis);
     }
-    const auto material = reader.take("material", 4);
-    material.expect(2, "isotropic");
-    p.material = {material.words[1], material.number<double>(3)};
+    const auto material = reader.take();
+    material.expect(0, "material");
+    if (material.words.size() < 3) material.fail("Incomplete material record.");
+    p.material.id = material.words[1];
+    if (material.words[2] == "isotropic") {
+        material.count(4);
+        p.material.conductivity_w_m_k = material.number<double>(3);
+        p.material.conductivity_tensor_w_m_k.reset();
+    } else if (material.words[2] == "anisotropic") {
+        if (schema != "2") material.fail("Anisotropic conductivity requires NOVA_PROJECT 2.");
+        material.count(9);
+        p.material.conductivity_tensor_w_m_k = fem::SymmetricTensor3D{
+            material.number<double>(3), material.number<double>(4), material.number<double>(5),
+            material.number<double>(6), material.number<double>(7), material.number<double>(8)};
+    } else {
+        material.fail("Unknown thermal material type '" + material.words[2] + "'.");
+    }
     const auto study = reader.take("study", 5);
     study.expect(2, "steady_heat");
     study.expect(3, p.mesh.id);
