@@ -1,11 +1,13 @@
 #pragma once
 
+#include "nova/fem/conductivity_3d.hpp"
 #include "nova/fem/energy_balance_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 
 #include <array>
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -25,23 +27,30 @@ struct StructuredTetMesh {
     std::array<std::size_t, 3> divisions{1, 1, 1};
 };
 
-struct IsotropicThermalMaterial {
+struct ThermalMaterial {
     std::string id{"solid"};
+    // Used when conductivity_tensor_w_m_k is empty.
     double conductivity_w_m_k{1.0};
+    // Optional homogeneous symmetric tensor in global Cartesian axes.
+    // When present, the scalar coefficient is not used by the solver.
+    std::optional<fem::SymmetricTensor3D> conductivity_tensor_w_m_k{};
 };
+
+// Preserve the original SDK type name for source compatibility.
+using IsotropicThermalMaterial = ThermalMaterial;
 
 struct FixedTemperature { double kelvin; };
 struct OutwardHeatFlux { double watts_per_m2; };
 struct Convection { double film_w_m2_k; double ambient_kelvin; };
 using ThermalBoundary = std::variant<FixedTemperature, OutwardHeatFlux, Convection>;
 
-// Schema 1 contains one origin-aligned box, mesh, material and stationary study.
+// Schemas 1 and 2 contain one origin-aligned box, mesh, homogeneous material and stationary study.
 // Missing side assignments mean zero outward heat flux.
 struct ThermalProject {
     std::string id{"project"};
     BoxGeometry geometry;
     StructuredTetMesh mesh;
-    IsotropicThermalMaterial material;
+    ThermalMaterial material;
     std::string study_id{"heat"};
     double generation_w_m3{};
     std::map<BoxSide, ThermalBoundary> boundaries;

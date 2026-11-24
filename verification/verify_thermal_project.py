@@ -92,6 +92,32 @@ def wall(runner, fixture, work):
           f"max_error_K={error:.6g}, max_flux_error_W_m2={flux_error:.6g}, balance_W={metrics['balance_defect_W']:.6g}")
 
 
+def anisotropic(runner, fixture, work):
+    metrics, (points, cells, temperature, fluxes) = solve(
+        runner, fixture, work / "anisotropic.vtk"
+    )
+    require(len(points) == 42 and len(cells) == 72,
+            "Anisotropic example structured mesh dimensions")
+    temperature_error = max(
+        abs(value - (400.0 - 150.0 * point[0]))
+        for point, value in zip(points, temperature)
+    )
+    flux_error = max(math.dist(flux, (300.0, 37.5, -22.5)) for flux in fluxes)
+    near(temperature_error, 0, 2e-8, "Anisotropic exact nodal temperature field [K]")
+    near(flux_error, 0, 2e-8, "Anisotropic full Fourier heat-flux vector [W/m^2]")
+    near(metrics["min_K"], 325.0, 2e-8, "Anisotropic minimum temperature [K]")
+    near(metrics["max_K"], 400.0, 2e-8, "Anisotropic maximum temperature [K]")
+    near(metrics["generated_W"], 0.0, 2e-8, "Anisotropic heat generation [W]")
+    near(metrics["neumann_out_W"], 0.0, 2e-8, "Net anisotropic Neumann power [W]")
+    near(metrics["convection_out_W"], 9.375, 2e-8, "Anisotropic Robin power [W]")
+    near(metrics["fixed_out_W"], -9.375, 2e-8, "Anisotropic fixed-temperature reaction [W]")
+    near(metrics["balance_defect_W"], 0.0, 2e-8, "Anisotropic global energy balance [W]")
+    print(f"anisotropic: nodes={len(points)} tets={len(cells)} "
+          f"T_max_error_K={temperature_error:.6g} q_max_error_W_m2={flux_error:.6g} "
+          f"robin_W={metrics['convection_out_W']:.12g} "
+          f"balance_W={metrics['balance_defect_W']:.6g}")
+
+
 def generated(runner, fixture, work):
     # -kT''=Q, T(0)=400 and -kT'(L)=g. The box has insulated lateral faces.
     length, k, source, g = 0.5, 2.0, 240.0, 40.0
@@ -327,7 +353,7 @@ def persistence(runner, fixture, work):
     require(invoke(runner, "solve", dst, "--vtk", vtk) == first and vtk.read_bytes() == output,
             "Save/reload changed numerical reconstruction")
     bad_records = [
-        ("NOVA_PROJECT 1", "NOVA_PROJECT 2"), ("project convecting-wall", "project wall"),
+        ("NOVA_PROJECT 1", "NOVA_PROJECT 3"), ("project convecting-wall", "project wall"),
         ("tets wall structured_tet", "tets missing structured_tet"),
         ("steady_heat tets homogeneous", "steady_heat tets missing"),
         ("source steady 0", "source other 0"), ("source steady 0", "source steady 0 extra"),
@@ -361,7 +387,7 @@ def persistence(runner, fixture, work):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("suite", choices=("wall", "generated", "cube", "persistence"))
+    parser.add_argument("suite", choices=("wall", "generated", "cube", "persistence", "anisotropic"))
     parser.add_argument("runner", type=Path)
     parser.add_argument("fixture", type=Path)
     parser.add_argument("--scipy", action="store_true", help="Also solve the cube with SciPy finite differences")
@@ -373,4 +399,4 @@ if __name__ == "__main__":
         if args.suite == "cube":
             cube(*inputs, check_scipy=args.scipy)
         else:
-            {"wall": wall, "generated": generated, "persistence": persistence}[args.suite](*inputs)
+            {"wall": wall, "generated": generated, "persistence": persistence, "anisotropic": anisotropic}[args.suite](*inputs)

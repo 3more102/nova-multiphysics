@@ -60,6 +60,10 @@ void check_scalar(double k) {
 
 } // namespace
 
+void validate_symmetric_tensor_3d_impl(const SymmetricTensor3D& tensor) {
+    static_cast<void>(factor_tensor(tensor));
+}
+
 void ConductivityField3D::validate() const {
     const int choices = (scalar ? 1 : 0) + (tensor ? 1 : 0) +
                         (constant ? 1 : 0) + (constant_tensor ? 1 : 0);
@@ -161,3 +165,11 @@ void add_conductivity_sample(P1Matrix3D& stiffness, const ConductivityField3D& m
 }
 
 } // namespace nova::fem::detail
+
+namespace nova::fem {
+
+void validate_symmetric_tensor_3d(const SymmetricTensor3D& tensor) {
+    detail::validate_symmetric_tensor_3d_impl(tensor);
+}
+
+} // namespace nova::fem
