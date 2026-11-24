@@ -135,7 +135,7 @@ def cube_mean_reference(length, k, source, cutoff=127):
 
 
 def cube_fd_reference(n, length, k, source):
-    """Independent seven-point FD solve using SciPy's orthonormal sine transform."""
+    """Independent SciPy implementation of the structured P1 mesh's seven-point nodal stencil."""
     import numpy as np
     from scipy.fft import dstn, idstn
 
@@ -150,6 +150,24 @@ def cube_fd_reference(n, length, k, source):
     mean_rise = float(np.sum(rise, dtype=float) / n**3)
     center_rise = float(rise[n // 2 - 1, n // 2 - 1, n // 2 - 1])
     return mean_rise, center_rise, rise
+
+
+def cube_cell_fv_mean(n, length, k, source):
+    """Independent cell-centred finite-volume solve using SciPy's orthonormal DST-II."""
+    import numpy as np
+    from scipy.fft import dstn, idstn
+
+    h = length / n
+    mode = np.arange(1, n + 1, dtype=float)
+    axis = 4 * np.sin(np.pi * mode / (2 * n))**2 / h**2
+    eigenvalues = axis[:, None, None] + axis[None, :, None] + axis[None, None, :]
+    rhs = np.full((n, n, n), source / k)
+    # Half-cell Dirichlet distances give boundary diagonal 3 and interior diagonal 2.
+    rise = idstn(
+        dstn(rhs, type=2, norm="ortho") / eigenvalues,
+        type=2, norm="ortho"
+    )
+    return float(np.mean(rise, dtype=float))
 
 
 def cube(runner, fixture, work, check_scipy=False):
@@ -274,6 +292,23 @@ def cube(runner, fixture, work, check_scipy=False):
             previous_mean = fd_mean
             previous_center = fd_center
         require(upper - previous_mean < 0.002, "Finest FD mean exceeds its 0.002 K allowance")
+
+        # A cell-centred finite-volume grid has a different spatial discretization
+        # from NOVA's vertex-based P1 tetrahedra; it approaches the continuum from above.
+        previous_error_lower = None
+        for n in (16, 32, 64):
+            fv_mean = cube_cell_fv_mean(n, length, k, source)
+            require(fv_mean > upper, "Cell-centred FV mean must approach the continuum from above")
+            error_lower = fv_mean - upper
+            error_upper = fv_mean - lower
+            if previous_error_lower is not None:
+                order_lower = math.log2(previous_error_lower / error_upper)
+                require(order_lower > 1.8, f"Independent cell-FV refinement order {order_lower}")
+                print(f"cell_fv_order_lower={order_lower:.7g}")
+            print(f"SciPy cell-FV n={n} mean_rise_K={fv_mean:.12g} error_upper_K={error_upper:.8g}")
+            previous_error_lower = error_lower
+        require(error_upper < 0.002,
+                "Finest independent cell-centred FV mean exceeds its 0.002 K allowance")
 
 
 def persistence(runner, fixture, work):
