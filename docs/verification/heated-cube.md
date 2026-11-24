@@ -22,6 +22,8 @@ The verification code integrates the exported P1 field over every tetrahedron us
 | 8 × 8 × 8 | 0.552558507149 | 0.05249713 | 1.76350 | 9.03e-12 |
 | 16 × 16 × 16 | 0.591197174132 | 0.01385846 | 1.92143 | 4.37e-11 |
 
+The checker also verifies the full nodal field's inversion symmetry through the cube center (maximum reflected-node discrepancy below 2e-8 K), confirms that the unique center node contains the maximum nodal temperature, and checks that the runner's reported maximum matches this center probe. These are symmetry and peak-location checks, not an absolute continuum bound on the peak value.
+
 ## Independent finite-difference calculation
 
 The optional SciPy checker solves the seven-point finite-difference equations on a separate Cartesian grid. A type-I discrete sine transform diagonalizes the operator and an inverse transform returns its temperature rise. The grid mean uses tensor-product trapezoidal integration, with zero rise on the boundary. It shares no NOVA mesh, matrix, linear solver or output fields. The finest error allowance is 0.002 K and successive orders must exceed 1.8. [SciPy multidimensional sine transform](https://docs.scipy.org/doc/scipy/reference/generated/scipy.fft.dstn.html).
@@ -31,6 +33,16 @@ The optional SciPy checker solves the seven-point finite-difference equations on
 | 16 | 0.591197174133 | 0.01385846 |
 | 32 | 0.601530120040 | 0.00352551 |
 | 64 | 0.604169110303 | 0.00088652 |
+
+The same independent finite-difference solution also gives the center temperature rise:
+
+| Subdivisions per axis | Center rise (K) |
+| ---: | ---: |
+| 16 | 1.676429964553 |
+| 32 | 1.683880381680 |
+| 64 | 1.685757768523 |
+
+The observed order from successive center-value differences between 16, 32 and 64 subdivisions is 1.9886. At 16 subdivisions, the independent center value agrees with NOVA's center nodal result within the 0.025 K comparison allowance. This supports the peak-location and local refinement checks, but is not a rigorous continuum error bound for the peak temperature.
 
 Recorded using Debian 13 x86-64, GCC 14.2 Release, Python 3.12.14 and SciPy 1.17.0 with solver commit `3ab9afa446ea92392e8910fd42b90ce24d221eea`. The continuum comparison uses Python's standard library and runs in CTest. Ubuntu CI also runs the SciPy comparison against the installed runner and installed project. To repeat the external calculation:
 
