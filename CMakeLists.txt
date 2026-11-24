@@ -54,6 +54,7 @@ add_library(nova_core
     src/physics/linear_elasticity_3d.cpp
     src/physics/optics.cpp
     src/physics/optical_helmholtz_1d.cpp
+    src/physics/optical_helmholtz_2d.cpp
     src/physics/electrostatics_3d.cpp
     src/physics/electrothermal_3d.cpp
     src/physics/nonlinear_electrothermal_3d.cpp
@@ -164,6 +165,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_mesh_topology_3d.cpp
         tests/test_h1_space_3d.cpp
         tests/test_maxwell_3d.cpp
+        tests/test_optical_helmholtz_2d.cpp
         tests/test_maxwell_power_audit_3d.cpp
         tests/test_maxwell_cavity_3d.cpp
         tests/test_diffusion_3d.cpp
