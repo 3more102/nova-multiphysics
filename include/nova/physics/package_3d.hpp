@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 
 namespace nova::physics {
@@ -18,6 +19,8 @@ struct PackageMaterial3D {
     double reference_temperature{300};
     ExponentialProperty3D electrical, thermal, volumetric_capacity, young;
     double poisson{}, expansion{};
+    // Optional dimensionless SPD tensors in global axes, multiplied by p(T).
+    std::optional<fem::SymmetricTensor3D> electrical_shape{}, thermal_shape{};
 };
 using TimeSignal3D = std::function<double(double)>;
 struct NodalSignal3D { std::size_t node{}; TimeSignal3D value; };

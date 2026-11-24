@@ -208,4 +208,38 @@ CsrMatrix CsrMatrix::linear_combination(
     return result;
 }
 
+CsrAssemblyPattern::CsrAssemblyPattern(std::size_t columns, std::vector<std::size_t> offsets,
+    std::vector<std::size_t> indices)
+    : columns_(columns), offsets_(std::move(offsets)), indices_(std::move(indices)) {
+    if (offsets_.empty() || offsets_.front()!=0 || offsets_.back()!=indices_.size() ||
+        !std::is_sorted(offsets_.begin(),offsets_.end())) throw std::invalid_argument("Invalid assembly graph offsets.");
+    for (std::size_t i=0;i+1<offsets_.size();++i)
+        for (auto j=offsets_[i];j<offsets_[i+1];++j)
+            if (indices_[j]>=columns_ || (j>offsets_[i] && indices_[j]<=indices_[j-1]))
+                throw std::invalid_argument("Invalid assembly graph column order.");
+}
+std::size_t CsrAssemblyPattern::slot(std::size_t row,std::size_t column) const {
+    if (offsets_.empty() || row>=offsets_.size()-1) throw std::out_of_range("Invalid assembly graph row.");
+    const auto first=indices_.begin()+static_cast<std::ptrdiff_t>(offsets_[row]);
+    const auto last=indices_.begin()+static_cast<std::ptrdiff_t>(offsets_[row+1]);
+    const auto it=std::lower_bound(first,last,column);
+    if (it==last || *it!=column) throw std::out_of_range("Missing assembly graph entry.");
+    return static_cast<std::size_t>(it-indices_.begin());
+}
+CsrMatrix CsrAssemblyPattern::matrix(std::span<const double> values) const {
+    if (offsets_.empty() || values.size()!=slots()) throw std::invalid_argument("Invalid graph value count.");
+    std::vector<std::size_t> offsets{0}, columns;
+    std::vector<double> coefficients;
+    offsets.reserve(offsets_.size());
+    columns.reserve(slots()); coefficients.reserve(slots());
+    for (std::size_t i=0;i+1<offsets_.size();++i) {
+        for (auto j=offsets_[i];j<offsets_[i+1];++j) if (values[j]!=0) {
+            columns.push_back(indices_[j]); coefficients.push_back(values[j]);
+        }
+        offsets.push_back(columns.size());
+    }
+    return CsrMatrix::from_sorted_rows(offsets_.size()-1,columns_,std::move(offsets),
+        std::move(columns),std::move(coefficients));
+}
+
 } // namespace nova::linalg

@@ -11,6 +11,10 @@ namespace nova::physics {
 namespace {
 using Vec = ElasticVector3D;
 double dot(const Vec& a, const Vec& b) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+Vec transform(const fem::SymmetricTensor3D& D, const Vec& g) {
+    return {D.xx*g[0]+D.xy*g[1]+D.xz*g[2], D.xy*g[0]+D.yy*g[1]+D.yz*g[2],
+            D.xz*g[0]+D.yz*g[1]+D.zz*g[2]};
+}
 double property(ExponentialProperty3D p, double delta) {
     if (p.value == 0) return 0;
     const double value = p.value * std::exp(p.slope*delta);
@@ -64,6 +68,8 @@ PreparedPackage3D::Impl::Impl(PackageModel3D input) : model(std::move(input)) {
             !std::isfinite(m.expansion) || !(m.poisson > -1 && m.poisson < 0.5) ||
             m.electrical.value<0 || !(m.thermal.value>0 && m.young.value>0 && m.volumetric_capacity.value>0))
             throw std::invalid_argument("Invalid reference package material.");
+        if (m.electrical_shape) fem::validate_conductivity_tensor_3d(*m.electrical_shape);
+        if (m.thermal_shape) fem::validate_conductivity_tensor_3d(*m.thermal_shape);
         for (const auto p : {m.electrical,m.thermal,m.volumetric_capacity,m.young})
             if (!std::isfinite(p.value) || !std::isfinite(p.slope))
                 throw std::invalid_argument("Nonfinite package material parameter.");
@@ -101,6 +107,25 @@ PreparedPackage3D::Impl::Impl(PackageModel3D input) : model(std::move(input)) {
         if (active[i] && !grounded[root(i)]) throw std::invalid_argument("Each conducting component requires a voltage reference.");
         if (!active[i]) fixed[n+i]=1;
     }
+    std::vector<std::vector<std::size_t>> neighbors(n);
+    for (const auto& tet:mesh.elements) for (auto i:tet)
+        neighbors[i].insert(neighbors[i].end(),tet.begin(),tet.end());
+    for (auto& nodes:neighbors) {
+        std::sort(nodes.begin(),nodes.end());
+        nodes.erase(std::unique(nodes.begin(),nodes.end()),nodes.end());
+    }
+    std::vector<std::size_t> offsets{0}, columns;
+    offsets.reserve(2*n+1);
+    for (std::size_t row=0;row<2*n;++row) {
+        if (fixed[row]) columns.push_back(row);
+        else {
+            const auto& nodes=neighbors[row%n];
+            columns.insert(columns.end(),nodes.begin(),nodes.end());
+            for (auto i:nodes) columns.push_back(n+i);
+        }
+        offsets.push_back(columns.size());
+    }
+    pattern=linalg::CsrAssemblyPattern(2*n,std::move(offsets),std::move(columns));
     std::set<fem::BoundaryFace3D> exterior;
     for (auto f:topology.exterior_faces) exterior.insert(sorted(f));
     for (const auto& bc:model.cooling) {
@@ -116,7 +141,7 @@ void PreparedPackage3D::Impl::integrate(std::span<const double> temp, std::span<
     bool electric_rows, Evaluation& out, TransportFields3D* fields) const {
     const auto n=model.mesh.nodes.size();
     const auto add=[&](std::size_t row,std::size_t col,double value) {
-        if (!fixed[row] && value!=0) out.entries.push_back({row,col,value});
+        if (!fixed[row] && value!=0) out.entries[pattern.slot(row,col)]+=value;
     };
     std::vector<double> sources(model.materials.size());
     for (std::size_t i=0;i<model.heat_sources.size();++i)
@@ -137,12 +162,17 @@ void PreparedPackage3D::Impl::integrate(std::span<const double> temp, std::span<
         }
         const double delta=mean-mat.reference_temperature;
         const double sigma=property(mat.electrical,delta), k=property(mat.thermal,delta);
-        const double joule=sigma*dot(gv,gv), Q=sources[model.cell_material[e]];
+        const Vec flux_v=mat.electrical_shape ? transform(*mat.electrical_shape,gv) : gv;
+        const Vec flux_t=mat.thermal_shape ? transform(*mat.thermal_shape,gt) : gt;
+        const double joule=sigma*dot(gv,flux_v), Q=sources[model.cell_material[e]];
         const double w=cell.volume;
         std::array<double,4> storage{}, capacity{}, dgV{}, dgT{};
+        std::array<Vec,4> thermal_basis{}, electrical_basis{};
         for (unsigned b=0;b<4;++b) {
             const auto j=nodes[b];
-            dgV[b]=dot(grad[b],gv); dgT[b]=dot(grad[b],gt);
+            dgV[b]=dot(grad[b],flux_v); dgT[b]=dot(grad[b],flux_t);
+            if (tangent && mat.thermal_shape) thermal_basis[b]=transform(*mat.thermal_shape,grad[b]);
+            if (tangent && mat.electrical_shape) electrical_basis[b]=transform(*mat.electrical_shape,grad[b]);
             if (old) {
                 storage[b]=f.a*enthalpy_increment(mat.volumetric_capacity,mat.reference_temperature,temp[j],old->temperature[j]);
                 if (f.b) storage[b]-=f.b*enthalpy_increment(mat.volumetric_capacity,mat.reference_temperature,
@@ -161,16 +191,18 @@ void PreparedPackage3D::Impl::integrate(std::span<const double> temp, std::span<
             for (unsigned b=0;b<4;++b) {
                 const auto j=nodes[b];
                 const double G=dot(grad[a],grad[b]);
+                const double Gt=mat.thermal_shape ? dot(grad[a],thermal_basis[b]) : G;
+                const double Gv=mat.electrical_shape ? dot(grad[a],electrical_basis[b]) : G;
                 add(i,j,w*((a==b ? .1 : .05)*capacity[b]+f.theta*
-                    (k*G+k*mat.thermal.slope*dgT[a]/4-joule*mat.electrical.slope/16)));
+                    (k*Gt+k*mat.thermal.slope*dgT[a]/4-joule*mat.electrical.slope/16)));
                 add(i,n+j,-w*f.theta*sigma*dgV[b]/2);
                 add(n+i,j,w*sigma*mat.electrical.slope*dgV[a]/4);
-                add(n+i,n+j,w*sigma*G);
+                add(n+i,n+j,w*sigma*Gv);
             }
         }
         if (fields) {
-            fields->heat_flux.push_back({{gt[0],gt[1],gt[2]},{-k*gt[0],-k*gt[1],-k*gt[2]}});
-            fields->current_density.push_back({-sigma*gv[0],-sigma*gv[1],-sigma*gv[2]});
+            fields->heat_flux.push_back({{gt[0],gt[1],gt[2]},{-k*flux_t[0],-k*flux_t[1],-k*flux_t[2]}});
+            fields->current_density.push_back({-sigma*flux_v[0],-sigma*flux_v[1],-sigma*flux_v[2]});
             fields->joule_density.push_back(joule);
             fields->conductivity.push_back(sigma);
             fields->young_modulus.push_back(property(mat.young,delta));
@@ -215,6 +247,7 @@ TransportAssembly3D PreparedPackage3D::Impl::system(std::span<const double> x,co
     const auto n=model.mesh.nodes.size();
     Evaluation out;
     out.residual.resize(2*n);
+    if (tangent) out.entries.resize(pattern.slots());
     std::copy(past.begin(),past.end(),out.residual.begin());
     integrate(x.first(n),x.subspan(n),t,&old,f,tangent,true,out);
     TransportAssembly3D result;
@@ -228,8 +261,8 @@ TransportAssembly3D PreparedPackage3D::Impl::system(std::span<const double> x,co
     for (const auto& bc:model.temperature) out.residual[bc.node]=x[bc.node]-signal(bc.value,t);
     for (const auto& bc:model.voltage) out.residual[n+bc.node]=x[n+bc.node]-signal(bc.value,t);
     if (tangent) {
-        for (std::size_t i=0;i<2*n;++i) if (fixed[i]) out.entries.push_back({i,i,1});
-        result.jacobian=linalg::CsrMatrix::from_triplets(2*n,2*n,out.entries);
+        for (std::size_t i=0;i<2*n;++i) if (fixed[i]) out.entries[pattern.slot(i,i)]=1;
+        result.jacobian=pattern.matrix(out.entries);
     }
     result.residual=std::move(out.residual);
     return result;

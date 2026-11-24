@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace nova::physics { struct LinearElasticity3DResult; }
+namespace nova::physics { struct LinearElasticity3DResult; struct PackageState3D; struct PackageStep3D; }
 
 namespace nova::io {
 
@@ -43,5 +43,10 @@ void write_legacy_vtk_thermoelastic_3d(
     const physics::LinearElasticity3DResult& mechanics,
     std::span<const double> cell_heat_generation = {}
 );
+
+// Collocated electrical, thermal and mechanical fields in one accepted frame.
+void write_legacy_vtk_package_3d(std::ostream& output, const fem::TetrahedralMesh3D& mesh,
+    std::span<const int> material_ids, const physics::PackageState3D& state,
+    const physics::PackageStep3D& step);
 
 } // namespace nova::io

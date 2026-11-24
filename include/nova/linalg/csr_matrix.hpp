@@ -73,4 +73,19 @@ private:
     std::vector<double> values_;
 };
 
+// Immutable assembly graph. Numerical zeros can enter and leave the canonical
+// matrix on each evaluation without rebuilding or sorting the element graph.
+class CsrAssemblyPattern {
+public:
+    CsrAssemblyPattern() = default;
+    CsrAssemblyPattern(std::size_t columns, std::vector<std::size_t> offsets,
+        std::vector<std::size_t> indices);
+    [[nodiscard]] std::size_t slots() const noexcept { return indices_.size(); }
+    [[nodiscard]] std::size_t slot(std::size_t row, std::size_t column) const;
+    [[nodiscard]] CsrMatrix matrix(std::span<const double> values) const;
+private:
+    std::size_t columns_{};
+    std::vector<std::size_t> offsets_, indices_;
+};
+
 } // namespace nova::linalg

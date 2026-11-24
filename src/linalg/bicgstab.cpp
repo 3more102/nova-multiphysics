@@ -1,5 +1,7 @@
 #include "nova/linalg/bicgstab.hpp"
 
+#include "nova/linalg/incomplete_lu.hpp"
+#include <optional>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -74,7 +76,8 @@ SolverResult solve_bicgstab(
         throw std::invalid_argument("BiCGSTAB input vectors must contain only finite values.");
     }
     if (options.preconditioner != PreconditionerType::None &&
-        options.preconditioner != PreconditionerType::Jacobi) {
+        options.preconditioner != PreconditionerType::Jacobi &&
+        options.preconditioner != PreconditionerType::IncompleteLU0) {
         throw std::invalid_argument("Unsupported BiCGSTAB preconditioner.");
     }
 
@@ -99,7 +102,11 @@ SolverResult solve_bicgstab(
         }
     }
 
+    std::optional<IncompleteLU0> ilu;
+    if (options.preconditioner == PreconditionerType::IncompleteLU0) ilu.emplace(matrix);
+
     const auto apply_preconditioner = [&](const std::vector<double>& vector) {
+        if (ilu) return ilu->solve(vector);
         if (options.preconditioner == PreconditionerType::None) {
             return vector;
         }

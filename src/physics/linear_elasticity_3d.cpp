@@ -272,7 +272,7 @@ struct PreparedElasticity3D::Impl {
     std::vector<ElasticCell> cells;
     std::vector<FixedComponents> fixed;
     linalg::CsrMatrix stiffness;
-    std::vector<double> base_load, guess;
+    std::vector<double> base_load, applied_load, guess;
     linalg::CachedConjugateGradient cg;
     bool has_converged_guess{};
     ElasticityTimings3D profile;
@@ -350,6 +350,7 @@ PreparedElasticity3D::PreparedElasticity3D(
         if (!std::isfinite(load)) throw std::overflow_error("Non-finite 3D elastic applied load.");
     }
     const auto elements_done = Clock::now();
+    state.applied_load = state.base_load;
     state.stiffness = assemble_stiffness(state.cells, state.fixed, state.base_load);
     state.profile.topology = elapsed(start, topology_done);
     state.profile.element_setup = elapsed(topology_done, elements_done);
@@ -422,6 +423,10 @@ LinearElasticity3DResult PreparedElasticity3D::Impl::solve(
             result.displacement[n][i] = result.linear_solver.solution[3U*n+i];
         }
     }
+    result.support_reaction.resize(fixed.size());
+    for (std::size_t n = 0; n < fixed.size(); ++n)
+        for (std::size_t i = 0; i < 3; ++i)
+            if (fixed[n][i]) result.support_reaction[n][i] = -applied_load[3*n+i];
     result.cell_strain.reserve(cells.size());
     result.cell_stress.reserve(cells.size());
     long double total_energy = 0;
@@ -440,6 +445,15 @@ LinearElasticity3DResult PreparedElasticity3D::Impl::solve(
         auto elastic = strain;
         for (std::size_t i = 0; i < 3; ++i) elastic[i] -= moment.mean;
         const auto stress = stress_from_strain(elastic, cell.material);
+        constexpr std::size_t tensor_index[3][3]{{0,3,5},{3,1,4},{5,4,2}};
+        for (std::size_t a=0; a<4; ++a) {
+            const auto node=cell.nodes[a];
+            for (std::size_t i=0; i<3; ++i) if (fixed[node][i]) {
+                double force=0;
+                for (std::size_t j=0; j<3; ++j) force+=stress[tensor_index[i][j]]*cell.gradients[a][j];
+                result.support_reaction[node][i]+=cell.volume*force;
+            }
+        }
         // For affine thermal strain s(x), mean[(eps-sI):C:(eps-sI)]
         // equals the centroid work plus (I:C:I)*Var(s).
         long double work = 9.0L * moment.variance * cell.material.bulk;

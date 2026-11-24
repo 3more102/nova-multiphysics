@@ -1,6 +1,7 @@
 #include "nova/io/vtk_legacy_3d.hpp"
 
 #include "nova/physics/linear_elasticity_3d.hpp"
+#include "nova/physics/package_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -30,7 +31,7 @@ namespace {
 class StreamFormatGuard {
 public:
     explicit StreamFormatGuard(std::ostream& output)
-        : output_(output), saved_(nullptr) {
+        : output_(output), saved_(output.rdbuf()) {
         saved_.copyfmt(output_);
         output_.imbue(std::locale::classic());
         output_.flags(std::ios::dec);
@@ -124,7 +125,8 @@ void write_conduction(
     std::ostream& output, const fem::TetrahedralMesh3D& mesh,
     const std::vector<double>& temperature, std::span<const int> material_ids,
     std::span<const fem::P1TetrahedralFlux3D> cell_fields,
-    std::span<const double> cell_heat_generation, const physics::LinearElasticity3DResult* mechanics
+    std::span<const double> cell_heat_generation, const physics::LinearElasticity3DResult* mechanics,
+    const physics::PackageState3D* state=nullptr, const physics::TransportFields3D* transport=nullptr
 ) {
     if (material_ids.size() != mesh.elements.size() || cell_fields.size() != mesh.elements.size()) {
         throw std::invalid_argument("VTK conduction requires one material ID and flux per cell.");
@@ -165,12 +167,37 @@ void write_conduction(
             }
         }
     }
+    if (transport) {
+        const auto valid = [](const auto& values,std::size_t n) {
+            return values.size()==n && std::all_of(values.begin(),values.end(),[](double v){return std::isfinite(v);});
+        };
+        const auto ne=mesh.elements.size(), nn=mesh.nodes.size();
+        if (!state || !mechanics || !valid(state->voltage,nn) || transport->electrically_active.size()!=nn ||
+            mechanics->support_reaction.size()!=nn || !valid(transport->joule_density,ne) ||
+            !valid(transport->conductivity,ne) || !valid(transport->young_modulus,ne) ||
+            transport->current_density.size()!=ne) throw std::invalid_argument("Incomplete package VTK fields.");
+        for (const auto& j:transport->current_density)
+            if (!(std::isfinite(j.x) && std::isfinite(j.y) && std::isfinite(j.z)))
+                throw std::invalid_argument("Nonfinite current density.");
+        for (const auto& f:mechanics->support_reaction) for (double x:f)
+            if (!std::isfinite(x)) throw std::invalid_argument("Nonfinite reaction force.");
+    }
     write_scalar(output, mesh, temperature, "temperature", mechanics);
 
     StreamFormatGuard guard(output);
     if (mechanics) {
         output << "VECTORS displacement double\n";
         for (const auto& u : mechanics->displacement) output << u[0] << ' ' << u[1] << ' ' << u[2] << '\n';
+    }
+    const auto scalars=[&](const char* name,const auto& values) {
+        output << "SCALARS " << name << " double 1\nLOOKUP_TABLE default\n";
+        for (auto value:values) output << +value << '\n';
+    };
+    if (transport) {
+        scalars("electric_potential",state->voltage);
+        scalars("electrically_active",transport->electrically_active);
+        output << "VECTORS support_reaction double\n";
+        for (const auto& r:mechanics->support_reaction) output << r[0] << ' ' << r[1] << ' ' << r[2] << '\n';
     }
     output << "CELL_DATA " << mesh.elements.size() << '\n'
            << "SCALARS material_id int 1\nLOOKUP_TABLE default\n";
@@ -192,6 +219,20 @@ void write_conduction(
         for (const auto& tensor : mechanics->cell_strain) write_tensor(output, tensor);
         output << "TENSORS mean_stress double\n";
         for (const auto& tensor : mechanics->cell_stress) write_tensor(output, tensor);
+    }
+    if (transport) {
+        scalars("joule_density",transport->joule_density);
+        scalars("electrical_conductivity",transport->conductivity);
+        scalars("young_modulus",transport->young_modulus);
+        output << "VECTORS current_density double\n";
+        for (const auto& j:transport->current_density) output << j.x << ' ' << j.y << ' ' << j.z << '\n';
+        output << "SCALARS von_mises double 1\nLOOKUP_TABLE default\n";
+        for (const auto& s:mechanics->cell_stress) output << physics::von_mises_stress_3d(s) << '\n';
+        output << "SCALARS principal_stresses double 3\nLOOKUP_TABLE default\n";
+        for (const auto& s:mechanics->cell_stress) {
+            const auto v=physics::principal_stresses_3d(s);
+            output << v[0] << ' ' << v[1] << ' ' << v[2] << '\n';
+        }
     }
     if (!output) throw std::runtime_error("Failed to write VTK thermal cell data.");
 }
@@ -220,6 +261,11 @@ void write_legacy_vtk_thermoelastic_3d(
     const physics::LinearElasticity3DResult& mechanics, std::span<const double> generation
 ) {
     write_conduction(output, mesh, temperature, material_ids, cell_fields, generation, &mechanics);
+}
+
+void write_legacy_vtk_package_3d(std::ostream& out,const fem::TetrahedralMesh3D& mesh,
+    std::span<const int> ids,const physics::PackageState3D& state,const physics::PackageStep3D& step) {
+    write_conduction(out,mesh,state.temperature,ids,step.transport.heat_flux,{},&step.mechanics,&state,&step.transport);
 }
 
 } // namespace nova::io

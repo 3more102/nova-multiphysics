@@ -161,3 +161,9 @@ void add_conductivity_sample(P1Matrix3D& stiffness, const ConductivityField3D& m
 }
 
 } // namespace nova::fem::detail
+
+namespace nova::fem {
+void validate_conductivity_tensor_3d(const SymmetricTensor3D& tensor) {
+    static_cast<void>(detail::factor_tensor(tensor));
+}
+}

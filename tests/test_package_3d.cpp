@@ -42,6 +42,8 @@ NOVA_TEST(package_variable_step_bdf2_differentiates_quadratics_exactly) {
 
 NOVA_TEST(package_full_tangent_matches_independent_column_differences) {
     auto m=cube();
+    m.materials[0].thermal_shape=fem::SymmetricTensor3D{2,1,3,.2,-.3,.1};
+    m.materials[0].electrical_shape=fem::SymmetricTensor3D{1,2,3,-.1,.2,.3};
     m.temperature.push_back({0,[](double t){ return 300+t; }});
     for (auto face:fem::extract_boundary_faces_3d(m.mesh))
         if (std::all_of(face.begin(),face.end(),[&](auto i){ return m.mesh.nodes[i].y==1; }))
@@ -145,4 +147,60 @@ NOVA_TEST(package_exact_insulator_and_unanchored_conductor_validation) {
         NOVA_REQUIRE(out.transport.joule_power==0);
         for (auto active:out.transport.electrically_active) NOVA_REQUIRE(active==0);
     });
+}
+
+NOVA_TEST(package_stress_invariants_and_body_force_support_reactions) {
+    const ElasticTensor6 pure_shear{4,4,4,3,0,0};
+    const auto principal=principal_stresses_3d(pure_shear);
+    NOVA_REQUIRE_NEAR(principal[0],7.,2e-14);
+    NOVA_REQUIRE_NEAR(principal[1],4.,2e-14);
+    NOVA_REQUIRE_NEAR(principal[2],1.,2e-14);
+    NOVA_REQUIRE_NEAR(von_mises_stress_3d(pure_shear),3*std::sqrt(3.),1e-14);
+    auto m=cube();
+    m.body_forces.assign(m.mesh.elements.size(),{1,-2,3});
+    PreparedPackage3D p(std::move(m));
+    auto s=p.initialize(std::vector<double>(p.model().mesh.nodes.size(),300));
+    p.advance(s,.01,fixed(.01,time::ImplicitScheme::BackwardEuler),[](const auto&,const auto& out) {
+        ElasticVector3D total{};
+        for (const auto& r:out.mechanics.support_reaction) for (unsigned i=0;i<3;++i) total[i]+=r[i];
+        NOVA_REQUIRE_NEAR(total[0],-1.,1e-9);
+        NOVA_REQUIRE_NEAR(total[1],2.,1e-9);
+        NOVA_REQUIRE_NEAR(total[2],-3.,1e-9);
+    });
+}
+NOVA_TEST(package_anisotropic_flux_and_nonlinear_radiation_balance) {
+    auto m=cube(1);
+    m.materials[0].electrical_shape=fem::SymmetricTensor3D{2,3,4,.3,-.1,.2};
+    m.materials[0].thermal_shape=fem::SymmetricTensor3D{3,4,2,-.2,.15,.1};
+    for (auto face:fem::extract_boundary_faces_3d(m.mesh)) {
+        if (std::all_of(face.begin(),face.end(),[&](auto n){return m.mesh.nodes[n].y==0;}))
+            m.cooling.push_back({face,0,.7,[](double){return 290.;},{}});
+    }
+    PreparedPackage3D p(std::move(m));
+    std::vector<double> T,V;
+    for (auto point:p.model().mesh.nodes) { T.push_back(300+point.x); V.push_back(2*point.x); }
+    const auto fields=p.recover(T,V,0);
+    for (std::size_t i=0;i<p.model().mesh.elements.size();++i) {
+        double mT=0;
+        for (auto n:p.model().mesh.elements[i]) mT+=(T[n]-300)/4;
+        const double sig=2*std::exp(-.04*mT), k=4*std::exp(.007*mT);
+        NOVA_REQUIRE_NEAR(fields.joule_density[i],8*sig,1e-11);
+        NOVA_REQUIRE_NEAR(fields.current_density[i].y,-.6*sig,1e-11);
+        NOVA_REQUIRE_NEAR(fields.heat_flux[i].flux.z,-.15*k,1e-11);
+    }
+    const double integral=(std::pow(301.,5)-std::pow(300.,5))/5-std::pow(290.,4);
+    NOVA_REQUIRE_NEAR(fields.cooling_power,.7*5.670374419e-8*integral,1e-10);
+}
+NOVA_TEST(package_ilu0_solves_nonsymmetric_tridiagonal_with_both_krylov_methods) {
+    const auto A=linalg::CsrMatrix::from_triplets(3,3,{{0,0,4},{0,1,2},{1,0,-1},{1,1,3},{1,2,1},{2,1,2},{2,2,5}});
+    const std::array exact{3.,-2.,1.5};
+    const auto b=A.multiply(exact);
+    linalg::GmresOptions o;
+    o.solver.preconditioner=linalg::PreconditionerType::IncompleteLU0;
+    for (const auto& r:{linalg::solve_gmres(A,b,o),linalg::solve_bicgstab(A,b,o.solver)}) {
+        NOVA_REQUIRE(r.converged && r.iterations==1);
+        for (unsigned i=0;i<3;++i) NOVA_REQUIRE_NEAR(r.solution[i],exact[i],1e-13);
+    }
+    const auto bad=linalg::CsrMatrix::from_triplets(2,2,{{0,0,1},{0,1,1},{1,0,1},{1,1,1}});
+    NOVA_REQUIRE(throws([&]{static_cast<void>(linalg::solve_gmres(bad,std::array{1.,1.},o));}));
 }

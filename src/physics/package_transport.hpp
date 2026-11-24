@@ -10,6 +10,7 @@ struct PreparedPackage3D::Impl {
     };
     PackageModel3D model;
     std::vector<Cell> cells;
+    linalg::CsrAssemblyPattern pattern;
     std::vector<double> areas;
     std::vector<unsigned char> active, fixed;
     std::unique_ptr<PreparedElasticity3D> elasticity;
@@ -19,7 +20,7 @@ struct PreparedPackage3D::Impl {
     explicit Impl(PackageModel3D input);
     struct Evaluation {
         std::vector<double> residual;
-        std::vector<linalg::Triplet> entries;
+        std::vector<double> entries;
     };
     void integrate(std::span<const double> temperature, std::span<const double> voltage, double t,
         const PackageState3D* old, time::ImplicitFormula formula, bool tangent,
@@ -27,6 +28,7 @@ struct PreparedPackage3D::Impl {
     TransportAssembly3D system(std::span<const double> x, const PackageState3D& old,
         double t, time::ImplicitFormula formula, std::span<const double> old_spatial, bool tangent) const;
     std::vector<double> old_operator(const PackageState3D& old, double theta) const;
+    void electrical_predictor(PackageState3D& state) const;
     LinearElasticity3DResult equilibrate(std::span<const double> temperature,
         const linalg::SolverOptions& options);
 };

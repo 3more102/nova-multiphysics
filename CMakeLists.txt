@@ -26,10 +26,12 @@ endfunction()
 add_library(nova_core
     src/linalg/csr_matrix.cpp
     src/linalg/conjugate_gradient.cpp
+    src/linalg/incomplete_lu.cpp
     src/linalg/incomplete_cholesky.cpp
     src/linalg/bicgstab.cpp
     src/linalg/gmres.cpp
     src/time/implicit_formula.cpp
+    src/physics/stress_invariants.cpp
     src/physics/package_transport.cpp
     src/physics/package_3d.cpp
     src/nonlinear/newton_solver.cpp
@@ -62,6 +64,8 @@ add_library(nova_core
     src/io/gmsh22_tetrahedral.cpp
     src/io/gmsh_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
+    src/io/package_study_3d.cpp
+    src/io/package_checkpoint_3d.cpp
     src/io/vtk_series.cpp
     src/io/thermal_checkpoint_3d.cpp
     src/io/adaptive_electrothermal_checkpoint_3d.cpp
@@ -93,6 +97,11 @@ set_target_properties(nova_core PROPERTIES
 nova_enable_warnings(nova_core)
 
 if(NOVA_BUILD_EXAMPLES)
+    add_executable(nova_package_3d examples/package_3d/main.cpp)
+    target_link_libraries(nova_package_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_package_3d)
+    install(TARGETS nova_package_3d RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+
     add_executable(nova_poisson_1d examples/poisson_1d/main.cpp)
     target_link_libraries(nova_poisson_1d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_poisson_1d)
@@ -148,6 +157,9 @@ endif()
 
 if(NOVA_BUILD_TESTS)
     enable_testing()
+    add_executable(nova_benchmark_package_3d EXCLUDE_FROM_ALL verification/benchmark_package_3d.cpp)
+    target_link_libraries(nova_benchmark_package_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_benchmark_package_3d)
     add_executable(nova_benchmark_thermoelastic_3d EXCLUDE_FROM_ALL
         verification/benchmark_thermoelastic_3d.cpp)
     target_link_libraries(nova_benchmark_thermoelastic_3d PRIVATE NOVA::Core)
@@ -277,6 +289,8 @@ if(NOVA_BUILD_TESTS)
             PASS_REGULAR_EXPRESSION "Minimum mean ratio")
         find_package(Python3 COMPONENTS Interpreter QUIET)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME nova_package_3d_verify COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_package_3d.py" $<TARGET_FILE:nova_package_3d>)
             add_test(NAME nova_gmsh_thermoelastic_3d_verify COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_thermoelastic_3d.py"
                 "$<TARGET_FILE:nova_gmsh_diffusion_3d>" "$<TARGET_FILE:nova_gmsh_transient_heat_3d>")

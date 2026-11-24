@@ -30,18 +30,7 @@ T number(std::string_view token) {
     return value;
 }
 
-inline int physical_tag(std::string_view token, int dimension, const io::GmshTetrahedralMesh3D& mesh) {
-    int numeric{};
-    const auto parsed = std::from_chars(token.data(), token.data() + token.size(), numeric);
-    if (parsed.ec == std::errc{} && parsed.ptr == token.data() + token.size()) {
-        if (numeric < 0) throw std::invalid_argument("Physical tags must be nonnegative.");
-        return numeric;
-    }
-    for (const auto& [key, name] : mesh.physical_names) {
-        if (key.first == dimension && name == token) return key.second;
-    }
-    throw std::invalid_argument("Unknown Gmsh physical group: " + std::string(token));
-}
+using io::physical_tag;
 
 struct ElasticRegion {
     physics::IsotropicElasticMaterial3D material;

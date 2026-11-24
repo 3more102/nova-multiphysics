@@ -14,6 +14,9 @@ struct SymmetricTensor3D {
     double xy{}, xz{}, yz{};
 };
 
+// The same scaled Cholesky test used by the tetrahedral diffusion assembly.
+void validate_conductivity_tensor_3d(const SymmetricTensor3D& tensor);
+
 using SymmetricTensorField3D = std::function<SymmetricTensor3D(double, double, double)>;
 
 } // namespace nova::fem

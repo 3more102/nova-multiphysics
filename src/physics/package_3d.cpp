@@ -61,7 +61,13 @@ PackageState3D PreparedPackage3D::initialize(std::vector<double> temperature,dou
     for (const auto& bc:model().temperature) s.temperature[bc.node]=bc.value(t0);
     for (const auto& bc:model().voltage) s.voltage[bc.node]=bc.value(t0);
     validate_state(s,n);
-    const auto sys=impl_->system(pack(s),s,t0,{0,0,1},{},true);
+    impl_->electrical_predictor(s);
+    return s;
+}
+
+void PreparedPackage3D::Impl::electrical_predictor(PackageState3D& s) const {
+    const auto n=model.mesh.nodes.size();
+    const auto sys=system(pack(s),s,s.time,{0,0,1},{},true);
     const auto diagonal=sys.jacobian.diagonal();
     std::vector<double> left(2*n,1), right(2*n,1), rhs(n);
     for (std::size_t i=0;i<n;++i) {
@@ -69,11 +75,10 @@ PackageState3D PreparedPackage3D::initialize(std::vector<double> temperature,dou
         rhs[i]=-sys.residual[n+i]*left[n+i];
     }
     linalg::GmresOptions linear;
-    linear.solver={5000,1e-13,1e-15,linalg::PreconditionerType::None};
+    linear.solver={5000,1e-13,1e-15,linalg::PreconditionerType::IncompleteLU0};
     const auto solve=linalg::solve_gmres(sys.jacobian.scaled_block(n,n,left,right),rhs,linear);
     if (!solve.converged) throw std::runtime_error("Package initial electrical equilibrium: "+solve.message);
     for (std::size_t i=0;i<n;++i) s.voltage[i]+=solve.solution[i];
-    return s;
 }
 
 void PreparedPackage3D::advance(PackageState3D& state,double end_time,const PackageOptions3D& o,
@@ -88,9 +93,17 @@ void PreparedPackage3D::advance(PackageState3D& state,double end_time,const Pack
         if (std::binary_search(o.events.begin(),o.events.end(),old.time)) previous_dt=0;
         const auto formula=time::implicit_formula(scheme,t-old.time,previous_dt);
         const auto past=impl_->old_operator(old,formula.theta);
-        auto x=pack(old);
+        auto predicted=old;
+        predicted.time=t;
+        bool new_voltage=false;
+        for (const auto& bc:model().voltage) {
+            const double value=bc.value(t);
+            new_voltage |= predicted.voltage[bc.node]!=value;
+            predicted.voltage[bc.node]=value;
+        }
+        if (new_voltage) impl_->electrical_predictor(predicted);
+        auto x=pack(predicted);
         for (const auto& bc:model().temperature) x[bc.node]=bc.value(t);
-        for (const auto& bc:model().voltage) x[n+bc.node]=bc.value(t);
         const auto assemble=[&](const auto& v,bool tangent) {
             return impl_->system(v,old,t,formula,past,tangent);
         };
@@ -106,6 +119,7 @@ void PreparedPackage3D::advance(PackageState3D& state,double end_time,const Pack
             initial_norm=std::hypot(initial_norm,row[i]*initial.residual[i]);
         }
         const double target=std::max(o.newton.residual_tolerance,o.relative_residual*initial_norm);
+        bool first_tangent=true;
         // Solve increments about a physical anchor, so volts and kelvin have independent scales.
         const auto solve_block=[&](std::size_t first,std::size_t count,double relaxation) {
             const auto anchored=x;
@@ -125,12 +139,20 @@ void PreparedPackage3D::advance(PackageState3D& state,double end_time,const Pack
                 return r;
             };
             const auto jacobian=[&](std::span<const double> u) {
+                if (first_tangent) {
+                    first_tangent=false;
+                    auto block=initial.jacobian.scaled_block(first,count,row,scale);
+                    initial={};
+                    return block;
+                }
                 return assemble(physical(u),true).jacobian.scaled_block(first,count,row,scale);
             };
             auto settings=o.newton;
             settings.relative_residual_tolerance=0;
             settings.residual_tolerance=count==n ? target*0.25 : target;
             const auto solve=nonlinear::solve_newton(residual,jacobian,std::vector<double>(count),settings);
+            first_tangent=false;
+            initial={};
             trial.iterations+=solve.iterations;
             if (!solve.converged) { trial.failure=solve.message; return; }
             for (std::size_t i=0;i<count;++i) x[first+i]+=relaxation*scale[first+i]*solve.solution[i];

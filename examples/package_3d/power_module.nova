@@ -1,0 +1,27 @@
+NOVA_PACKAGE 1
+mesh package.msh
+# SI engineering assumptions. Values and slopes apply at 300 K.
+# name       Tref   sigma   slope       k     slope      rhoCp   slope    E        slope      nu    alpha
+material spreader    300   5.8e7  -.0039    390   -.0005    3.45e6 .0003    110e9   -.0004     .34   16.5e-6
+material bond        300   0       0        3      0        1.8e6  .0008    2e9     -.0010     .35   30e-6
+material substrate   300   0       0        24    -.0010    3.0e6  .0004    300e9   -.0002     .22   7e-6
+material die         300   1000   -.0030    130   -.0020    1.65e6 .0005    130e9   -.0003     .28   2.6e-6
+material contact     300   5.8e7  -.0039    390   -.0005    3.45e6 .0003    110e9   -.0004     .34   16.5e-6
+material passivation 300   0       0        .8     0        1.5e6  .0010    4e9     -.0010     .30   20e-6
+initial 300
+curve supply 0 0 0.01 1.5 0.05 1.5 0.06 0.75
+curve ground 0 0
+curve ambient 0 300
+voltage terminal_left ground
+voltage terminal_right supply
+# The isolated metal heat spreader is equipotential and has zero current.
+voltage base ground
+cool base 2500 0 ambient
+cool lid 12 0.7 ambient
+clamp base
+study bdf2 0.08 0.005 0.000001 0.01
+solver monolithic 1e-10 1e-10 35
+linear gmres ilu0 2000
+adapt 0.015 0
+probe die_center 0.002 0.001 0.0009
+frames 1

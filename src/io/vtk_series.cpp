@@ -33,7 +33,7 @@ namespace {
 class StreamFormatGuard {
 public:
     explicit StreamFormatGuard(std::ostream& stream)
-        : stream_(stream), saved_(nullptr) {
+        : stream_(stream), saved_(stream.rdbuf()) {
         saved_.copyfmt(stream);
     }
     StreamFormatGuard(const StreamFormatGuard&) = delete;

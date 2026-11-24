@@ -57,7 +57,12 @@ struct LinearElasticity3DResult {
     std::vector<ElasticTensor6> cell_stress;    // C:(cell_strain - thermal_strain), Pa
     double strain_energy_joules{};             // 0.5 * integral(sigma:elastic_strain)
     linalg::SolverResult linear_solver;
+    std::vector<ElasticVector3D> support_reaction; // internal minus applied force [N], zero on free components
 };
+
+// Principal stresses in descending algebraic order and von Mises equivalent stress.
+[[nodiscard]] ElasticVector3D principal_stresses_3d(const ElasticTensor6& stress);
+[[nodiscard]] double von_mises_stress_3d(const ElasticTensor6& stress);
 
 // Experimental 3D continuous P1 tetrahedral, isotropic, linear elasticity.
 // Symmetric Galerkin stiffness, consistent constant body/face loads, and
