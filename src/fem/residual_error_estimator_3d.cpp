@@ -348,7 +348,8 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     const std::span<const P1TetrahedralFlux3D> cell_fields,
     const std::function<double(double, double, double)>& source,
     const std::span<const NeumannResidualFace3D> natural_boundary_faces,
-    const std::span<const RobinResidualFace3D> robin_boundary_faces
+    const std::span<const RobinResidualFace3D> robin_boundary_faces,
+    const std::span<const double> cell_source
 ) {
     mesh.validate();
     if (nodal_values.size() != mesh.nodes.size()) {
@@ -362,6 +363,16 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     if (!source) {
         throw std::invalid_argument(
             "3D residual estimator requires a source function.");
+    }
+    if (!cell_source.empty() && cell_source.size() != mesh.elements.size()) {
+        throw std::invalid_argument(
+            "3D residual estimator cell-source count must match the element count.");
+    }
+    for (const double value : cell_source) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument(
+                "3D residual estimator cell sources must be finite.");
+        }
     }
     for (const double value : nodal_values) {
         if (!std::isfinite(value)) {
@@ -389,8 +400,14 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
                 "3D residual estimator encountered invalid element volume.");
         }
         const double diameter = tetrahedron_diameter(mesh, cell);
+        const double cell_source_value =
+            cell_source.empty() ? 0.0 : cell_source[element];
+        const std::function<double(double, double, double)> combined_source =
+            [&source, cell_source_value](double x, double y, double z) {
+                return source(x, y, z) + cell_source_value;
+            };
         const long double source_integral =
-            integrate_source_square(mesh, cell, jacobian, source);
+            integrate_source_square(mesh, cell, jacobian, combined_source);
         const long double h = diameter;
         cell_residual_squared[element] = h * h * source_integral;
         if (!(cell_residual_squared[element] >= 0.0L) ||
