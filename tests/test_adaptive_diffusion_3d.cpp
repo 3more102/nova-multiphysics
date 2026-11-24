@@ -570,3 +570,59 @@ NOVA_TEST(adaptive_diffusion_3d_transfers_additive_cell_source_to_children) {
     NOVA_REQUIRE(std::isfinite(result.coarse_indicators.total_error));
     NOVA_REQUIRE(std::isfinite(result.refined_indicators.total_error));
 }
+
+
+NOVA_TEST(adaptive_diffusion_3d_multicycle_driver_stops_when_indicator_tolerance_is_met) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
+    const auto problem = make_wall(box, 0.0);
+    nova::fem::AdaptiveDiffusionOptions3D options;
+    options.max_cycles = 4U;
+    options.absolute_tolerance = 1.0e-12;
+    options.relative_tolerance = 1.0e-3;
+
+    const auto result = nova::fem::solve_adaptive_diffusion_3d(problem, options);
+    NOVA_REQUIRE(result.tolerance_satisfied);
+    NOVA_REQUIRE(result.stop_reason ==
+                 nova::fem::AdaptiveDiffusionStopReason3D::ToleranceSatisfied);
+    NOVA_REQUIRE(result.cycles.size() == 1U);
+    NOVA_REQUIRE(result.cycles.front().marked_elements == 0U);
+    NOVA_REQUIRE(result.final_problem.mesh.elements.size() ==
+                 problem.mesh.elements.size());
+    NOVA_REQUIRE(result.final_solution.linear_solver.converged);
+    NOVA_REQUIRE_NEAR(result.final_indicators.total_error, 0.0, 1.0e-12);
+
+    options.max_cycles = 0U;
+    NOVA_REQUIRE(rejects([&] {
+        (void)nova::fem::solve_adaptive_diffusion_3d(problem, options);
+    }));
+}
+
+NOVA_TEST(adaptive_diffusion_3d_multicycle_driver_respects_cycle_cap_and_reports_progress) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const auto problem = make_wall(box, 4.0);
+    nova::fem::AdaptiveDiffusionOptions3D options;
+    options.dorfler_theta = 0.6;
+    options.absolute_tolerance = 0.0;
+    options.relative_tolerance = 0.0;
+    options.max_cycles = 2U;
+
+    const auto result = nova::fem::solve_adaptive_diffusion_3d(problem, options);
+    NOVA_REQUIRE(!result.tolerance_satisfied);
+    NOVA_REQUIRE(result.stop_reason ==
+                 nova::fem::AdaptiveDiffusionStopReason3D::MaximumCyclesReached);
+    NOVA_REQUIRE(result.cycles.size() == options.max_cycles);
+    NOVA_REQUIRE(result.final_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.final_problem.mesh.elements.size() >
+                 problem.mesh.elements.size());
+    for (const auto& cycle : result.cycles) {
+        NOVA_REQUIRE(cycle.marked_elements > 0U);
+        NOVA_REQUIRE(cycle.refined_elements > cycle.coarse_elements);
+        NOVA_REQUIRE(cycle.refined_nodes > cycle.coarse_nodes);
+        NOVA_REQUIRE(cycle.coarse_indicator > 0.0);
+        NOVA_REQUIRE(cycle.refined_indicator > 0.0);
+    }
+    NOVA_REQUIRE(result.final_problem.mesh.elements.size() ==
+                 result.cycles.back().refined_elements);
+}
