@@ -58,6 +58,12 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python desktop/tests/test_desktop.py "${{ runner.temp }}/nova-sdk/bin"
 
+      - name: Check installed heated cube against SciPy nodal and independent cell-FV references
+        if: runner.os == 'Linux'
+        run: |
+          python -m pip install "scipy==1.17.0"
+          python verification/verify_thermal_project.py cube "${{ runner.temp }}/nova-sdk/bin/nova-run" "${{ runner.temp }}/nova-sdk/share/nova/projects/internally_heated_cube.nova" --scipy
+
   relocated-shared-sdk:
     name: Relocated shared SDK (${{ matrix.os }})
     strategy:
