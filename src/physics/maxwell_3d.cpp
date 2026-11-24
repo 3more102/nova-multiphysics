@@ -282,6 +282,29 @@ fem::EdgeVector3D checked_axis(const MaxwellUniaxialMaterial3D& m) {
     for (auto& x : axis) x/=norm;
     return axis;
 }
+
+std::array<std::array<Complex,6>,6> uniaxial_mass(
+    const fem::NedelecTetrahedron3D& cell,
+    const MaxwellUniaxialMaterial3D& m, const fem::EdgeVector3D& axis) {
+    std::array<std::array<Complex,6>,6> mass{};
+    // Degree-two exact quadrature of the affine vector basis products.
+    for (const auto& p : uniaxial_points) {
+        auto perp=fem::evaluate_nedelec_basis_3d(cell,p[0],p[1],p[2]);
+        std::array<double,6> parallel{};
+        for (std::size_t e=0;e<6;++e) {
+            for (std::size_t d=0;d<3;++d) parallel[e]+=perp[e][d]*axis[d];
+            for (std::size_t d=0;d<3;++d) perp[e][d]-=parallel[e]*axis[d];
+        }
+        for (std::size_t e=0;e<6;++e)
+            for (std::size_t g=0;g<6;++g) {
+                double dot=0.0;
+                for (std::size_t d=0;d<3;++d) dot+=perp[e][d]*perp[g][d];
+                mass[e][g]+=cell.volume/4.0*(m.ordinary_permittivity*dot+
+                    m.extraordinary_permittivity*parallel[e]*parallel[g]);
+            }
+    }
+    return mass;
+}
 }
 
 MaxwellSystem3D assemble_maxwell_uniaxial_3d(
@@ -304,23 +327,7 @@ MaxwellSystem3D assemble_maxwell_uniaxial_3d(
         const auto axis=checked_axis(m);
         const auto cell=fem::make_nedelec_tetrahedron_3d(mesh,c);
         const auto local=fem::nedelec_element_matrices_3d(cell);
-        std::array<std::array<Complex,6>,6> mass{};
-        // Degree-two exact quadrature of the affine vector basis products.
-        for (const auto& p : uniaxial_points) {
-            auto perp=fem::evaluate_nedelec_basis_3d(cell,p[0],p[1],p[2]);
-            std::array<double,6> parallel{};
-            for (std::size_t e=0;e<6;++e) {
-                for (std::size_t d=0;d<3;++d) parallel[e]+=perp[e][d]*axis[d];
-                for (std::size_t d=0;d<3;++d) perp[e][d]-=parallel[e]*axis[d];
-            }
-            for (std::size_t e=0;e<6;++e)
-                for (std::size_t g=0;g<6;++g) {
-                    double dot=0.0;
-                    for (std::size_t d=0;d<3;++d) dot+=perp[e][d]*perp[g][d];
-                    mass[e][g]+=cell.volume/4.0*(m.ordinary_permittivity*dot+
-                        m.extraordinary_permittivity*parallel[e]*parallel[g]);
-                }
-        }
+        const auto mass=uniaxial_mass(cell,m,axis);
         for (std::size_t e=0;e<6;++e) {
             const auto i=reduced[map.at(cell.edges[e])];
             if (i==invalid) continue;
@@ -421,6 +428,52 @@ MaxwellCavityMatrices3D assemble_maxwell_cavity_3d(
                     throw std::overflow_error("Cavity matrix overflow.");
                 stiffness.push_back({i,j,k});
                 mass.push_back({i,j,m});
+            }
+        }
+    }
+    return {std::move(topology.edges),std::move(topology.free_edges),
+        linalg::CsrMatrix::from_triplets(n,n,stiffness),
+        linalg::CsrMatrix::from_triplets(n,n,mass)};
+}
+
+
+MaxwellCavityMatrices3D assemble_maxwell_uniaxial_cavity_3d(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellUniaxialMaterial3D> materials) {
+    mesh.validate();
+    if (materials.size()!=mesh.elements.size())
+        throw std::invalid_argument("Uniaxial cavity material count mismatch.");
+    for (const auto& m : materials) {
+        if (m.ordinary_permittivity.imag()!=0.0 ||
+            m.extraordinary_permittivity.imag()!=0.0 ||
+            !(m.ordinary_permittivity.real()>0.0) ||
+            !(m.extraordinary_permittivity.real()>0.0))
+            throw std::invalid_argument("Uniaxial cavity requires lossless positive principal permittivities.");
+        (void)checked_axis(m);
+    }
+    const auto map=edge_map(mesh);
+    auto topology=make_topology(mesh,map,true);
+    const auto reduced=make_reduced(topology);
+    const auto invalid=std::numeric_limits<std::size_t>::max();
+    const auto n=topology.free_edges.size();
+    std::vector<linalg::Triplet> stiffness,mass;
+    for (std::size_t c=0;c<mesh.elements.size();++c) {
+        const auto& m=materials[c];
+        const auto cell=fem::make_nedelec_tetrahedron_3d(mesh,c);
+        const auto local=fem::nedelec_element_matrices_3d(cell);
+        const auto tensor_mass=uniaxial_mass(cell,m,checked_axis(m));
+        for (std::size_t e=0;e<6;++e) {
+            const auto i=reduced[map.at(cell.edges[e])];
+            if (i==invalid) continue;
+            for (std::size_t g=0;g<6;++g) {
+                const auto j=reduced[map.at(cell.edges[g])];
+                if (j==invalid) continue;
+                const double k=local.curl_curl[e][g]/m.relative_permeability;
+                const double v=tensor_mass[e][g].real();
+                if (!std::isfinite(k) || !std::isfinite(v))
+                    throw std::overflow_error("Uniaxial cavity matrix overflow.");
+                stiffness.push_back({i,j,k});
+                mass.push_back({i,j,v});
             }
         }
     }

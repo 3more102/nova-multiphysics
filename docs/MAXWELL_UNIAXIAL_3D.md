@@ -41,8 +41,45 @@ of a completed CI run.
 
 ## Limitations
 
-This is a driven frequency-domain material extension, not an anisotropic
-eigenmode or port solver. It does not model biaxial/nonreciprocal tensors,
+The driven and PEC cavity APIs are limited to uniaxial media; neither is a waveguide eigenmode or port solver. It does not model biaxial/nonreciprocal tensors,
 spatially varying directors within a cell, liquid-crystal reorientation,
 Kerr nonlinearity, PML or material parameter fitting. Real device predictions
 need separate validation and mesh-convergence studies.
+
+## Lossless uniaxial cavity modes
+
+The additional API in `nova/physics/maxwell_cavity_3d.hpp` assembles
+the PEC generalized eigenproblem K u = lambda M u, where K contains the
+scalar inverse-permeability curl form and M is the uniaxial tensor mass.
+The same exact mass quadrature is used for the driven problem.
+
+Both principal permittivities must be real, strictly positive, and
+frequency-independent for the physical eigenproblem. Lossy or indefinite
+materials must use the driven solver instead. The existing bounded dense
+reference eigensolver filters the numerical gradient nullspace, reports
+relative residuals, and maps each positive eigenvalue to
+f = c sqrt(lambda)/(2 pi).
+
+~~~cpp
+#include "nova/physics/maxwell_cavity_3d.hpp"
+
+const auto mesh = nova::fem::make_box_mesh_3d(0,1,0,1,0,1,2,2,2).mesh;
+const nova::physics::MaxwellUniaxialMaterial3D medium{
+    {2.0,0.0}, {6.0,0.0}, {1.0,2.0,3.0}, 1.0
+};
+const std::vector<nova::physics::MaxwellUniaxialMaterial3D>
+    materials(mesh.elements.size(),medium);
+const auto matrices = nova::physics::assemble_maxwell_uniaxial_cavity_3d(
+    mesh,materials);
+const auto modes = nova::physics::solve_maxwell_cavity_3d(matrices,3);
+// Check modes.converged, modes.modes.size(), and residuals before use.
+~~~
+
+New automated regression cases check the exact one-free-edge spectrum
+against independent barycentric integration, the isotropic limit, the
+min-max eigenvalue bounds for principal permittivities 2 and 6, gradient
+nullity, the driven K-k0^2 M identity, and rejection of lossy/indefinite
+materials. The one-edge benchmark verifies the discrete equations, not
+continuum resonator accuracy. Mesh convergence and solver scalability
+remain separate validation tasks. No complex, dispersive, open-resonator
+or anisotropic waveguide eigenmode support is claimed.
