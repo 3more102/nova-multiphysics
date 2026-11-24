@@ -149,7 +149,7 @@ def cube_fd_reference(n, length, k, source):
     # All boundary rises are zero in the tensor-product trapezoidal integral.
     mean_rise = float(np.sum(rise, dtype=float) / n**3)
     center_rise = float(rise[n // 2 - 1, n // 2 - 1, n // 2 - 1])
-    return mean_rise, center_rise
+    return mean_rise, center_rise, rise
 
 
 def cube(runner, fixture, work, check_scipy=False):
@@ -222,7 +222,7 @@ def cube(runner, fixture, work, check_scipy=False):
         previous_center = None
         previous_center_difference = None
         for n in (16, 32, 64):
-            fd_mean, fd_center = cube_fd_reference(n, length, k, source)
+            fd_mean, fd_center, fd_rise = cube_fd_reference(n, length, k, source)
             require(fd_mean < lower, "FD cube reference exceeds continuum bracket")
             if previous_mean is not None:
                 require(math.log2((lower - previous_mean) / (upper - fd_mean)) > 1.8,
@@ -238,6 +238,37 @@ def cube(runner, fixture, work, check_scipy=False):
                 near(fd_mean, mean_rise, 0.025, "Independent FD and FEM mean temperature [K]")
                 near(fd_center, center_rise, 0.025,
                      "Independent FD and FEM center temperature rise [K]")
+
+                # Compare every exported P1 node with the independent spectral FD field.
+                # The six-face Dirichlet boundary is zero rise in both formulations.
+                require(len(points) == (n + 1)**3, "Expected a complete Cartesian cube node grid")
+                grid_nodes = set()
+                nodal_errors = []
+                h = length / n
+                for point, actual in zip(points, temperature):
+                    ijk = tuple(round(coordinate / h) for coordinate in point)
+                    require(all(0 <= index <= n for index in ijk),
+                            f"NOVA node lies outside the independent FD grid: {point}")
+                    for coordinate, index in zip(point, ijk):
+                        near(coordinate, index * h, 2e-12,
+                             "NOVA node must coincide with an independent FD grid point [m]")
+                    require(ijk not in grid_nodes, f"Duplicate independent FD grid node {ijk}")
+                    grid_nodes.add(ijk)
+                    if any(index in (0, n) for index in ijk):
+                        expected = boundary
+                    else:
+                        expected = boundary + float(fd_rise[ijk[0] - 1, ijk[1] - 1, ijk[2] - 1])
+                    nodal_errors.append(actual - expected)
+                require(len(grid_nodes) == (n + 1)**3, "Independent FD comparison missed cube nodes")
+                maximum_nodal_error = max(abs(error) for error in nodal_errors)
+                rms_nodal_error = math.sqrt(math.fsum(error * error for error in nodal_errors) /
+                                            len(nodal_errors))
+                near(maximum_nodal_error, 0, 2e-8,
+                     "Maximum full-field NOVA/SciPy nodal temperature difference [K]")
+                near(rms_nodal_error, 0, 2e-8,
+                     "RMS full-field NOVA/SciPy nodal temperature difference [K]")
+                print(f"full_field_nodes={len(nodal_errors)} max_error_K={maximum_nodal_error:.6g} "
+                      f"rms_error_K={rms_nodal_error:.6g}")
             print(f"SciPy FD n={n} mean_rise_K={fd_mean:.12g} center_rise_K={fd_center:.12g} "
                   f"error_upper_K={upper-fd_mean:.8g}")
             previous_mean = fd_mean
