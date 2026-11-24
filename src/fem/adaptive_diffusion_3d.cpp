@@ -127,7 +127,8 @@ using BoundaryEdge3D = std::array<std::size_t, 2>;
 
     const auto cell_fields = evaluate_p1_tetrahedral_flux_3d(problem, solved.values);
     return estimate_diffusion_residual_error_3d(
-        problem.mesh, solved.values, cell_fields, source, natural, robin_residuals);
+        problem.mesh, solved.values, cell_fields, source, natural, robin_residuals,
+        problem.cell_source);
 }
 
 template<class T>
@@ -153,15 +154,8 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
     const double dorfler_theta,
     const linalg::SolverOptions& solver_options
 ) {
-    // Cellwise source arrays are not yet represented in the residual estimator.
-    // All material forms and Robin boundaries supported by the base solver are
-    // otherwise preserved through flux reconstruction and parent-cell transfer.
-    if (!problem.cell_source.empty()) {
-        throw std::invalid_argument(
-            "Adaptive 3D diffusion currently requires a spatial or zero source; "
-            "cellwise source vectors are not supported.");
-    }
-
+    // Material, source and boundary data are transferred using the same
+    // parent-cell and parent-face maps as the conforming local refinement.
     AdaptiveDiffusionStep3D result;
     result.coarse_solution = solve_scalar_diffusion_3d(problem, solver_options);
     if (!result.coarse_solution.linear_solver.converged) {
@@ -197,6 +191,10 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
     if (!problem.cell_diffusivity_tensors.empty()) {
         result.refined_problem.cell_diffusivity_tensors =
             transfer_cellwise_values(refined, problem.cell_diffusivity_tensors);
+    }
+    if (!problem.cell_source.empty()) {
+        result.refined_problem.cell_source =
+            transfer_cellwise_values(refined, problem.cell_source);
     }
 
     result.refined_problem.dirichlet_faces.clear();
