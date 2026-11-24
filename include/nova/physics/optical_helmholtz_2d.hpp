@@ -28,6 +28,12 @@ struct Helmholtz2DResult {
     std::vector<double> cell_loss;
     double absolute_residual{};
     double relative_backward_error{};
+    // Signed normalized weak-form power terms (not watts).
+    double excitation_input{}; // volume and Robin loads
+    double dirichlet_input{};  // reactions on fixed nodes
+    double robin_outflow{};    // homogeneous Robin impedance
+    double material_loss{};
+    double power_balance_residual{}; // inputs - outflow - loss
 };
 // Experimental bounded dense P1 reference. SI mesh coordinates and k0 in rad/m.
 // TE: u=Ez, a=1/mu_r, b=epsilon_r; TM: u=Hz, a=1/epsilon_r, b=mu_r.

@@ -68,3 +68,9 @@ r^2+(Y2/Y1)t^2=1 for real positive admittances. This check does not yet
 extract numerical S-parameters. A constant complex field with volume source
 f=-k0^2*b*u is also registered as an exact manufactured test. C++ execution
 of these additions remains pending.
+
+## Discrete global power audit
+
+With the exp(-i omega t) convention, let A be the assembled matrix, F the combined volume and Robin load, and r=A*u-F the discrete reaction. The signed normalized input is -Im(u^H F) plus -Im(sum of conj(u_i)*r_i over fixed nodes). The homogeneous Robin outflow is -sum Im(alpha)*integral_edge |u|^2, using exact linear edge integration. Material loss is the independently reconstructed sum of cell losses. The result reports all four terms and input minus outflow minus loss as the power balance residual. Nonpassive Robin coefficients may yield negative outflow; these are signed weak-form quantities, not physical watts. Free-row residuals control the remaining algebraic imbalance; a small balance does not alone establish mesh accuracy.
+
+Regression coverage includes propagating and attenuating waves, exact constant volume excitation, and fully prescribed complex fields with analytical Dirichlet reaction power for both polarizations.

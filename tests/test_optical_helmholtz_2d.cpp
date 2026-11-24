@@ -27,6 +27,11 @@ double wave_error(std::size_t nx, ScalarPolarization2D pol, C eps, C mu, bool re
         error=std::max(error,std::abs(result.field[i]-std::exp(I*q*rect.mesh.nodes[i].x)));
     NOVA_REQUIRE(result.relative_backward_error<1e-12);
     const double loss=std::accumulate(result.cell_loss.begin(),result.cell_loss.end(),0.0);
+    NOVA_REQUIRE_NEAR(result.material_loss,loss,1e-13);
+    NOVA_REQUIRE(result.excitation_input>0);
+    NOVA_REQUIRE(result.robin_outflow>0);
+    NOVA_REQUIRE_NEAR(result.dirichlet_input,0,1e-14);
+    NOVA_REQUIRE_NEAR(result.power_balance_residual,0,1e-10);
     const C b=pol==ScalarPolarization2D::TE_Ez?eps:mu;
     const double decay=2*q.imag();
     const double integral=decay==0?0.25:0.25*(-std::expm1(-decay))/decay;
@@ -139,4 +144,36 @@ NOVA_TEST(helmholtz_2d_constant_volume_excitation) {
     for (C u:result.field) NOVA_REQUIRE_NEAR(std::abs(u-value),0,1e-12);
     NOVA_REQUIRE_NEAR(std::accumulate(result.cell_loss.begin(),result.cell_loss.end(),0.0),
                       4.0*eps.imag()*std::norm(value),1e-12);
+}
+
+NOVA_TEST(helmholtz_2d_power_audit_dirichlet_reactions) {
+    auto rect=nova::fem::make_rectangle_mesh_2d(0,1,0,1,1,1);
+    const C value(0.3,0.7);
+    std::vector<HelmholtzDirichlet2D> bc;
+    for (auto i:rect.boundary_nodes) bc.push_back({i,value});
+    for (auto pol:{ScalarPolarization2D::TE_Ez,ScalarPolarization2D::TM_Hz}) {
+        std::vector<HelmholtzMaterial2D> mat(rect.mesh.elements.size(),
+            {C(2,0.5),C(1,0.25)});
+        const double expected=4.0*std::norm(value)*
+            (pol==ScalarPolarization2D::TE_Ez?0.5:0.25);
+        const auto result=solve_helmholtz_2d(rect.mesh,2,pol,mat,bc);
+        NOVA_REQUIRE_NEAR(result.material_loss,expected,1e-12);
+        NOVA_REQUIRE_NEAR(result.dirichlet_input,expected,1e-12);
+        NOVA_REQUIRE_NEAR(result.excitation_input,0,1e-14);
+        NOVA_REQUIRE_NEAR(result.robin_outflow,0,1e-14);
+        NOVA_REQUIRE_NEAR(result.power_balance_residual,0,1e-12);
+    }
+}
+NOVA_TEST(helmholtz_2d_power_audit_volume_excitation) {
+    auto rect=nova::fem::make_rectangle_mesh_2d(0,1,0,1,4,4);
+    const C value(0.3,0.7), eps(2.0,0.5);
+    std::vector<HelmholtzMaterial2D> mat(rect.mesh.elements.size(),{eps,1.0});
+    std::vector<C> f(rect.mesh.elements.size(),-4.0*eps*value);
+    const auto result=solve_helmholtz_2d(rect.mesh,2,ScalarPolarization2D::TE_Ez,mat,{},{},f);
+    const double expected=4.0*eps.imag()*std::norm(value);
+    NOVA_REQUIRE_NEAR(result.excitation_input,expected,1e-12);
+    NOVA_REQUIRE_NEAR(result.material_loss,expected,1e-12);
+    NOVA_REQUIRE_NEAR(result.dirichlet_input,0,1e-14);
+    NOVA_REQUIRE_NEAR(result.robin_outflow,0,1e-14);
+    NOVA_REQUIRE_NEAR(result.power_balance_residual,0,1e-12);
 }

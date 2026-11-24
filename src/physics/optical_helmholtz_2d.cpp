@@ -178,6 +178,33 @@ Helmholtz2DResult solve_helmholtz_2d(
         result.cell_gradient.push_back(grad);
         result.cell_loss.push_back(loss);
     }
+    // Imaginary part of the discrete weak form, including constrained rows.
+    // For exp(-i omega t), passive material and outgoing impedance have
+    // negative imaginary quadratic forms.
+    for (std::size_t i=0;i<n;++i) {
+        result.excitation_input-=std::imag(std::conj(field[i])*rhs[i]);
+        if (fixed[i]) {
+            C reaction=-rhs[i];
+            for (std::size_t j=0;j<n;++j) reaction+=A[i*n+j]*field[j];
+            result.dirichlet_input-=std::imag(std::conj(field[i])*reaction);
+        }
+    }
+    for (const auto& bc:robin) {
+        const auto p=mesh.nodes[bc.edge[0]], q=mesh.nodes[bc.edge[1]];
+        const C u=field[bc.edge[0]], v=field[bc.edge[1]];
+        const double integral=std::hypot(p.x-q.x,p.y-q.y)*
+            (std::norm(u)+std::norm(v)+std::real(std::conj(u)*v))/3.0;
+        result.robin_outflow-=bc.alpha.imag()*integral;
+    }
+    for (double loss:result.cell_loss) result.material_loss+=loss;
+    result.power_balance_residual=result.excitation_input+result.dirichlet_input
+        -result.robin_outflow-result.material_loss;
+    if (!std::isfinite(result.excitation_input) ||
+        !std::isfinite(result.dirichlet_input) ||
+        !std::isfinite(result.robin_outflow) ||
+        !std::isfinite(result.material_loss) ||
+        !std::isfinite(result.power_balance_residual))
+        throw std::runtime_error("Nonfinite Helmholtz power audit");
     result.field=std::move(field);
     return result;
 }
