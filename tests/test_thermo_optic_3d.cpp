@@ -141,3 +141,74 @@ NOVA_TEST(thermo_optic_reports_nonconvergence_and_rejects_bad_cell_data) {
     }
     NOVA_REQUIRE(rejected);
 }
+
+
+NOVA_TEST(thermo_optic_manufactured_nonzero_temperature_shift_matches_exact_absorption) {
+    const auto box = make_box_mesh_3d(0,1,0,1,0,1,2,2,2);
+    Photothermal3DProblem base;
+    base.thermal.mesh = box.mesh;
+    base.thermal.cell_diffusivity.assign(box.mesh.elements.size(), 4.0);
+    for (std::size_t node = 0; node < box.mesh.nodes.size(); ++node) {
+        base.thermal.dirichlet_constraints.push_back({node, 320.0});
+    }
+
+    constexpr double k0 = 2.3;
+    constexpr double amplitude = 100.0;
+    constexpr double c = 299792458.0;
+    constexpr double eps0 = 8.8541878128e-12;
+    const std::complex<double> epsilon_reference(2.0, 0.6);
+    const std::complex<double> slope(1e-3, 2e-4);
+    const auto epsilon_target = epsilon_reference + slope * 20.0;
+
+    base.vacuum_wavenumber = k0;
+    base.pec_on_exterior = false;
+    base.optical_materials.assign(box.mesh.elements.size(), {epsilon_reference, 1.0});
+    ComplexVector3D source{};
+    // Manufacture a uniform E=(100,0,0) field for the updated permittivity:
+    // curl(curl(E)) - k0^2 * epsilon_target * E = source.
+    source[0] = -k0 * k0 * epsilon_target * amplitude;
+    base.optical_cell_sources.assign(box.mesh.elements.size(), source);
+
+    ThermoOptic3DProblem problem;
+    problem.photothermal = base;
+    problem.d_relative_permittivity_d_temperature.assign(
+        box.mesh.elements.size(), slope);
+    problem.reference_temperature_kelvin = 300.0;
+    problem.relaxation_factor = 1.0;
+    problem.temperature_tolerance_kelvin = 1e-10;
+    problem.relative_absorbed_power_tolerance = 1e-10;
+    problem.max_iterations = 4;
+
+    const auto result = solve_thermo_optic_3d(problem, accurate_optical_options());
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.history.size() == 2);
+    NOVA_REQUIRE(result.history.front().relative_absorbed_power_change > 0.99);
+    NOVA_REQUIRE_NEAR(result.history.back().relative_absorbed_power_change, 0.0, 1e-12);
+
+    const double expected_density =
+        0.5 * k0 * c * eps0 * epsilon_target.imag() * amplitude * amplitude;
+    NOVA_REQUIRE_NEAR(result.photothermal.total_absorbed_power_watts,
+                      expected_density, 1e-7);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.generated_heat,
+                      expected_density, 1e-7);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.constraint_outward_heat,
+                      expected_density, 1e-6);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.signed_balance_defect,
+                      0.0, 1e-6);
+
+    NOVA_REQUIRE(result.photothermal.thermal_solution.values.size() == box.mesh.nodes.size());
+    for (double temperature : result.photothermal.thermal_solution.values) {
+        NOVA_REQUIRE_NEAR(temperature, 320.0, 1e-12);
+    }
+    for (std::size_t cell = 0; cell < box.mesh.elements.size(); ++cell) {
+        const double volume = make_nedelec_tetrahedron_3d(box.mesh, cell).volume;
+        NOVA_REQUIRE_NEAR(result.optical_materials[cell].relative_permittivity.real(),
+                          epsilon_target.real(), 1e-12);
+        NOVA_REQUIRE_NEAR(result.optical_materials[cell].relative_permittivity.imag(),
+                          epsilon_target.imag(), 1e-12);
+        NOVA_REQUIRE_NEAR(result.photothermal.absorbed_power_density[cell],
+                          expected_density, 1e-7);
+        NOVA_REQUIRE_NEAR(result.photothermal.absorbed_power_per_cell[cell],
+                          expected_density * volume, 1e-7);
+    }
+}
