@@ -149,6 +149,21 @@ class DesktopWorkflow(unittest.TestCase):
         with self.assertRaises(ValueError):
             NodalField.read(corrupted, (8, 3, 2))
 
+        records = self.win.vtk.read_text(encoding="ascii").splitlines()
+        cells = 6 * 8 * 3 * 2
+        first_cell = records.index(f"CELLS {cells} {5 * cells}") + 1
+        for name, bad_record in (
+            ("duplicate-node", "4 0 0 1 2"),
+            ("out-of-range-node", "4 0 1 2 108"),
+            ("nonlocal-tetrahedron", "4 0 1 2 107"),
+        ):
+            damaged_records = records.copy()
+            damaged_records[first_cell] = bad_record
+            damaged = self.directory / f"{name}.vtk"
+            damaged.write_text("\\n".join(damaged_records) + "\\n", encoding="ascii")
+            with self.subTest(connectivity=name), self.assertRaises(ValueError):
+                NodalField.read(damaged, (8, 3, 2))
+
     def test_round_trip_all_settings_and_boundary_types(self):
         editor = self.win.editor
         for name, value in {"mesh": "mesh-two", "geometry": "new-box", "material": "sample",
