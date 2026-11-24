@@ -23,13 +23,7 @@ volume. Each cell can have a constant Cartesian body-force density.
 Each selected exterior triangular face can have one constant global
 traction vector. Remaining exterior faces carry zero applied traction.
 
-Dirichlet conditions currently prescribe **all three displacement
-components at selected vertices**. At least three noncollinear fully
-fixed vertices are required **per connected mesh component** to remove
-all six rigid-body modes. This is a deliberate restricted API, not a
-general arbitrary directional roller, symmetry, or MPC constraint model.
-Duplicate constraints, invalid faces/materials/force values, and
-insufficient geometric anchors are rejected.
+Dirichlet conditions can prescribe full vectors or individual global Cartesian displacement components. Each face-connected solid must suppress its six rigid-body motions. Three noncollinear fully fixed vertices satisfy this check. Compatible scalar supports can model coordinate-aligned symmetry planes. Duplicate SDK constraints, invalid material/load values, and rank-deficient supports are rejected.
 
 ## Public API
 
@@ -39,7 +33,7 @@ insufficient geometric anchors are rejected.
 nova::physics::LinearElasticity3DProblem problem;
 // Supply a validated tetrahedral mesh.
 // Supply one {Young's modulus (Pa), Poisson ratio} per tetrahedron.
-// Fully fix at least three noncollinear vertices on each component.
+// Supply supports that remove six rigid modes on each solid.
 // Optional one constant body force per element and constant face tractions.
 const auto solved = nova::physics::solve_linear_elasticity_3d(problem);
 ```
@@ -74,10 +68,7 @@ ASan/LSan/UBSan jobs before marking this feature ready for merge.
 
 ## Prescribed thermal expansion (experimental thermoelastic extension)
 
-NOVA now accepts a **one-way, prescribed temperature change** for
-small-strain, cellwise isotropic thermal expansion. This extends the
-existing elasticity assembly; it does **not** yet solve the heat equation
-together with displacement or model deformation-to-heat feedback.
+The one-shot API accepts a **prescribed temperature change** for small-strain, cellwise isotropic thermal expansion. The prepared API also consumes nodal temperatures directly from a steady or transient heat solve.
 
 For every tetrahedron supply both the cell_thermal_expansion_per_kelvin
 array (alpha, 1/K) and the cell_temperature_change_kelvin array
@@ -110,7 +101,4 @@ nu=0.25, alpha=0.002/K, deltaT=5 K:
 3. Reject mismatched arrays, nonfinite and overflowed thermal input.
    Explicit zero-thermal-strain input must preserve the prior behavior.
 
-Temperature is an **externally prescribed** field, not a coupled
-thermal solve. This feature makes no claim to support transient
-thermoelasticity, thermal-interface equilibrium, nonlinear/plastic
-mechanics, contact, large deformation or geometric nonlinearity.
+The Gmsh stationary and transient heat executables can drive this mechanical solve from their computed temperatures. [Formulation, examples and measured errors](THERMOELASTIC_3D.md).

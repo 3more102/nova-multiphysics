@@ -1,3 +1,4 @@
+#include "nova/physics/thermoelasticity_3d.hpp"
 #include "nova/physics/linear_elasticity_3d.hpp"
 
 #include <cmath>
@@ -55,5 +56,10 @@ int main() {
             if (std::abs(stress[c] + 24.0) > 1.0e-8) return 5;
         }
     }
+    PreparedElasticity3D response(problem.mesh, problem.cell_materials, problem.prescribed_displacements);
+    const std::vector<ThermalExpansion3D> expansion(problem.mesh.elements.size(), {0.002, 300});
+    const std::vector<double> temperature(problem.mesh.nodes.size(), 305);
+    const auto from_heat = response.solve_temperature(temperature, expansion);
+    if (!from_heat.linear_solver.converged || std::abs(from_heat.strain_energy_joules - 0.36) > 1e-9) return 6;
     return 0;
 }

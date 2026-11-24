@@ -23,7 +23,8 @@ public:
     }
     void anchor(std::size_t dof) { components_[component_of_[dof]].anchored = true; }
 
-    void impose_gauges(std::span<const double> rhs, std::vector<std::optional<double>>& prescribed);
+    void impose_gauges(std::span<const double> rhs, std::vector<std::optional<double>>& prescribed,
+                       bool require_anchors = false);
     [[nodiscard]] std::vector<double> physical_values(const std::vector<double>& iterate) const;
 
 private:

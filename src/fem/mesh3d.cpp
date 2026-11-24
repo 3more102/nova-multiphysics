@@ -5,6 +5,8 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <numeric>
+#include <span>
 #include <set>
 #include <stdexcept>
 #include <utility>
@@ -167,8 +169,18 @@ struct OrientedFace {
 
 struct FaceRecord {
     BoundaryFace3D outward{};
-    bool interior{};
+    std::size_t owner{}; // first owner, or interior_face after the second incidence
 };
+
+constexpr auto interior_face = std::numeric_limits<std::size_t>::max();
+
+std::size_t component_root(std::span<std::size_t> parents, std::size_t cell) {
+    while (parents[cell] != cell) {
+        parents[cell] = parents[parents[cell]];
+        cell = parents[cell];
+    }
+    return cell;
+}
 
 // Both faces have the same three vertex IDs. Cyclic permutations preserve winding.
 [[nodiscard]] bool same_winding(const BoundaryFace3D& a, const BoundaryFace3D& b) {
@@ -176,7 +188,9 @@ struct FaceRecord {
                      (a[0] == b[2] && a[1] == b[0]);
 }
 
-[[nodiscard]] std::map<FaceKey, FaceRecord> validated_faces(const TetrahedralMesh3D& mesh) {
+[[nodiscard]] std::map<FaceKey, FaceRecord> validated_faces(
+    const TetrahedralMesh3D& mesh, std::span<std::size_t> parents = {}
+) {
     const auto& nodes = mesh.nodes;
     const auto& elements = mesh.elements;
     if (nodes.empty()) {
@@ -198,7 +212,8 @@ struct FaceRecord {
     std::map<FaceKey, FaceRecord> records;
     std::vector<bool> used(nodes.size(), false);
 
-    for (const Tetrahedron3D& tetrahedron : elements) {
+    for (std::size_t cell = 0; cell < elements.size(); ++cell) {
+        const auto& tetrahedron = elements[cell];
         for (const std::size_t node : tetrahedron) {
             if (node >= nodes.size()) {
                 throw std::out_of_range(
@@ -248,16 +263,21 @@ struct FaceRecord {
 
         for (const OrientedFace& face : outward_faces(mesh, tetrahedron)) {
             const auto [it, inserted] = records.try_emplace(
-                canonical_face(face.nodes), FaceRecord{face.nodes, false}
+                canonical_face(face.nodes), FaceRecord{face.nodes, cell}
             );
             if (!inserted) {
-                if (it->second.interior) {
+                if (it->second.owner == interior_face) {
                     throw std::invalid_argument("More than two tetrahedra share a face.");
                 }
                 if (same_winding(it->second.outward, face.nodes)) {
                     throw std::invalid_argument("Tetrahedra occupy the same side of a shared face.");
                 }
-                it->second.interior = true;
+                if (!parents.empty()) {
+                    const auto a = component_root(parents, it->second.owner);
+                    const auto b = component_root(parents, cell);
+                    parents[std::max(a, b)] = std::min(a, b);
+                }
+                it->second.owner = interior_face;
             }
         }
     }
@@ -267,7 +287,28 @@ struct FaceRecord {
     return records;
 }
 
+std::vector<BoundaryFace3D> exterior_faces(const std::map<FaceKey, FaceRecord>& records) {
+    std::vector<BoundaryFace3D> boundary_faces;
+    for (const auto& [key, record] : records) {
+        static_cast<void>(key);
+        if (record.owner != interior_face) {
+            boundary_faces.push_back(record.outward);
+        }
+    }
+    return boundary_faces;
+}
+
 } // namespace
+
+TetrahedralTopology3D analyze_tetrahedral_topology_3d(const TetrahedralMesh3D& mesh) {
+    TetrahedralTopology3D topology;
+    topology.cell_component.resize(mesh.elements.size());
+    std::iota(topology.cell_component.begin(), topology.cell_component.end(), std::size_t{0});
+    const auto faces = validated_faces(mesh, topology.cell_component);
+    for (auto& label : topology.cell_component) label = component_root(topology.cell_component, label);
+    topology.exterior_faces = exterior_faces(faces);
+    return topology;
+}
 
 void TetrahedralMesh3D::validate() const {
     static_cast<void>(validated_faces(*this));
@@ -277,14 +318,7 @@ std::vector<BoundaryFace3D> extract_boundary_faces_3d(
     const TetrahedralMesh3D& mesh
 ) {
     const auto records = validated_faces(mesh);
-    std::vector<BoundaryFace3D> boundary_faces;
-    for (const auto& [key, record] : records) {
-        static_cast<void>(key);
-        if (!record.interior) {
-            boundary_faces.push_back(record.outward);
-        }
-    }
-    return boundary_faces;
+    return exterior_faces(records);
 }
 
 MeshQuality3D evaluate_mesh_quality_3d(const TetrahedralMesh3D& mesh) {

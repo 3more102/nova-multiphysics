@@ -3,6 +3,7 @@
 #include "nova/io/gmsh22_tetrahedral.hpp"
 
 #include <iosfwd>
+#include <string_view>
 
 namespace nova::io {
 
@@ -14,5 +15,7 @@ namespace nova::io {
 // The resulting mesh and outward exterior faces use NOVA's validated MSH 2.2
 // topology and physical-group semantics.
 [[nodiscard]] GmshTetrahedralMesh3D read_gmsh_tetrahedra(std::istream& input);
+
+[[nodiscard]] int physical_tag(std::string_view token, int dimension, const GmshTetrahedralMesh3D& mesh);
 
 } // namespace nova::io

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <map>
 #include <stdexcept>
+#include <utility>
 
 namespace nova::linalg {
 
@@ -50,6 +51,54 @@ CsrMatrix CsrMatrix::from_triplets(
     }
 
     return matrix;
+}
+
+CsrMatrix CsrMatrix::from_sorted_rows(
+    std::size_t rows, std::size_t columns, std::vector<std::size_t> row_offsets,
+    std::vector<std::size_t> column_indices, std::vector<double> values
+) {
+    if (row_offsets.empty() || row_offsets.size() - 1U != rows ||
+        row_offsets.front() != 0U || row_offsets.back() != values.size() ||
+        column_indices.size() != values.size() ||
+        !std::is_sorted(row_offsets.begin(), row_offsets.end())) {
+        throw std::invalid_argument("Invalid CSR row offsets or storage sizes.");
+    }
+    for (std::size_t row = 0; row < rows; ++row) {
+        for (auto i = row_offsets[row]; i < row_offsets[row + 1U]; ++i) {
+            if (column_indices[i] >= columns ||
+                (i > row_offsets[row] && column_indices[i-1U] >= column_indices[i]) ||
+                !std::isfinite(values[i]) || values[i] == 0.0) {
+                throw std::invalid_argument("Invalid column order, index or value in canonical CSR.");
+            }
+        }
+    }
+    CsrMatrix result;
+    result.rows_ = rows;
+    result.columns_ = columns;
+    result.row_offsets_ = std::move(row_offsets);
+    result.column_indices_ = std::move(column_indices);
+    result.values_ = std::move(values);
+    return result;
+}
+
+CsrMatrix CsrMatrix::scaled_block(std::size_t first, std::size_t count,
+    std::span<const double> left, std::span<const double> right) const {
+    if (rows_!=columns_ || first>rows_ || count>rows_-first ||
+        left.size()!=rows_ || right.size()!=columns_)
+        throw std::invalid_argument("Invalid CSR block range or scaling dimensions.");
+    std::vector<std::size_t> offsets{0}, columns;
+    std::vector<double> values;
+    offsets.reserve(count+1);
+    for (std::size_t row=first;row<first+count;++row) {
+        for (auto k=row_offsets_[row];k<row_offsets_[row+1];++k) {
+            const auto col=column_indices_[k];
+            if (col<first || col>=first+count) continue;
+            const double v=left[row]*values_[k]*right[col];
+            if (v!=0) { columns.push_back(col-first); values.push_back(v); }
+        }
+        offsets.push_back(values.size());
+    }
+    return from_sorted_rows(count,count,std::move(offsets),std::move(columns),std::move(values));
 }
 
 std::size_t CsrMatrix::rows() const noexcept {
@@ -157,6 +206,40 @@ CsrMatrix CsrMatrix::linear_combination(
         result.row_offsets_.push_back(result.values_.size());
     }
     return result;
+}
+
+CsrAssemblyPattern::CsrAssemblyPattern(std::size_t columns, std::vector<std::size_t> offsets,
+    std::vector<std::size_t> indices)
+    : columns_(columns), offsets_(std::move(offsets)), indices_(std::move(indices)) {
+    if (offsets_.empty() || offsets_.front()!=0 || offsets_.back()!=indices_.size() ||
+        !std::is_sorted(offsets_.begin(),offsets_.end())) throw std::invalid_argument("Invalid assembly graph offsets.");
+    for (std::size_t i=0;i+1<offsets_.size();++i)
+        for (auto j=offsets_[i];j<offsets_[i+1];++j)
+            if (indices_[j]>=columns_ || (j>offsets_[i] && indices_[j]<=indices_[j-1]))
+                throw std::invalid_argument("Invalid assembly graph column order.");
+}
+std::size_t CsrAssemblyPattern::slot(std::size_t row,std::size_t column) const {
+    if (offsets_.empty() || row>=offsets_.size()-1) throw std::out_of_range("Invalid assembly graph row.");
+    const auto first=indices_.begin()+static_cast<std::ptrdiff_t>(offsets_[row]);
+    const auto last=indices_.begin()+static_cast<std::ptrdiff_t>(offsets_[row+1]);
+    const auto it=std::lower_bound(first,last,column);
+    if (it==last || *it!=column) throw std::out_of_range("Missing assembly graph entry.");
+    return static_cast<std::size_t>(it-indices_.begin());
+}
+CsrMatrix CsrAssemblyPattern::matrix(std::span<const double> values) const {
+    if (offsets_.empty() || values.size()!=slots()) throw std::invalid_argument("Invalid graph value count.");
+    std::vector<std::size_t> offsets{0}, columns;
+    std::vector<double> coefficients;
+    offsets.reserve(offsets_.size());
+    columns.reserve(slots()); coefficients.reserve(slots());
+    for (std::size_t i=0;i+1<offsets_.size();++i) {
+        for (auto j=offsets_[i];j<offsets_[i+1];++j) if (values[j]!=0) {
+            columns.push_back(indices_[j]); coefficients.push_back(values[j]);
+        }
+        offsets.push_back(columns.size());
+    }
+    return CsrMatrix::from_sorted_rows(offsets_.size()-1,columns_,std::move(offsets),
+        std::move(columns),std::move(coefficients));
 }
 
 } // namespace nova::linalg

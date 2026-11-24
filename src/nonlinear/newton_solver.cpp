@@ -11,11 +11,11 @@ namespace nova::nonlinear {
 namespace {
 
 [[nodiscard]] double vector_norm(const std::vector<double>& values) {
-    double squared_norm = 0.0;
+    double length = 0.0;
     for (const double value : values) {
-        squared_norm += value * value;
+        length = std::hypot(length, value);
     }
-    return std::sqrt(squared_norm);
+    return length;
 }
 
 [[nodiscard]] bool all_finite(const std::span<const double> values) {
@@ -58,6 +58,8 @@ NewtonResult solve_newton(
     }
     if (!std::isfinite(options.residual_tolerance) ||
         options.residual_tolerance <= 0.0 ||
+        !std::isfinite(options.relative_residual_tolerance) || options.relative_residual_tolerance < 0 ||
+        options.relative_residual_tolerance >= 1 ||
         !std::isfinite(options.step_tolerance) ||
         options.step_tolerance < 0.0) {
         throw std::invalid_argument("Newton tolerances must be finite; residual tolerance must be positive.");
@@ -96,7 +98,9 @@ NewtonResult solve_newton(
         throw std::overflow_error("Initial nonlinear residual norm overflowed.");
     }
 
-    if (result.residual_norm <= options.residual_tolerance) {
+    const double target = std::max(options.residual_tolerance,
+        options.relative_residual_tolerance * result.initial_residual_norm);
+    if (result.residual_norm <= target) {
         result.converged = true;
         result.message = "Initial guess satisfies the nonlinear residual criterion.";
         return result;
@@ -203,7 +207,7 @@ NewtonResult solve_newton(
         result.iterations = iteration + 1;
         result.solution = solution;
 
-        if (result.residual_norm <= options.residual_tolerance) {
+        if (result.residual_norm <= target) {
             result.converged = true;
             result.message = "Newton converged.";
             return result;

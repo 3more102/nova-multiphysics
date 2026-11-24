@@ -1,5 +1,7 @@
 #include "nova/linalg/gmres.hpp"
 
+#include "nova/linalg/incomplete_lu.hpp"
+#include <optional>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -78,7 +80,8 @@ SolverResult solve_gmres(
         throw std::invalid_argument("GMRES input vectors must contain only finite values.");
     }
     if (solver_options.preconditioner != PreconditionerType::None &&
-        solver_options.preconditioner != PreconditionerType::Jacobi) {
+        solver_options.preconditioner != PreconditionerType::Jacobi &&
+        solver_options.preconditioner != PreconditionerType::IncompleteLU0) {
         throw std::invalid_argument("Unsupported GMRES preconditioner.");
     }
 
@@ -103,7 +106,11 @@ SolverResult solve_gmres(
         }
     }
 
+    std::optional<IncompleteLU0> ilu;
+    if (solver_options.preconditioner == PreconditionerType::IncompleteLU0) ilu.emplace(matrix);
+
     const auto apply_preconditioner = [&](const std::vector<double>& vector) {
+        if (ilu) return ilu->solve(vector);
         if (solver_options.preconditioner == PreconditionerType::None) {
             return vector;
         }

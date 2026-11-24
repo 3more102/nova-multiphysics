@@ -30,8 +30,10 @@ The following reflects functionality represented in the current source tree. **E
 | **2D transient heat** | Consistent capacity matrix; Backward Euler and Crank–Nicolson; time-dependent loads and boundary data; adaptive timestep control and restart | Experimental |
 | **3D steady diffusion / conduction** | Continuous P1 tetrahedra; isotropic or SPD tensor coefficients; material regions, heat sources, mixed boundaries and flux diagnostics | Experimental |
 | **3D transient heat** | P1 tetrahedra; implicit time integration, adaptive steps, per-step energy accounting, time-varying boundary data, state checkpoints | Experimental |
-| **3D electrothermal FEM** | Stationary DC conduction → Joule heating → thermal diffusion; temperature-dependent sigma(T)/k(T), segregated implicit transient coupling, adaptive step doubling and versioned step-boundary restart | Experimental C++ APIs |\n| **3D electrostatics** | Scalar/tensor permittivity, electric potential, field/displacement and energy; electrode-charge and capacitance diagnostics; restricted floating-terminal Schur workflow | Experimental |
-| **3D linear elasticity** | Small-strain isotropic P1 tetrahedral solver with fully prescribed nodal displacements, body forces, face tractions, and stress/strain recovery | Experimental C++ API |
+| **3D electrothermal FEM** | Stationary DC conduction → Joule heating → thermal diffusion; temperature-dependent sigma(T)/k(T), segregated implicit transient coupling, adaptive step doubling and versioned step-boundary restart | Experimental C++ APIs |
+| **3D electrostatics** | Scalar/tensor permittivity, electric potential, field/displacement and energy; electrode-charge and capacitance diagnostics; restricted floating-terminal Schur workflow | Experimental |
+| **3D linear elasticity** | Isotropic P1 tetrahedra, full or Cartesian component constraints, body loads, face tractions and stress recovery | Experimental C++ API |
+| **3D thermoelasticity** | Tagged stationary and transient heat to quasistatic displacement, cell stress and elastic energy, with multi-field VTK/PVD output | Experimental C++ API and CLI |
 | **Mesh infrastructure** | Validated 2D triangle/3D tetrahedron topology, quality metrics, 2D uniform refinement, 3D uniform and marked local refinement, field transfer | Developing |
 | **3D error indicators / adaptation** | P1 cell residuals, interior flux jumps and selected natural-boundary residuals; restricted one-cycle solve–estimate–mark–refine–resolve workflow | Experimental |
 | **Numerical solvers** | CSR sparse algebra; CG, BiCGSTAB, restarted GMRES; Jacobi and CG-only IC(0); Newton nonlinear solves | Core components |
@@ -45,9 +47,11 @@ The following reflects functionality represented in the current source tree. **E
 | --- | --- |
 | Steady 3D conduction, materials, boundary groups and verification | [Steady conduction on tagged 3D solids](docs/STEADY_CONDUCTION_3D.md) |
 | Transient 3D heat, time integrators and energy diagnostics | [Transient 3D heat](docs/TRANSIENT_HEAT_3D.md) |
+| Heat-induced stress and displacement, analytical cases and measurements | [3D thermoelastic studies](docs/THERMOELASTIC_3D.md) |
 | Imported-mesh transient CLI | [Gmsh transient heat](docs/GMSH_TRANSIENT_HEAT_3D.md) |
 | 2D/3D temporal adaptation | [Adaptive heat 2D](docs/ADAPTIVE_HEAT_2D.md) · [Adaptive heat 3D](docs/ADAPTIVE_HEAT_3D.md) |
-| Electrothermal adaptive stepping and restart | [Adaptive electrothermal integration](docs/ADAPTIVE_TRANSIENT_ELECTROTHERMAL_3D.md) · [Versioned checkpoint](docs/ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D.md) |\n| Electrostatics, capacitance and floating conductors | [3D electrostatics](docs/ELECTROSTATICS_3D.md) |
+| Electrothermal adaptive stepping and restart | [Adaptive electrothermal integration](docs/ADAPTIVE_TRANSIENT_ELECTROTHERMAL_3D.md) · [Versioned checkpoint](docs/ADAPTIVE_ELECTROTHERMAL_CHECKPOINT_3D.md) |
+| Electrostatics, capacitance and floating conductors | [3D electrostatics](docs/ELECTROSTATICS_3D.md) |
 | 3D mesh refinement and residual indicators | [Tetrahedral refinement](docs/UNIFORM_TETRA_REFINEMENT_3D.md) · [Residual error indicators](docs/RESIDUAL_ERROR_ESTIMATOR_3D.md) |
 | Conventions and analytical verification | [Numerical conventions](docs/NUMERICAL_CONVENTIONS.md) · [3D spatial error norms](docs/VERIFICATION_3D_ERROR_NORMS.md) |
 
@@ -137,7 +141,7 @@ Open `heated_wall.pvd` in **ParaView** to visualize temperature over time. The C
 ./build/nova_electrostatics_3d
 ~~~
 
-The 3D elasticity and selected advanced electrostatic/adaptation workflows are currently exposed through **C++ APIs and test cases**, not dedicated end-user CLI applications.
+Both Gmsh heat executables accept region-specific elastic properties and displacement supports. The coupled examples include wall conduction with convection, rotated-tensor diffusion and transient cooling. [Run and verify the thermoelastic studies](docs/THERMOELASTIC_3D.md).
 
 ## C++ SDK integration
 

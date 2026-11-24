@@ -9,7 +9,8 @@ namespace nova::linalg {
 enum class PreconditionerType {
     None,
     Jacobi,
-    IncompleteCholesky0 // Supported by CG only; natural-order, zero-fill factor.
+    IncompleteCholesky0, // Supported by CG only; natural-order, zero-fill factor.
+    IncompleteLU0 // Right preconditioning for GMRES and BiCGSTAB.
 };
 
 struct SolverOptions {

@@ -25,3 +25,6 @@ CMakeCache.txt
 cmake_install.cmake
 compile_commands.json
 CTestTestfile.cmake
+/verification/__pycache__/
+
+/examples/package_3d/__pycache__/

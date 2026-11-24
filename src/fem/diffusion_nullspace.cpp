@@ -71,7 +71,8 @@ DiffusionNullspace::DiffusionNullspace(
 }
 
 void DiffusionNullspace::impose_gauges(
-    std::span<const double> rhs, std::vector<std::optional<double>>& prescribed
+    std::span<const double> rhs, std::vector<std::optional<double>>& prescribed,
+    bool require_anchors
 ) {
     for (std::size_t dof = 0; dof < prescribed.size(); ++dof) {
         if (prescribed[dof]) {
@@ -82,6 +83,10 @@ void DiffusionNullspace::impose_gauges(
     for (const auto& c : components_) {
         if (c.anchored) {
             continue;
+        }
+        if (require_anchors) {
+            throw std::invalid_argument("Absolute temperature requires a Dirichlet or positive Robin anchor "
+                                        "on the component containing DOF " + std::to_string(c.dofs.front()));
         }
         long double net = 0.0L;
         for (const auto dof : c.dofs) {

@@ -56,6 +56,9 @@ struct ScalarDiffusion3DProblem {
     // contributes zero. Negative means cooling.
     // If nonempty, follows mesh.elements order and must cover every cell.
     std::vector<double> cell_source{};
+    // Stationary studies consuming absolute temperature can disallow arbitrary
+    // zero-mean gauges. Every component then needs a Dirichlet or positive Robin anchor.
+    bool require_anchored_components{};
 };
 
 struct ScalarDiffusion3DResult {
