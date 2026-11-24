@@ -1,4 +1,5 @@
 #include "nova/physics/maxwell_3d.hpp"
+#include "nova/physics/maxwell_cavity_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,6 +7,7 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <utility>
 
 namespace nova::physics {
 namespace {
@@ -26,6 +28,34 @@ EdgeMap edge_map(const fem::TetrahedralMesh3D& mesh) {
     }
     return map;
 }
+MaxwellSystem3D make_topology(const fem::TetrahedralMesh3D& mesh,
+    const EdgeMap& map,bool pec_on_exterior) {
+    std::set<fem::Edge3D> pec;
+    if (pec_on_exterior)
+        for (const auto& face : fem::extract_boundary_faces_3d(mesh))
+            for (std::size_t i=0;i<3;++i)
+                for (std::size_t j=i+1;j<3;++j)
+                    pec.insert({std::min(face[i],face[j]),std::max(face[i],face[j])});
+    MaxwellSystem3D out;
+    const auto invalid=std::numeric_limits<std::size_t>::max();
+    for (const auto& [edge,id] : map) {
+        out.edges.push_back(edge);
+        if (!pec.contains(edge)) {
+            out.free_edges.push_back(id);
+        }
+    }
+    const auto n=out.free_edges.size();
+    if (n==0 || n>invalid/2)
+        throw std::invalid_argument("Maxwell system has no free edges or is too large.");
+    return out;
+}
+std::vector<std::size_t> make_reduced(const MaxwellSystem3D& topology) {
+    std::vector<std::size_t> reduced(topology.edges.size(),
+        std::numeric_limits<std::size_t>::max());
+    for (std::size_t i=0;i<topology.free_edges.size();++i)
+        reduced[topology.free_edges[i]]=i;
+    return reduced;
+}
 }
 
 MaxwellSystem3D assemble_maxwell_3d(
@@ -42,25 +72,10 @@ MaxwellSystem3D assemble_maxwell_3d(
             || !(m.relative_permeability>0.0) || !std::isfinite(m.relative_permeability))
             throw std::invalid_argument("Invalid passive Maxwell cell material.");
     const auto map=edge_map(mesh);
-    std::set<fem::Edge3D> pec;
-    if (pec_on_exterior)
-        for (const auto& face : fem::extract_boundary_faces_3d(mesh))
-            for (std::size_t i=0;i<3;++i)
-                for (std::size_t j=i+1;j<3;++j)
-                    pec.insert({std::min(face[i],face[j]),std::max(face[i],face[j])});
-    MaxwellSystem3D out;
-    const auto invalid=std::numeric_limits<std::size_t>::max();
-    std::vector<std::size_t> reduced(map.size(),invalid);
-    for (const auto& [edge,id] : map) {
-        out.edges.push_back(edge);
-        if (!pec.contains(edge)) {
-            reduced[id]=out.free_edges.size();
-            out.free_edges.push_back(id);
-        }
-    }
+    auto out=make_topology(mesh,map,pec_on_exterior);
     const auto n=out.free_edges.size();
-    if (n==0 || n>invalid/2)
-        throw std::invalid_argument("Maxwell system has no free edges or is too large.");
+    const auto invalid=std::numeric_limits<std::size_t>::max();
+    const auto reduced=make_reduced(out);
     std::vector<linalg::Triplet> entries;
     for (std::size_t c=0;c<mesh.elements.size();++c) {
         const auto cell=fem::make_nedelec_tetrahedron_3d(mesh,c);
@@ -239,6 +254,47 @@ std::vector<double> integrate_maxwell_absorption_3d(
             throw std::overflow_error("Maxwell integrated loss overflow.");
     }
     return result;
+}
+
+
+MaxwellCavityMatrices3D assemble_maxwell_cavity_3d(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellCellMaterial3D> materials) {
+    mesh.validate();
+    if (materials.size()!=mesh.elements.size())
+        throw std::invalid_argument("Cavity material count mismatch.");
+    for (const auto& m : materials)
+        if (!finite(m.relative_permittivity) || m.relative_permittivity.imag()!=0.0
+            || !(m.relative_permittivity.real()>0.0)
+            || !(m.relative_permeability>0.0) || !std::isfinite(m.relative_permeability))
+            throw std::invalid_argument("Cavity requires lossless positive isotropic materials.");
+    const auto map=edge_map(mesh);
+    auto topology=make_topology(mesh,map,true);
+    const auto reduced=make_reduced(topology);
+    const auto invalid=std::numeric_limits<std::size_t>::max();
+    const auto n=topology.free_edges.size();
+    std::vector<linalg::Triplet> stiffness,mass;
+    for (std::size_t c=0;c<mesh.elements.size();++c) {
+        const auto cell=fem::make_nedelec_tetrahedron_3d(mesh,c);
+        const auto local=fem::nedelec_element_matrices_3d(cell);
+        for (std::size_t e=0;e<6;++e) {
+            const auto i=reduced[map.at(cell.edges[e])];
+            if (i==invalid) continue;
+            for (std::size_t f=0;f<6;++f) {
+                const auto j=reduced[map.at(cell.edges[f])];
+                if (j==invalid) continue;
+                const double k=local.curl_curl[e][f]/materials[c].relative_permeability;
+                const double m=local.mass[e][f]*materials[c].relative_permittivity.real();
+                if (!std::isfinite(k) || !std::isfinite(m))
+                    throw std::overflow_error("Cavity matrix overflow.");
+                stiffness.push_back({i,j,k});
+                mass.push_back({i,j,m});
+            }
+        }
+    }
+    return {std::move(topology.edges),std::move(topology.free_edges),
+        linalg::CsrMatrix::from_triplets(n,n,stiffness),
+        linalg::CsrMatrix::from_triplets(n,n,mass)};
 }
 
 } // namespace nova::physics
