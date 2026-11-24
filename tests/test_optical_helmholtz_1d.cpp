@@ -18,9 +18,82 @@ Helmholtz1DResult slab(std::size_t count, Complex index, double length) {
     const std::vector<Complex> eps(count,index*index);
     return solve_helmholtz_1d(wavelength,1.0,1.0,nodes,eps);
 }
+
+void graded_multilayer_reference() {
+    // Independent exact propagation of [E,dE/ds], s=k0*x, rather than
+    // the scattering cascade used by the existing single-slab tests.
+    constexpr double ni=1.3, nt=1.8;
+    constexpr double pi=std::numbers::pi_v<double>;
+    const Complex I{0,1};
+    const std::array<Complex,3> index{{1.55,{0.25,2.0},{2.2,0.08}}};
+    const std::array<double,3> width{{0.18,0.07,0.31}};
+    std::array<Complex,4> exact_e{}, exact_d{};
+    exact_e.back()=1.0;
+    exact_d.back()=I*nt;
+    for (std::size_t j=index.size(); j-- > 0;) {
+        const auto n=index[j];
+        const auto phase=n*(2*pi*width[j]);
+        const auto c=std::cos(phase), s=std::sin(phase);
+        exact_e[j]=c*exact_e[j+1]-s*exact_d[j+1]/n;
+        exact_d[j]=n*s*exact_e[j+1]+c*exact_d[j+1];
+    }
+    const Complex exact_t=2.0/(exact_e.front()+exact_d.front()/(I*ni));
+    for (std::size_t j=0;j<exact_e.size();++j) {
+        exact_e[j]*=exact_t;
+        exact_d[j]*=exact_t;
+    }
+    const Complex exact_r=exact_e.front()-1.0;
+    const auto flux=[&](std::size_t j) {
+        return std::imag(std::conj(exact_e[j])*exact_d[j])/ni;
+    };
+    const auto run=[&](std::size_t m, double origin, bool reverse) {
+        std::vector<double> nodes{origin};
+        std::vector<Complex> eps;
+        for(std::size_t j=0;j<index.size();++j) {
+            const std::size_t layer=reverse ? index.size()-1-j : j;
+            const double start=nodes.back();
+            for(std::size_t q=1;q<=m;++q) {
+                const double u=static_cast<double>(q)/static_cast<double>(m);
+                nodes.push_back(start+wavelength*width[layer]*std::pow(u,1.25));
+                eps.push_back(index[layer]*index[layer]);
+            }
+        }
+        return solve_helmholtz_1d(wavelength,reverse?nt:ni,reverse?ni:nt,nodes,eps);
+    };
+    const auto coarse=run(80,0,false);
+    const auto fine=run(160,0,false);
+    require(std::abs(fine.transmission-exact_t)<0.30*std::abs(coarse.transmission-exact_t),
+            "graded multilayer second-order transmission convergence");
+    require(std::abs(fine.reflection-exact_r)<3e-5,"graded multilayer complex reflection");
+    require(std::abs(fine.transmission-exact_t)<1e-4,"graded multilayer complex transmission");
+    for (std::size_t j=0;j<exact_e.size();++j)
+        require(std::abs(fine.electric_field[j*160]-exact_e[j])<1e-4,
+                "graded multilayer interface field");
+    for (std::size_t j=0;j<index.size();++j) {
+        double loss=0;
+        for(std::size_t q=0;q<160;++q) {
+            const double cell=fine.cell_absorptance[j*160+q];
+            require(cell>=0,"graded multilayer passive cell");
+            loss+=cell;
+        }
+        require(std::abs(loss-(flux(j)-flux(j+1)))<1e-5,
+                "layer absorption matches exact flux drop");
+    }
+    require(std::abs(fine.power_balance_residual)<1e-10,"graded multilayer energy balance");
+    const auto translated=run(160,10*wavelength,false);
+    require(std::abs(translated.transmission-fine.transmission)<1e-10,
+            "mesh translation preserves transmission reference planes");
+    const auto reversed=run(160,0,true);
+    // Reciprocity is exact for mirrored meshes; grading here is rebuilt
+    // from each layer's new left endpoint, so compare at discretization accuracy.
+    require(std::abs(reversed.transmittance-fine.transmittance)<2e-4,
+            "asymmetric reciprocal multilayer power transmission");
+}
+
 }
 int main() {
     try {
+        graded_multilayer_reference();
         const Complex exact = std::exp(Complex{0,2*std::numbers::pi_v<double>*0.73});
         const auto coarse=slab(40,1.0,0.73*wavelength);
         const auto fine=slab(80,1.0,0.73*wavelength);

@@ -9,3 +9,9 @@ R=|E_left-1|^2, T=(n_exit/n_incident)|E_right|^2, A=sum Im(epsilon_r)*integral |
 CTest target nova_optical_helmholtz_1d_tests compares complex amplitudes and absorptance against the existing analytical layer cascade for transparent, absorbing and metal-like slabs, checks uniform wave convergence, power conservation, pivoting and invalid input. Run with the existing default build and ctest presets.
 
 Scope: driven 1D scalar FEM, not a general 2D/3D vector Maxwell solver, eigenmode solver, PML, or self-consistent nonlinear solver.
+
+## Graded multilayer verification
+
+The regression suite additionally exercises three dielectric/metal-like layers with unequal thicknesses, unequal real exterior indices (1.3 and 1.8), and a nonuniform mesh with local node coordinate proportional to (j/m)^1.25. An independent exact solution propagates the state [E,dE/ds] backward across each homogeneous layer using complex sine and cosine; the exit outgoing wave is normalized to unit incoming electric amplitude at the entrance. This moderate-thickness test reference is not a replacement for a stable scattering cascade in thick, highly attenuating stacks.
+
+Checks cover complex scattering amplitudes, second-order transmission convergence between 80 and 160 elements per layer, electric fields at material interfaces, individual layer absorption against the exact difference of normalized Poynting flux, global discrete energy balance, translation of the reference planes with the mesh, and reciprocal power transmission under reversal. The reversed mesh is regraded rather than geometrically mirrored, so its reciprocity tolerance includes discretization error. All checks run in the existing Helmholtz CTest target.
