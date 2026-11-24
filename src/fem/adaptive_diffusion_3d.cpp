@@ -110,13 +110,15 @@ using BoundaryEdge3D = std::array<std::size_t, 2>;
              entirely_fixed_face(key, fixed_vertices))) {
             continue;
         }
-        if (const auto found = neumann.find(key); found != neumann.end()) {
-            natural.push_back({face, found->second});
-        } else if (const auto found = robin.find(key); found != robin.end()) {
+        if (const auto neumann_condition = neumann.find(key);
+            neumann_condition != neumann.end()) {
+            natural.push_back({face, neumann_condition->second});
+        } else if (const auto robin_condition = robin.find(key);
+                   robin_condition != robin.end()) {
             robin_residuals.push_back({
                 face,
-                found->second.transfer_coefficient,
-                found->second.ambient_value
+                robin_condition->second.transfer_coefficient,
+                robin_condition->second.ambient_value
             });
         } else {
             natural.push_back({face, zero});
@@ -208,13 +210,17 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
         }
         const auto& child = refined.boundary_faces[i];
         const auto parent_key = canonical_face(exterior[parent_index]);
-        if (const auto found = essential.find(parent_key); found != essential.end()) {
-            result.refined_problem.dirichlet_faces.push_back({child, found->second});
-        } else if (const auto found = neumann.find(parent_key);
-                   found != neumann.end()) {
-            result.refined_problem.neumann_faces.push_back({child, found->second});
-        } else if (const auto found = robin.find(parent_key); found != robin.end()) {
-            auto condition = found->second;
+        if (const auto dirichlet_condition = essential.find(parent_key);
+            dirichlet_condition != essential.end()) {
+            result.refined_problem.dirichlet_faces.push_back({
+                child, dirichlet_condition->second});
+        } else if (const auto neumann_condition = neumann.find(parent_key);
+                   neumann_condition != neumann.end()) {
+            result.refined_problem.neumann_faces.push_back({
+                child, neumann_condition->second});
+        } else if (const auto robin_condition = robin.find(parent_key);
+                   robin_condition != robin.end()) {
+            auto condition = robin_condition->second;
             condition.face = child;
             result.refined_problem.robin_faces.push_back(std::move(condition));
         }
