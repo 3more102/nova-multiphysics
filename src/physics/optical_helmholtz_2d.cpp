@@ -1,4 +1,5 @@
 #include "nova/physics/optical_helmholtz_2d.hpp"
+#include "nova/linalg/gmres.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -69,9 +70,16 @@ Helmholtz2DResult solve_helmholtz_2d(
     const fem::TriangleMesh2D& mesh, double k0, ScalarPolarization2D polarization,
     std::span<const HelmholtzMaterial2D> materials,
     std::span<const HelmholtzDirichlet2D> prescribed,
-    std::span<const HelmholtzRobin2D> robin, std::span<const C> sources) {
+    std::span<const HelmholtzRobin2D> robin, std::span<const C> sources,
+    const HelmholtzSolverOptions2D& options) {
     const auto n=mesh.nodes.size(), m=mesh.elements.size();
-    if (n>1024) throw std::length_error("Dense Helmholtz reference limited to 1024 nodes");
+    const bool sparse=options.linear_solver==HelmholtzLinearSolver2D::SparseGmres;
+    if (!sparse && options.linear_solver!=HelmholtzLinearSolver2D::DenseReference)
+        throw std::invalid_argument("Invalid Helmholtz linear solver");
+    if (!sparse && n>1024) throw std::length_error("Dense Helmholtz reference limited to 1024 nodes");
+    if (sparse && (options.restart==0 || options.max_iterations==0 ||
+        n>std::numeric_limits<std::size_t>::max()/2))
+        throw std::invalid_argument("Invalid sparse Helmholtz solver options or dimension");
     mesh.validate();
     const double k2=k0*k0;
     if (!(k0>0) || !(k2>0) || !std::isfinite(k2) || materials.size()!=m ||
@@ -80,7 +88,8 @@ Helmholtz2DResult solve_helmholtz_2d(
     const bool te=polarization==ScalarPolarization2D::TE_Ez;
     if (!te && polarization!=ScalarPolarization2D::TM_Hz)
         throw std::invalid_argument("Invalid scalar polarization");
-    std::vector<C> A(n*n), rhs(n), field(n);
+    std::vector<std::map<std::size_t,C>> A(n);
+    std::vector<C> rhs(n), field(n);
     std::vector<bool> fixed(n,false);
     std::vector<Cell> cells;
     std::map<Edge,unsigned> incidence;
@@ -103,7 +112,7 @@ Helmholtz2DResult solve_helmholtz_2d(
             rhs[e[i]]+=cell.area*f/3.0;
             for (std::size_t j=0;j<3;++j) {
                 const double g=cell.grad[i][0]*cell.grad[j][0]+cell.grad[i][1]*cell.grad[j][1];
-                A[e[i]*n+e[j]]+=a*(cell.area*g)-k2*b*(cell.area*(i==j?2.0:1.0)/12.0);
+                A[e[i]][e[j]]+=a*(cell.area*g)-k2*b*(cell.area*(i==j?2.0:1.0)/12.0);
             }
         }
     }
@@ -128,31 +137,82 @@ Helmholtz2DResult solve_helmholtz_2d(
         const double length=std::hypot(p.x-q.x,p.y-q.y);
         for (std::size_t i:bc.edge) {
             rhs[i]+=bc.load*length/2.0;
-            for (std::size_t j:bc.edge) A[i*n+j]+=bc.alpha*length*(i==j?2.0:1.0)/6.0;
+            for (std::size_t j:bc.edge) A[i][j]+=bc.alpha*length*(i==j?2.0:1.0)/6.0;
         }
     }
-    for (C v:A) if (!finite(v)) throw std::runtime_error("Nonfinite Helmholtz matrix");
+    Helmholtz2DResult result;
+    for (auto& row:A) {
+        for (auto it=row.begin();it!=row.end();) {
+            if (!finite(it->second)) throw std::runtime_error("Nonfinite Helmholtz matrix");
+            if (it->second==C{}) it=row.erase(it);
+            else { ++result.matrix_nonzeros; ++it; }
+        }
+    }
     for (C v:rhs) if (!finite(v)) throw std::runtime_error("Nonfinite Helmholtz load");
     std::vector<std::size_t> free;
     for (std::size_t i=0;i<n;++i) if (!fixed[i]) free.push_back(i);
     const auto nf=free.size();
-    std::vector<C> reduced(nf*nf), load(nf);
+    std::vector<std::size_t> free_index(n,n);
+    for (std::size_t i=0;i<nf;++i) free_index[free[i]]=i;
+    std::vector<C> load(nf);
     for (std::size_t i=0;i<nf;++i) {
         const auto row=free[i];
         load[i]=rhs[row];
-        for (std::size_t j=0;j<n;++j) if (fixed[j]) load[i]-=A[row*n+j]*field[j];
-        for (std::size_t j=0;j<nf;++j) reduced[i*nf+j]=A[row*n+free[j]];
+        for (const auto& [j,v]:A[row]) if (fixed[j]) load[i]-=v*field[j];
     }
-    const auto solution=dense_solve(std::move(reduced),std::move(load));
-    for (std::size_t i=0;i<nf;++i) field[free[i]]=solution[i];
-    Helmholtz2DResult result;
+    if (!sparse) {
+        std::vector<C> reduced(nf*nf);
+        for (std::size_t i=0;i<nf;++i)
+            for (const auto& [j,v]:A[free[i]]) if (!fixed[j])
+                reduced[i*nf+free_index[j]]=v;
+        const auto solution=dense_solve(std::move(reduced),std::move(load));
+        for (std::size_t i=0;i<nf;++i) field[free[i]]=solution[i];
+    } else if (nf>0) {
+        // Real-block representation of the row-equilibrated complex system:
+        // [ Re(A) -Im(A); Im(A) Re(A) ] [Re(u); Im(u)].
+        std::vector<linalg::Triplet> entries;
+        std::vector<double> real_load(2*nf);
+        for (std::size_t i=0;i<nf;++i) {
+            double scale=0;
+            for (const auto& [j,v]:A[free[i]]) if (!fixed[j])
+                scale=std::max(scale,std::abs(v));
+            if (!(scale>0) || !std::isfinite(scale))
+                throw std::runtime_error("Invalid sparse Helmholtz row");
+            const C f=load[i]/scale;
+            real_load[i]=f.real(); real_load[i+nf]=f.imag();
+            for (const auto& [j,v]:A[free[i]]) if (!fixed[j]) {
+                const auto col=free_index[j];
+                const C z=v/scale;
+                if (z.real()!=0) {
+                    entries.push_back({i,col,z.real()});
+                    entries.push_back({i+nf,col+nf,z.real()});
+                }
+                if (z.imag()!=0) {
+                    entries.push_back({i,col+nf,-z.imag()});
+                    entries.push_back({i+nf,col,z.imag()});
+                }
+            }
+        }
+        const auto matrix=linalg::CsrMatrix::from_triplets(2*nf,2*nf,entries);
+        linalg::GmresOptions gmres;
+        gmres.restart=std::min(options.restart,2*nf);
+        gmres.solver.max_iterations=options.max_iterations;
+        gmres.solver.relative_tolerance=1e-12;
+        gmres.solver.absolute_tolerance=0;
+        const auto solution=linalg::solve_gmres(matrix,real_load,gmres);
+        if (!solution.converged)
+            throw std::runtime_error("Sparse Helmholtz GMRES failed: "+solution.message);
+        result.linear_iterations=solution.iterations;
+        for (std::size_t i=0;i<nf;++i)
+            field[free[i]]=C(solution.solution[i],solution.solution[i+nf]);
+    }
     double anorm=0, xnorm=0, bnorm=0;
     for (C u:field) xnorm=std::max(xnorm,std::abs(u));
     for (auto i:free) {
         C residual=-rhs[i];
         double rownorm=0;
-        for (std::size_t j=0;j<n;++j) {
-            residual+=A[i*n+j]*field[j]; rownorm+=std::abs(A[i*n+j]);
+        for (const auto& [j,v]:A[i]) {
+            residual+=v*field[j]; rownorm+=std::abs(v);
         }
         if (!finite(residual) || !std::isfinite(rownorm)) throw std::runtime_error("Nonfinite Helmholtz residual");
         result.absolute_residual=std::max(result.absolute_residual,std::abs(residual));
@@ -185,7 +245,7 @@ Helmholtz2DResult solve_helmholtz_2d(
         result.excitation_input-=std::imag(std::conj(field[i])*rhs[i]);
         if (fixed[i]) {
             C reaction=-rhs[i];
-            for (std::size_t j=0;j<n;++j) reaction+=A[i*n+j]*field[j];
+            for (const auto& [j,v]:A[i]) reaction+=v*field[j];
             result.dirichlet_input-=std::imag(std::conj(field[i])*reaction);
         }
     }

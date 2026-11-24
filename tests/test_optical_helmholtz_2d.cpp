@@ -177,3 +177,47 @@ NOVA_TEST(helmholtz_2d_power_audit_volume_excitation) {
     NOVA_REQUIRE_NEAR(result.robin_outflow,0,1e-14);
     NOVA_REQUIRE_NEAR(result.power_balance_residual,0,1e-12);
 }
+
+NOVA_TEST(helmholtz_2d_sparse_dense_equivalence) {
+    auto rect=nova::fem::make_rectangle_mesh_2d(0,1,0,0.5,8,4);
+    const C value(0.3,0.7), I(0,1);
+    std::vector<HelmholtzMaterial2D> mat(rect.mesh.elements.size(),
+        {C(2,0.5),C(1,0.25)});
+    std::vector<HelmholtzDirichlet2D> bc;
+    std::vector<HelmholtzRobin2D> robin;
+    for (auto i:rect.boundary_nodes) if (rect.mesh.nodes[i].x==0)
+        bc.push_back({i,value});
+    for (auto e:rect.boundary_edges)
+        if (rect.mesh.nodes[e[0]].x==1 && rect.mesh.nodes[e[1]].x==1)
+            robin.push_back({e,-I*2.0,C(0.2,0.1)});
+    std::vector<C> sources(rect.mesh.elements.size(),C(0.4,-0.3));
+    HelmholtzSolverOptions2D options;
+    options.linear_solver=HelmholtzLinearSolver2D::SparseGmres;
+    for (auto pol:{ScalarPolarization2D::TE_Ez,ScalarPolarization2D::TM_Hz}) {
+        const auto dense=solve_helmholtz_2d(rect.mesh,2,pol,mat,bc,robin,sources);
+        const auto sparse=solve_helmholtz_2d(rect.mesh,2,pol,mat,bc,robin,sources,options);
+        for (std::size_t i=0;i<dense.field.size();++i)
+            NOVA_REQUIRE(std::abs(dense.field[i]-sparse.field[i])<1e-9);
+        NOVA_REQUIRE_NEAR(sparse.material_loss,dense.material_loss,1e-9);
+        NOVA_REQUIRE_NEAR(sparse.power_balance_residual,0,1e-9);
+        NOVA_REQUIRE(sparse.linear_iterations>0);
+        NOVA_REQUIRE(sparse.matrix_nonzeros==dense.matrix_nonzeros);
+    }
+}
+NOVA_TEST(helmholtz_2d_sparse_above_dense_node_limit) {
+    auto rect=nova::fem::make_rectangle_mesh_2d(0,1,0,0.25,64,16);
+    const C value(0.3,0.7), eps(2.0,0.5);
+    std::vector<HelmholtzMaterial2D> mat(rect.mesh.elements.size(),{eps,1.0});
+    std::vector<C> sources(rect.mesh.elements.size(),-4.0*eps*value);
+    std::vector<HelmholtzDirichlet2D> bc;
+    for (auto i:rect.boundary_nodes) bc.push_back({i,value});
+    HelmholtzSolverOptions2D options;
+    options.linear_solver=HelmholtzLinearSolver2D::SparseGmres;
+    const auto result=solve_helmholtz_2d(rect.mesh,2,ScalarPolarization2D::TE_Ez,mat,bc,{},sources,options);
+    NOVA_REQUIRE(result.field.size()>1024);
+    NOVA_REQUIRE(result.matrix_nonzeros<8*result.field.size());
+    for (C u:result.field) NOVA_REQUIRE(std::abs(u-value)<1e-8);
+    NOVA_REQUIRE_NEAR(result.material_loss,eps.imag()*std::norm(value),1e-8);
+    NOVA_REQUIRE_NEAR(result.power_balance_residual,0,1e-8);
+    NOVA_REQUIRE(result.relative_backward_error<1e-10);
+}
