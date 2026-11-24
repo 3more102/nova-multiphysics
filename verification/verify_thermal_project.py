@@ -124,7 +124,7 @@ def persistence(runner, fixture, work):
     require(invoke(runner, "solve", dst, "--vtk", vtk) == first and vtk.read_bytes() == output,
             "Save/reload changed numerical reconstruction")
     bad_records = [
-        ("NOVA_PROJECT 1", "NOVA_PROJECT 2"), ("project convecting-wall", "project wall"),
+        ("NOVA_PROJECT 1", "NOVA_PROJECT 3"), ("project convecting-wall", "project wall"),
         ("tets wall structured_tet", "tets missing structured_tet"),
         ("steady_heat tets homogeneous", "steady_heat tets missing"),
         ("source steady 0", "source other 0"), ("source steady 0", "source steady 0 extra"),
