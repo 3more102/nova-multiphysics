@@ -11,11 +11,11 @@ namespace nova::fem {
 // One explicit solve -> estimate -> Dörfler mark -> conforming local refine
 // -> transfer -> resolve cycle for stationary P1 tetrahedral diffusion.
 //
-// Restricted to per-cell positive scalar conductivity and a spatial source
-// callback (or zero source). Dirichlet vertex constraints and face callbacks,
-// prescribed Neumann faces and otherwise insulated exterior faces are
-// transferred. Cell sources, tensor/spatial conductivity and Robin data
-// are intentionally rejected until their estimators/transfer are supported.
+// Supports any one of the scalar/tensor spatial or cellwise conductivity
+// representations accepted by ScalarDiffusion3DProblem, with a spatial source
+// callback (or zero source). Dirichlet, Neumann, Robin and insulated exterior
+// faces are transferred. Cellwise source vectors remain unsupported.
+// Flux-jump indicators use the full reconstructed physical P1 cell flux.
 //
 // A zero indicator field causes no refinement and no redundant second solve.
 // This is an experimental error-indicator workflow, NOT an error bound.
