@@ -81,3 +81,62 @@ NOVA_TEST(helmholtz_2d_rejects_interior_robin_and_active_material) {
     catch (const std::invalid_argument&) { rejected=true; }
     NOVA_REQUIRE(rejected);
 }
+
+NOVA_TEST(helmholtz_2d_oblique_wave_on_perturbed_mesh) {
+    auto rect=nova::fem::make_rectangle_mesh_2d(0,1,0,1,16,16);
+    const C I(0,1);
+    std::vector<bool> boundary(rect.mesh.nodes.size(),false);
+    for (auto i:rect.boundary_nodes) boundary[i]=true;
+    for (std::size_t i=0;i<rect.mesh.nodes.size();++i) if (!boundary[i]) {
+        rect.mesh.nodes[i].x+=0.13/16*std::sin(static_cast<double>(i));
+        rect.mesh.nodes[i].y+=0.13/16*std::cos(static_cast<double>(i));
+    }
+    auto exact=[&](std::size_t i) {
+        const auto p=rect.mesh.nodes[i]; return std::exp(I*(1.2*p.x+1.6*p.y));
+    };
+    std::vector<HelmholtzDirichlet2D> bc;
+    for (auto i:rect.boundary_nodes) bc.push_back({i,exact(i)});
+    std::vector<HelmholtzMaterial2D> mat(rect.mesh.elements.size());
+    const auto result=solve_helmholtz_2d(rect.mesh,2,ScalarPolarization2D::TE_Ez,mat,bc);
+    for (std::size_t i=0;i<result.field.size();++i)
+        NOVA_REQUIRE(std::abs(result.field[i]-exact(i))<0.006);
+    NOVA_REQUIRE(result.relative_backward_error<1e-12);
+}
+NOVA_TEST(helmholtz_2d_dielectric_interface_te_tm) {
+    auto rect=nova::fem::make_rectangle_mesh_2d(0,1,0,0.25,40,10);
+    const C I(0,1);
+    std::vector<HelmholtzMaterial2D> mat;
+    for (auto e:rect.mesh.elements) {
+        const double x=(rect.mesh.nodes[e[0]].x+rect.mesh.nodes[e[1]].x+
+                        rect.mesh.nodes[e[2]].x)/3;
+        mat.push_back({x<0.5?1.0:4.0,1.0});
+    }
+    for (auto pol:{ScalarPolarization2D::TE_Ez,ScalarPolarization2D::TM_Hz}) {
+        const double q1=2, q2=4, a1=1, a2=pol==ScalarPolarization2D::TE_Ez?1:0.25;
+        const double r=(a1*q1-a2*q2)/(a1*q1+a2*q2), t=1+r;
+        NOVA_REQUIRE_NEAR(r*r+(a2*q2)/(a1*q1)*t*t,1,1e-14);
+        std::vector<HelmholtzRobin2D> bc;
+        for (auto e:rect.boundary_edges) {
+            const auto x=rect.mesh.nodes[e[0]].x, y=rect.mesh.nodes[e[1]].x;
+            if (x==0 && y==0) bc.push_back({e,-I*a1*q1,-2.0*I*a1*q1*std::exp(-I*q1*0.5)});
+            if (x==1 && y==1) bc.push_back({e,-I*a2*q2,0});
+        }
+        const auto result=solve_helmholtz_2d(rect.mesh,2,pol,mat,{},bc);
+        for (std::size_t i=0;i<result.field.size();++i) {
+            const double x=rect.mesh.nodes[i].x-0.5;
+            const C exact=x<=0?std::exp(I*q1*x)+r*std::exp(-I*q1*x):t*std::exp(I*q2*x);
+            NOVA_REQUIRE(std::abs(result.field[i]-exact)<0.01);
+        }
+        NOVA_REQUIRE(result.relative_backward_error<1e-12);
+    }
+}
+NOVA_TEST(helmholtz_2d_constant_volume_excitation) {
+    auto rect=nova::fem::make_rectangle_mesh_2d(0,1,0,1,4,4);
+    const C value(0.3,0.7), eps(2.0,0.5);
+    std::vector<HelmholtzMaterial2D> mat(rect.mesh.elements.size(),{eps,1.0});
+    std::vector<C> f(rect.mesh.elements.size(),-4.0*eps*value);
+    const auto result=solve_helmholtz_2d(rect.mesh,2,ScalarPolarization2D::TE_Ez,mat,{},{},f);
+    for (C u:result.field) NOVA_REQUIRE_NEAR(std::abs(u-value),0,1e-12);
+    NOVA_REQUIRE_NEAR(std::accumulate(result.cell_loss.begin(),result.cell_loss.end(),0.0),
+                      4.0*eps.imag()*std::norm(value),1e-12);
+}

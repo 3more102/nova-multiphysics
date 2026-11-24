@@ -57,3 +57,14 @@ analytical, Hz 0.144149835 versus 0.144266623 analytical; relative errors
 An initial x-only refinement failed the intended ratio (0.4398), so the
 regression now refines both axes rather than weakening the tolerance.
 These are independent reference calculations, not execution of NOVA C++.
+
+Additional independently evaluated cases: oblique wave exp(i(1.2*x+1.6*y))
+on a deterministically perturbed 16x16 triangular grid (289 nodes) had
+maximum nodal error 0.00145286. A dielectric step at x=0.5 with epsilon
+1 and 4, mu=1, on a 40x10 grid (451 nodes), gave Ez error 0.00138967 and
+Hz error 0.00280151 against the exact piecewise plane waves. With Y=a*q,
+scalar interface r=(Y1-Y2)/(Y1+Y2), t=1+r. The analytical power check is
+r^2+(Y2/Y1)t^2=1 for real positive admittances. This check does not yet
+extract numerical S-parameters. A constant complex field with volume source
+f=-k0^2*b*u is also registered as an exact manufactured test. C++ execution
+of these additions remains pending.
