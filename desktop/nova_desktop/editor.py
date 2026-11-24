@@ -14,7 +14,13 @@ PAGES = {
                  ("ly", "Length Y (m)", "0.5"), ("lz", "Length Z (m)", "0.5")],
     "Mesh": [("mesh", "Mesh ID", "mesh"), ("nx", "X subdivisions", "8"),
              ("ny", "Y subdivisions", "3"), ("nz", "Z subdivisions", "2")],
-    "Material": [("material", "Material ID", "solid"), ("k", "Conductivity (W/m·K)", "2")],
+    "Material": [
+        ("material", "Material ID", "solid"),
+        ("k", "Isotropic conductivity (W/m·K)", "2"),
+        ("kxx", "Kxx (W/m·K)", "2"), ("kyy", "Kyy (W/m·K)", "3"),
+        ("kzz", "Kzz (W/m·K)", "4"), ("kxy", "Kxy (W/m·K)", "0.25"),
+        ("kxz", "Kxz (W/m·K)", "-0.15"), ("kyz", "Kyz (W/m·K)", "0.10"),
+    ],
     "Boundaries": [],
     "Study": [("study", "Study ID", "heat"), ("source", "Generation (W/m³)", "0"),
               ("iterations", "Maximum iterations", "2000"), ("relative", "Relative tolerance", "1e-13"),
@@ -28,6 +34,7 @@ class ModelEditor(QWidget):
     def __init__(self):
         super().__init__()
         self.fields = {}
+        self.field_labels = {}
         self.sides = {}
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("Model builder")
@@ -47,6 +54,17 @@ class ModelEditor(QWidget):
                 field.textChanged.connect(self.changed)
                 self.fields[key] = field
                 form.addRow(label, field)
+                self.field_labels[key] = form.labelForField(field)
+            if page == "Material":
+                self.material_mode = QComboBox()
+                self.material_mode.addItem("Isotropic", "isotropic")
+                self.material_mode.addItem("Anisotropic tensor", "anisotropic")
+                self.material_mode.setToolTip(
+                    "Anisotropic entries are the symmetric Kxx, Kyy, Kzz, Kxy, Kxz, Kyz "
+                    "components in global Cartesian axes."
+                )
+                form.insertRow(1, "Conductivity model", self.material_mode)
+                self.material_mode.currentIndexChanged.connect(self._material_mode_changed)
             if page == "Boundaries":
                 table = QGridLayout()
                 form.addRow(table)
@@ -83,6 +101,16 @@ class ModelEditor(QWidget):
         ambient.setEnabled(kind.currentData() == "convection")
         self.changed.emit()
 
+    def _material_mode_changed(self):
+        isotropic = self.material_mode.currentData() == "isotropic"
+        for key in ("k", "kxx", "kyy", "kzz", "kxy", "kxz", "kyz"):
+            visible = isotropic if key == "k" else not isotropic
+            self.fields[key].setVisible(visible)
+            label = self.field_labels.get(key)
+            if label is not None:
+                label.setVisible(visible)
+        self.changed.emit()
+
     def set_boundary(self, side, kind, value="", ambient=""):
         combo, first, second = self.sides[side]
         combo.setCurrentIndex(combo.findData(kind))
@@ -94,6 +122,8 @@ class ModelEditor(QWidget):
         for entries in PAGES.values():
             for key, _, default in entries:
                 self.fields[key].setText(default)
+        self.material_mode.setCurrentIndex(self.material_mode.findData("isotropic"))
+        self._material_mode_changed()
         for side in SIDES:
             self.set_boundary(side, "insulated")
         self.set_boundary("xmin", "temperature", "400")
@@ -109,11 +139,27 @@ class ModelEditor(QWidget):
                 raise ValueError("Each active setting needs a single ASCII value.")
             return value
 
-        f = {key: token(widget) for key, widget in self.fields.items()}
-        lines = ["NOVA_PROJECT 1", f"project {f['project']}",
+        common = ("project", "geometry", "lx", "ly", "lz", "mesh", "nx", "ny", "nz",
+                  "material", "study", "source", "iterations", "relative", "absolute")
+        f = {key: token(self.fields[key]) for key in common}
+        mode = self.material_mode.currentData()
+        if mode == "isotropic":
+            f["k"] = token(self.fields["k"])
+            material = f"material {f['material']} isotropic {f['k']}"
+            version = "1"
+        elif mode == "anisotropic":
+            tensor = ("kxx", "kyy", "kzz", "kxy", "kxz", "kyz")
+            f.update({key: token(self.fields[key]) for key in tensor})
+            material = (f"material {f['material']} anisotropic " +
+                        " ".join(f[key] for key in tensor))
+            version = "2"
+        else:
+            raise ValueError("Select an isotropic or anisotropic conductivity model.")
+
+        lines = [f"NOVA_PROJECT {version}", f"project {f['project']}",
                  f"geometry {f['geometry']} box {f['lx']} {f['ly']} {f['lz']}",
                  f"mesh {f['mesh']} {f['geometry']} structured_tet {f['nx']} {f['ny']} {f['nz']}",
-                 f"material {f['material']} isotropic {f['k']}",
+                 material,
                  f"study {f['study']} steady_heat {f['mesh']} {f['material']}",
                  f"source {f['study']} {f['source']}",
                  f"solver {f['study']} cg {self.preconditioner.currentText()} "
@@ -128,17 +174,36 @@ class ModelEditor(QWidget):
     def load_canonical(self, text):
         # Input comes exclusively from the C++ runner's canonical 'show' response.
         rows = [line.split() for line in text.splitlines()]
-        if not rows or rows[0] != ["NOVA_PROJECT", "1"] or rows[-1] != ["end"]:
+        if (not rows or len(rows[0]) != 2 or rows[0][0] != "NOVA_PROJECT" or
+                rows[0][1] not in {"1", "2"} or rows[-1] != ["end"]):
             raise ValueError("The solver returned an unsupported project format.")
+        version = rows[0][1]
         project, geometry, mesh, material, study, source, solver = rows[1:8]
-        values = {"project": project[1], "geometry": geometry[1], "mesh": mesh[1], "material": material[1],
-                  "k": material[3], "study": study[1], "source": source[2], "iterations": solver[4],
-                  "relative": solver[5], "absolute": solver[6]}
+        if material[0] != "material" or len(material) < 3:
+            raise ValueError("The solver returned an invalid material record.")
+        if material[2] == "isotropic" and len(material) == 4:
+            material_mode = "isotropic"
+            material_values = {"k": material[3]}
+        elif version == "2" and material[2] == "anisotropic" and len(material) == 9:
+            material_mode = "anisotropic"
+            material_values = dict(zip(
+                ("kxx", "kyy", "kzz", "kxy", "kxz", "kyz"),
+                material[3:], strict=True
+            ))
+        else:
+            raise ValueError("The solver returned an unsupported conductivity record.")
+
+        values = {"project": project[1], "geometry": geometry[1], "mesh": mesh[1],
+                  "material": material[1], "study": study[1], "source": source[2],
+                  "iterations": solver[4], "relative": solver[5], "absolute": solver[6]}
+        values.update(material_values)
         values.update(zip(("lx", "ly", "lz"), geometry[3:6], strict=True))
         values.update(zip(("nx", "ny", "nz"), mesh[4:7], strict=True))
-        selections = {row[3]: row[4:] for row in rows[8:-1]}
+        self.material_mode.setCurrentIndex(self.material_mode.findData(material_mode))
         for key, value in values.items():
             self.fields[key].setText(value)
+        self._material_mode_changed()
         self.preconditioner.setCurrentText(solver[3])
+        selections = {row[3]: row[4:] for row in rows[8:-1]}
         for side in SIDES:
             self.set_boundary(side, *selections.get(side, ["insulated"]))
