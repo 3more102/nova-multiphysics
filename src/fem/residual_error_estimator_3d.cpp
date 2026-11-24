@@ -85,11 +85,12 @@ constexpr std::array<GaussPoint1D, 5> gauss_legendre_5{{
     };
 }
 
+template<class Source>
 [[nodiscard]] long double integrate_source_square(
     const TetrahedralMesh3D& mesh,
     const Tetrahedron3D& cell,
     const double jacobian,
-    const std::function<double(double, double, double)>& source
+    const Source& source
 ) {
     long double integral = 0.0L;
     for (const auto& q_u : gauss_legendre_5) {
@@ -402,7 +403,7 @@ DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
         const double diameter = tetrahedron_diameter(mesh, cell);
         const double cell_source_value =
             cell_source.empty() ? 0.0 : cell_source[element];
-        const std::function<double(double, double, double)> combined_source =
+        const auto combined_source =
             [&source, cell_source_value](double x, double y, double z) {
                 return source(x, y, z) + cell_source_value;
             };
