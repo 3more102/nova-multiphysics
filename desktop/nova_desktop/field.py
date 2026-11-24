@@ -82,7 +82,7 @@ class NodalField:
                 for node in nodes:
                     referenced[node] = 1
             if not all(referenced) or any(number != 6 for number in cube_counts):
-                raise ValueError("Tetrahedral connectivity does not cover the structured mesh.");
+                raise ValueError("Tetrahedral connectivity does not cover the structured mesh.")
             expect(f"CELL_TYPES {cells}")
             for _ in range(cells):
                 expect("10")
