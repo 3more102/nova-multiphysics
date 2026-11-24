@@ -40,3 +40,21 @@ Next gates: non-polynomial manufactured field and h-convergence, cavity eigenfre
 For peak phasor E, reconstruct H = curl(E)/(i omega mu0 mu_r). The time-averaged power flux is Re(E cross conjugate(H))/2 in W/m^2. For nonmagnetic-loss passive isotropic materials, the dielectric absorption density is q = omega epsilon0 Im(epsilon_r) |E|^2 / 2 in W/m^3. The API returns per-cell absorbed power in watts using a positive four-point degree-two rule, exact for the affine edge field. It can serve as a conservative source for a later thermal coupling workflow, but no thermal feedback is implemented here.
 
 Added analytical verification: E=(-y,x,i) on the unit tetrahedron; curl, magnetic field, loss density and integrated loss are checked independently. The exact loss integral is omega epsilon0 Im(epsilon_r) * (1+2/10)/12. A second complex affine field checks nonzero Poynting flux and lossless behavior. These are field reconstruction and integration tests, not an optical scattering energy-balance or coupled thermal benchmark.
+
+## Smooth PEC manufactured h-convergence
+
+On the unit cube take E=(0,sin(pi*x) sin(pi*z),0), with homogeneous exterior PEC. This field is divergence-free, has curl-curl E=2*pi^2 E, and satisfies the tangential boundary condition. With k0=2.3 and epsilon_r=2+0.6i, F=(2*pi^2-k0^2 epsilon_r)E. The implemented cellwise-constant source samples F at each tetrahedron centroid. A five-point tensor Gauss rule on a Duffy-transformed tetrahedron estimates the electric-field L2 error.
+
+The independent NumPy/SciPy reference was executed using direct sparse complex solution, high-order numerical mass integration (instead of the closed form), and the same centroid-source approximation. Results:
+| Tetrahedra | Free edges | Relative L2 error | Relative algebraic residual |
+| ---: | ---: | ---: | ---: |
+| 48 | 26 | 0.618245911 | 1.64e-15 |
+| 384 | 316 | 0.318023797 | 7.63e-15 |
+| 3072 | 3032 | 0.159994250 | 5.17e-14 |
+
+Observed orders are 0.959 and 0.991. These are independent reference results, NOT measured C++ results. The C++ regression test requires the first two errors to agree to 1e-6 absolute and the observed order to exceed 0.8, with GMRES relative residual tolerance 1e-11. The high-order quadrature is a numerical reference for the error, not an exact integral of the sine field. The finest grid still has approximately 16% error, not a production optical accuracy claim.
+
+The optional reference script requires NumPy and SciPy only for verification, not for the C++ build or SDK:
+```sh
+python verification/verify_maxwell_hcurl_reference.py
+```

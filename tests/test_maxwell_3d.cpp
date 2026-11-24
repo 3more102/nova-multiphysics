@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <complex>
 #include <limits>
+#include <numbers>
 #include <stdexcept>
 
 using namespace nova::fem;
@@ -171,4 +172,78 @@ NOVA_TEST(maxwell_poynting_nonzero_and_lossless_material) {
     NOVA_REQUIRE(s.magnetic_field[2].real()>0.0);
     NOVA_REQUIRE_NEAR(s.time_averaged_poynting[1],-0.5*s.magnetic_field[2].real(),1e-14);
     NOVA_REQUIRE_NEAR(s.absorbed_power_density,0.0,0.0);
+}
+
+NOVA_TEST(maxwell_pec_smooth_manufactured_h_convergence) {
+    using C=std::complex<double>;
+    constexpr double pi=std::numbers::pi;
+    const C eps(2.0,0.6);
+    constexpr double k0=2.3;
+    constexpr std::array<double,5> q{0.046910077030668,0.230765344947158,
+        0.5,0.769234655052842,0.953089922969332};
+    constexpr std::array<double,5> w{0.118463442528095,0.239314335249683,
+        0.284444444444444,0.239314335249683,0.118463442528095};
+    const auto exact=[&](double x,double z) { return std::sin(pi*x)*std::sin(pi*z); };
+    double previous=0.0;
+    for (std::size_t n : {2U,4U}) {
+        const auto mesh=make_box_mesh_3d(0,1,0,1,0,1,n,n,n).mesh;
+        const std::vector<MaxwellCellMaterial3D> materials(mesh.elements.size(),{eps,1.0});
+        std::vector<ComplexVector3D> sources(mesh.elements.size());
+        for (std::size_t c=0;c<mesh.elements.size();++c) {
+            double x=0.0,z=0.0;
+            for (const auto id : mesh.elements[c]) {
+                x+=mesh.nodes[id].x/4.0;
+                z+=mesh.nodes[id].z/4.0;
+            }
+            sources[c][1]=(2*pi*pi-k0*k0*eps)*exact(x,z);
+        }
+        const auto sys=assemble_maxwell_3d(mesh,materials,k0,true);
+        const auto load=assemble_maxwell_cell_load_3d(mesh,sources,sys);
+        nova::linalg::GmresOptions options;
+        options.restart=2*sys.free_edges.size();
+        options.solver.max_iterations=2000;
+        options.solver.relative_tolerance=1e-11;
+        const auto sol=solve_maxwell_3d(sys,load,options);
+        NOVA_REQUIRE(sol.diagnostics.converged);
+        double err=0.0,norm=0.0;
+        for (std::size_t c=0;c<mesh.elements.size();++c) {
+            const auto cell=make_nedelec_tetrahedron_3d(mesh,c);
+            std::array<C,6> co{};
+            for (std::size_t e=0;e<6;++e) {
+                const auto it=std::lower_bound(sys.edges.begin(),sys.edges.end(),cell.edges[e]);
+                NOVA_REQUIRE(it!=sys.edges.end() && *it==cell.edges[e]);
+                co[e]=sol.edge_field[static_cast<std::size_t>(it-sys.edges.begin())];
+            }
+            // Independent tensor Gauss rule on Duffy-transformed tetrahedron.
+            for (std::size_t i=0;i<q.size();++i)
+                for (std::size_t j=0;j<q.size();++j)
+                    for (std::size_t l=0;l<q.size();++l) {
+                        const double r=q[i],s=(1-r)*q[j],t=(1-r)*(1-q[j])*q[l];
+                        const std::array<double,4> bary{1-r-s-t,r,s,t};
+                        double x=0.0,z=0.0;
+                        for (std::size_t v=0;v<4;++v) {
+                            x+=bary[v]*mesh.nodes[mesh.elements[c][v]].x;
+                            z+=bary[v]*mesh.nodes[mesh.elements[c][v]].z;
+                        }
+                        const auto basis=evaluate_nedelec_basis_3d(cell,r,s,t);
+                        ComplexVector3D field{};
+                        for (std::size_t e=0;e<6;++e)
+                            for (std::size_t d=0;d<3;++d) field[d]+=co[e]*basis[e][d];
+                        const double ref=exact(x,z);
+                        field[1]-=ref;
+                        const double weight=6*cell.volume*w[i]*w[j]*w[l]*(1-r)*(1-r)*(1-q[j]);
+                        for (auto value : field) err+=weight*std::norm(value);
+                        norm+=weight*ref*ref;
+                    }
+        }
+        const double relative=std::sqrt(err/norm);
+        std::cout<<"Maxwell PEC smooth field: cells="<<mesh.elements.size()
+                 <<" free_edges="<<sys.free_edges.size()<<" relative L2="<<relative
+                 <<" residual="<<sol.diagnostics.residual_norm<<'\n';
+        // Independent SciPy direct-solve references using high-order mass
+        // quadrature; 1e-6 allows floating-point and iterative solver variation.
+        NOVA_REQUIRE_NEAR(relative,n==2 ? 0.618245911 : 0.318023797,1e-6);
+        if (previous>0.0) NOVA_REQUIRE(std::log2(previous/relative)>0.8);
+        previous=relative;
+    }
 }
