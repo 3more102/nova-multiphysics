@@ -1,4 +1,4 @@
-"""Editors for the records accepted by the schema-1 C++ model codec."""
+"""Editors for isotropic schema-1 and constant-anisotropic schema-2 thermal projects."""
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import (
     QComboBox, QFormLayout, QGridLayout, QLabel, QLineEdit, QStackedWidget,
