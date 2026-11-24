@@ -1,4 +1,5 @@
 #include "nova/physics/optics.hpp"
+#include "nova/physics/optics_oblique.hpp"
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -60,6 +61,33 @@ int main() {
         rejected=false;
         try { (void)passive_index({1,-1}); } catch (const std::invalid_argument&) { rejected=true; }
         require(rejected,"reject gain");
+        for (auto pol : {Polarization::te, Polarization::tm}) {
+            const auto zero=oblique_incidence_stack(lambda,1,1.5,0,pol,match);
+            near(zero.reflectance,ar.reflectance,1e-12,"normal limit R");
+            near(zero.transmittance,ar.transmittance,1e-12,"normal limit T");
+            const auto ob=oblique_incidence_stack(lambda,1,1,0.6,pol,dbr);
+            near(ob.reflectance+ob.transmittance,1,1e-12,"oblique DBR energy");
+            const auto tir=oblique_incidence_stack(lambda,1.5,1,1.0,pol,{});
+            near(tir.reflectance,1,1e-12,"total internal reflection");
+            near(tir.transmittance,0,1e-12,"evanescent exit");
+            const std::array<Layer,1> gap{{{1.0,lambda/10}}};
+            const auto ftir=oblique_incidence_stack(lambda,1.5,1.5,1.0,pol,gap);
+            require(ftir.transmittance>0 && ftir.transmittance<1,"evanescent tunneling");
+            near(ftir.reflectance+ftir.transmittance,1,1e-12,"tunneling energy");
+            const auto absorbed=oblique_incidence_stack(lambda,1,1,0.6,pol,lossy);
+            near(absorbed.transmittance,0,1e-12,"thick oblique absorber");
+            require(absorbed.absorptance>0 && absorbed.absorptance<1,"passive oblique loss");
+        }
+        const double brewster=std::atan(1.5);
+        const auto tm=oblique_incidence_stack(lambda,1,1.5,brewster,Polarization::tm,{});
+        near(tm.reflectance,0,1e-12,"Brewster TM reflection");
+        near(tm.transmittance,1,1e-12,"Brewster TM transmission");
+        const auto te=oblique_incidence_stack(lambda,1,1.5,brewster,Polarization::te,{});
+        near(te.reflectance,std::pow((1.0-2.25)/(1.0+2.25),2),1e-12,"Brewster TE reflection");
+        rejected=false;
+        try { (void)oblique_incidence_stack(lambda,1,1.5,-0.1,Polarization::te,{}); }
+        catch(const std::invalid_argument&) { rejected=true; }
+        require(rejected,"reject negative angle");
         std::cout << "NOVA optics analytical reference cases passed\n";
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n'; return 1;
