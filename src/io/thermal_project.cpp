@@ -134,7 +134,7 @@ std::string canonical(const ThermalProject& p) {
     out.imbue(std::locale::classic());
     out << std::setprecision(std::numeric_limits<double>::max_digits10)
         << "NOVA_PROJECT " << (p.material.conductivity_tensor_w_m_k ? 2 : 1)
-        << "\\nproject " << p.id << "\\ngeometry " << p.geometry.id << " box";
+        << "\nproject " << p.id << "\ngeometry " << p.geometry.id << " box";
     for (double length : p.geometry.lengths_m) out << ' ' << length;
     out << "\nmesh " << p.mesh.id << ' ' << p.geometry.id << " structured_tet";
     for (auto count : p.mesh.divisions) out << ' ' << count;
