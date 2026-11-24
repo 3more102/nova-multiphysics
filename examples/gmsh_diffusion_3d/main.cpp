@@ -1,3 +1,4 @@
+#include "../common/gmsh_thermoelastic.hpp"
 #include "nova/fem/diffusion_3d.hpp"
 #include "nova/fem/energy_balance_3d.hpp"
 #include "nova/fem/interior_flux_jumps_3d.hpp"
@@ -36,32 +37,14 @@ constexpr const char* usage =
     "       [--heat-source volume-tag-or-name Q] ... [--vtk result.vtk]\n"
     "       [--flux-report] [--balance-report] [--jump-report] [--quality-report]\n"
     "       [--min-mean-ratio q]\n"
+    "       [--elastic VOL E nu alpha T_ref ... --clamp SURF ...]\n"
+    "       [--fix-component SURF x|y|z displacement]\n"
+    "       [--elastic-solver jacobi|ic0 rtol max_iterations]\n"
     "   or: nova_gmsh_diffusion_3d mesh.msh --check-mesh [--min-mean-ratio q]";
 
-template<class T>
-T number(std::string_view token) {
-    T value{};
-    const auto end = token.data() + token.size();
-    const auto parsed = std::from_chars(token.data(), end, value);
-    if (parsed.ec != std::errc{} || parsed.ptr != end || !std::isfinite(value)) {
-        throw std::invalid_argument("Invalid finite number: " + std::string(token));
-    }
-    return value;
-}
-
-int physical_tag(std::string_view token, int dimension,
-                 const nova::io::GmshTetrahedralMesh3D& mesh) {
-    int numeric{};
-    const auto parsed = std::from_chars(token.data(), token.data() + token.size(), numeric);
-    if (parsed.ec == std::errc{} && parsed.ptr == token.data() + token.size()) {
-        if (numeric < 0) throw std::invalid_argument("Physical tags must be nonnegative.");
-        return numeric;
-    }
-    for (const auto& [key, name] : mesh.physical_names) {
-        if (key.first == dimension && name == token) return key.second;
-    }
-    throw std::invalid_argument("Unknown Gmsh physical group: " + std::string(token));
-}
+using nova::examples::number;
+using nova::examples::physical_tag;
+using ElasticResponse = std::optional<nova::physics::LinearElasticity3DResult>;
 
 ScalarField3D constant(double value) {
     return [value](double, double, double) { return value; };
@@ -75,6 +58,7 @@ struct Boundary {
 };
 
 struct Settings {
+    nova::examples::TaggedMechanics mechanics;
     std::map<int, double> materials;
     std::map<int, SymmetricTensor3D> tensor_materials;
     std::map<int, double> heat_sources;
@@ -110,6 +94,7 @@ Settings read_settings(int argc, char** argv,
     };
     while (index < argc) {
         const auto option = next();
+        if (settings.mechanics.read(option, next, mesh)) continue;
         if (option == "--material") {
             const int tag = physical_tag(next(), 3, mesh);
             const double k = number<double>(next());
@@ -180,7 +165,7 @@ Settings read_settings(int argc, char** argv,
     }
     if (settings.minimum_mean_ratio) settings.quality_report = true;
     if (settings.check_mesh_only) {
-        if (!settings.materials.empty() || !settings.tensor_materials.empty() ||
+        if (settings.mechanics.enabled() || !settings.materials.empty() || !settings.tensor_materials.empty() ||
             !settings.heat_sources.empty() || !settings.surfaces.empty() ||
             settings.source || settings.vtk || settings.flux_report || settings.balance_report ||
             settings.jump_report) {
@@ -267,9 +252,10 @@ ScalarDiffusion3DProblem bind_problem(nova::io::GmshTetrahedralMesh3D& imported,
 // directory also separates simultaneous writers and keeps rename on one volume.
 void export_result(const fs::path& target, const ScalarDiffusion3DProblem& problem,
                    const std::vector<double>& temperature, const std::vector<int>& tags,
-                   double uniform_source) {
+                   double uniform_source, const ElasticResponse& response) {
     const auto fields = evaluate_p1_tetrahedral_flux_3d(problem, temperature);
     std::vector<double> effective_generation = problem.cell_source;
+    if (effective_generation.empty() && uniform_source != 0.0) effective_generation.resize(tags.size());
     for (double& value : effective_generation) {
         value += uniform_source;
         if (!std::isfinite(value)) {
@@ -294,8 +280,8 @@ void export_result(const fs::path& target, const ScalarDiffusion3DProblem& probl
     } cleanup{frame, temporary};
     std::ofstream output(frame);
     if (!output) throw std::runtime_error("Cannot open VTK output: " + frame.string());
-    nova::io::write_legacy_vtk_conduction_3d(
-        output, problem.mesh, temperature, tags, fields, effective_generation);
+    nova::examples::write_heat_fields(
+        output, problem.mesh, temperature, tags, fields, effective_generation, response);
     output.close();
     if (!output) throw std::runtime_error("Could not finish writing VTK output.");
     fs::rename(frame, target);
@@ -340,17 +326,24 @@ int main(int argc, char** argv) {
             }
         }
         if (settings.check_mesh_only) return 0;
+        auto mechanics = nova::examples::prepare_mechanics(imported, settings.mechanics);
         auto problem = bind_problem(imported, settings);
 
         nova::linalg::SolverOptions options;
         options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
         options.relative_tolerance = settings.unit_example ? 1e-11 : 1e-12;
         if (!settings.unit_example) options.absolute_tolerance = 0.0;
+        problem.require_anchored_components = mechanics.has_value();
         const auto result = solve_scalar_diffusion_3d(problem, options);
         if (!result.linear_solver.converged) throw std::runtime_error(result.linear_solver.message);
+        ElasticResponse response;
+        if (mechanics) {
+            response = mechanics->solve(result.values);
+            nova::examples::report_mechanics(std::cout, *response);
+        }
         if (settings.vtk) export_result(
             *settings.vtk, problem, result.values, imported.volume_physical_tags,
-            settings.source.value_or(0.0));
+            settings.source.value_or(0.0), response);
         if (settings.flux_report) {
             const auto fields = evaluate_p1_tetrahedral_flux_3d(problem, result.values);
             const auto report = evaluate_tagged_boundary_flux_3d(

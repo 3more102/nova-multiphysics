@@ -1,3 +1,4 @@
+#include "../common/gmsh_thermoelastic.hpp"
 #include "nova/fem/transient_heat_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 #include "nova/io/gmsh_tetrahedral.hpp"
@@ -19,7 +20,19 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <type_traits>
+#include <system_error>
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#elif defined(__linux__)
+#include <cerrno>
+#include <fcntl.h>
+#include <linux/fs.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 #include <utility>
 #include <vector>
 
@@ -34,38 +47,15 @@ constexpr const char* usage =
     "       [--temperature SURF T] [--flux SURF q_out] [--convection SURF h T_inf]\n"
     "       [--source Q] [--heat-source VOL Q] [--vtk final.vtk | --vtk-series result.pvd]\n"
     "       [--energy-csv budget.csv] [--quality-report] [--min-mean-ratio q]\n"
+    "       [--elastic VOL E nu alpha T_ref ... --clamp SURF ...]\n"
+    "       [--fix-component SURF x|y|z displacement]\n"
+    "       [--elastic-solver jacobi|ic0 rtol max_iterations]\n"
     "   or: nova_gmsh_transient_heat_3d mesh.msh --check-mesh [--min-mean-ratio q]\n"
     "       VOL and SURF accept numeric Gmsh physical tags or matching physical names.";
 
-template<class T>
-T number(std::string_view token) {
-    T value{};
-    const auto end = token.data() + token.size();
-    const auto parsed = std::from_chars(token.data(), end, value);
-    if (parsed.ec != std::errc{} || parsed.ptr != end) {
-        throw std::invalid_argument("Invalid numeric argument: " + std::string(token));
-    }
-    if constexpr (std::is_floating_point_v<T>) {
-        if (!std::isfinite(value)) {
-            throw std::invalid_argument("Argument must be finite: " + std::string(token));
-        }
-    }
-    return value;
-}
-
-int physical_tag(std::string_view text, int dimension,
-                 const nova::io::GmshTetrahedralMesh3D& mesh) {
-    int tag{};
-    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), tag);
-    if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size()) {
-        if (tag < 0) throw std::invalid_argument("Physical tags must be nonnegative.");
-        return tag;
-    }
-    for (const auto& [key, name] : mesh.physical_names) {
-        if (key.first == dimension && name == text) return key.second;
-    }
-    throw std::invalid_argument("Unknown Gmsh physical group: " + std::string(text));
-}
+using nova::examples::number;
+using nova::examples::physical_tag;
+using ElasticResponse = std::optional<nova::physics::LinearElasticity3DResult>;
 
 ScalarField3D constant(double value) {
     return [value](double, double, double) { return value; };
@@ -79,6 +69,7 @@ struct Boundary {
 };
 
 struct Settings {
+    nova::examples::TaggedMechanics mechanics;
     std::map<int, double> materials;
     std::map<int, SymmetricTensor3D> tensor_materials;
     std::map<int, double> capacities;
@@ -108,6 +99,7 @@ Settings read_settings(int argc, char** argv,
     };
     while (index < argc) {
         const auto option = next();
+        if (settings.mechanics.read(option, next, imported)) continue;
         if (option == "--material" || option == "--material-tensor") {
             const int tag = physical_tag(next(), 3, imported);
             if (option == "--material") {
@@ -205,7 +197,7 @@ Settings read_settings(int argc, char** argv,
         settings.quality_report = true;
     }
     if (settings.check_mesh_only) {
-        if (!settings.materials.empty() || !settings.tensor_materials.empty() ||
+        if (settings.mechanics.enabled() || !settings.materials.empty() || !settings.tensor_materials.empty() ||
             !settings.capacities.empty() || !settings.heat_sources.empty() ||
             !settings.boundaries.empty() || settings.initial || settings.dt ||
             settings.steps || settings.source || settings.vtk || settings.vtk_series ||
@@ -292,10 +284,29 @@ TransientHeat3DProblem bind_problem(nova::io::GmshTetrahedralMesh3D& imported,
     return problem;
 }
 
+// Keep a completed frame/collection from replacing a concurrent writer's
+// result. Staging and destination reside on the same filesystem.
+void publish_new_vtk(const fs::path& staged, const fs::path& target) {
+#ifdef _WIN32
+    if (::MoveFileW(staged.c_str(), target.c_str())) return;
+    throw fs::filesystem_error("Publish VTK", staged, target,
+        std::error_code(static_cast<int>(::GetLastError()), std::system_category()));
+#elif defined(__linux__) && defined(SYS_renameat2)
+    if (::syscall(SYS_renameat2, AT_FDCWD, staged.c_str(), AT_FDCWD, target.c_str(), RENAME_NOREPLACE) == 0) return;
+    const int error = errno;
+    if (error != ENOSYS && error != EINVAL && error != EOPNOTSUPP) {
+        throw fs::filesystem_error("Publish VTK", staged, target, std::error_code(error, std::generic_category()));
+    }
+    fs::create_hard_link(staged, target);
+#else
+    fs::create_hard_link(staged, target);
+#endif
+}
+
 void export_vtk(
     const fs::path& target, const TransientHeat3DProblem& problem,
     const std::vector<double>& temperature, const std::vector<int>& volume_tags,
-    const std::vector<double>& generation
+    const std::vector<double>& generation, const ElasticResponse& response
 ) {
     const auto& p = problem.diffusion;
     if (generation.size() != volume_tags.size()) {
@@ -325,11 +336,11 @@ void export_vtk(
     } cleanup{frame, temporary};
     std::ofstream output(frame);
     if (!output) throw std::runtime_error("Cannot open VTK result output.");
-    nova::io::write_legacy_vtk_conduction_3d(
-        output, p.mesh, temperature, volume_tags, flux, generation);
+    nova::examples::write_heat_fields(
+        output, p.mesh, temperature, volume_tags, flux, generation, response);
     output.close();
     if (!output) throw std::runtime_error("Unable to complete VTK result output.");
-    fs::rename(frame, target);
+    publish_new_vtk(frame, target);
 }
 
 std::vector<double> make_heat_generation(
@@ -347,42 +358,6 @@ std::vector<double> make_heat_generation(
         generation.push_back(value);
     }
     return generation;
-}
-
-void write_series_frame(
-    const fs::path& target, const TransientHeat3DProblem& problem,
-    const std::vector<double>& temperature, const std::vector<int>& volume_tags,
-    const std::vector<double>& generation
-) {
-    const auto flux = evaluate_p1_tetrahedral_flux_3d(problem.diffusion, temperature);
-    fs::path temporary;
-    bool created = false;
-    for (std::size_t attempt = 0; attempt < 1000U; ++attempt) {
-        temporary = target;
-        temporary += ".tmp." + std::to_string(attempt);
-        if (fs::create_directory(temporary)) {
-            created = true;
-            break;
-        }
-    }
-    if (!created) throw std::runtime_error("Cannot create a temporary VTK frame directory.");
-    const auto staged = temporary / "frame.vtk";
-    struct Cleanup {
-        const fs::path& file;
-        const fs::path& directory;
-        ~Cleanup() {
-            std::error_code ignored;
-            fs::remove(file, ignored);
-            fs::remove(directory, ignored);
-        }
-    } cleanup{staged, temporary};
-    std::ofstream output(staged);
-    if (!output) throw std::runtime_error("Cannot open staged VTK frame.");
-    nova::io::write_legacy_vtk_conduction_3d(
-        output, problem.diffusion.mesh, temperature, volume_tags, flux, generation);
-    output.close();
-    if (!output) throw std::runtime_error("Cannot finish staged VTK frame.");
-    fs::rename(staged, target);
 }
 
 void write_series_collection(
@@ -415,7 +390,7 @@ void write_series_collection(
     nova::io::write_pvd_collection(output, frames);
     output.close();
     if (!output) throw std::runtime_error("Cannot finish staged PVD collection.");
-    fs::rename(staged, destination);
+    publish_new_vtk(staged, destination);
 }
 
 void write_energy_csv(
@@ -593,6 +568,7 @@ int main(int argc, char** argv) {
             }
         }
 
+        auto mechanics = nova::examples::prepare_mechanics(imported, settings.mechanics);
         auto problem = bind_problem(imported, settings);
         const auto generation = make_heat_generation(imported.volume_physical_tags, settings);
         TransientHeat3DOptions options;
@@ -604,21 +580,26 @@ int main(int argc, char** argv) {
         options.solver_options.preconditioner = nova::linalg::PreconditionerType::Jacobi;
         options.retain_step_solutions = false; // The CLI only needs the final field and diagnostics.
         std::vector<nova::io::VtkTimeSeriesEntry> frames;
+        ElasticResponse response;
         if (settings.vtk_series) {
             frames.reserve(*settings.steps + 1U);
             options.on_step = [&](std::size_t step, double time,
                                   const std::vector<double>& temperature) {
                 const auto name = series_frame_name(prefix, step);
                 const auto frame = settings.vtk_series->parent_path() / name;
-                write_series_frame(frame, problem, temperature,
-                                   imported.volume_physical_tags, generation);
+                ElasticResponse frame_response;
+                if (mechanics) frame_response = mechanics->solve(temperature);
+                export_vtk(frame, problem, temperature, imported.volume_physical_tags, generation, frame_response);
+                if (step == options.steps) response = std::move(frame_response);
                 frames.push_back({time, name});
             };
         }
         const auto result = solve_transient_heat_3d(problem, options);
+        if (mechanics && !settings.vtk_series) response = mechanics->solve(result.temperature);
+        if (response) nova::examples::report_mechanics(std::cout, *response);
         if (settings.vtk) {
             export_vtk(*settings.vtk, problem, result.temperature,
-                       imported.volume_physical_tags, generation);
+                       imported.volume_physical_tags, generation, response);
         }
         if (settings.vtk_series) {
             write_series_collection(*settings.vtk_series, frames);

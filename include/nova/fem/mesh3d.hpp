@@ -30,6 +30,15 @@ struct StructuredBoxMesh3D {
     std::vector<BoundaryFace3D> boundary_faces;
 };
 
+struct TetrahedralTopology3D {
+    // Index of the lowest-numbered tetrahedron connected by shared faces.
+    std::vector<std::size_t> cell_component;
+    std::vector<BoundaryFace3D> exterior_faces;
+};
+
+// One validation pass supplies both face-connected solids and their exterior.
+[[nodiscard]] TetrahedralTopology3D analyze_tetrahedral_topology_3d(const TetrahedralMesh3D& mesh);
+
 struct TetrahedronQuality3D {
     double signed_volume{};
     double volume{};

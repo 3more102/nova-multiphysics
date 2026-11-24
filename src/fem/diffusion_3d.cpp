@@ -294,7 +294,7 @@ ScalarDiffusion3DResult solve_scalar_diffusion_3d(
         );
     }
 
-    nullspace.impose_gauges(rhs, prescribed);
+    nullspace.impose_gauges(rhs, prescribed, problem.require_anchored_components);
 
     auto solver = detail::solve_constrained_diffusion(
         std::move(entries), std::move(rhs), prescribed, solver_options);

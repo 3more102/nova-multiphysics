@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+namespace nova::physics { struct LinearElasticity3DResult; }
+
 namespace nova::io {
 
 // Export a validated P1 tetrahedral mesh and nodal scalar data as legacy
@@ -30,6 +32,15 @@ void write_legacy_vtk_conduction_3d(
     std::ostream& output, const fem::TetrahedralMesh3D& mesh,
     const std::vector<double>& temperature, std::span<const int> material_ids,
     std::span<const fem::P1TetrahedralFlux3D> cell_fields,
+    std::span<const double> cell_heat_generation = {}
+);
+
+// Combined fields on the original mesh. Tensor entries are in global axes.
+void write_legacy_vtk_thermoelastic_3d(
+    std::ostream& output, const fem::TetrahedralMesh3D& mesh,
+    const std::vector<double>& temperature, std::span<const int> material_ids,
+    std::span<const fem::P1TetrahedralFlux3D> cell_fields,
+    const physics::LinearElasticity3DResult& mechanics,
     std::span<const double> cell_heat_generation = {}
 );
 

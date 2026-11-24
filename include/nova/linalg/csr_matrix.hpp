@@ -21,6 +21,14 @@ public:
         double drop_tolerance = 0.0
     );
 
+    // Take ownership of assembled canonical rows without rebuilding via triplets.
+    // Offsets span all entries, columns increase strictly per row, and stored
+    // coefficients must be finite and nonzero.
+    [[nodiscard]] static CsrMatrix from_sorted_rows(
+        std::size_t rows, std::size_t columns, std::vector<std::size_t> row_offsets,
+        std::vector<std::size_t> column_indices, std::vector<double> values
+    );
+
     [[nodiscard]] std::size_t rows() const noexcept;
     [[nodiscard]] std::size_t columns() const noexcept;
     [[nodiscard]] std::size_t non_zeros() const noexcept;

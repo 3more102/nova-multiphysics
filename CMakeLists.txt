@@ -145,6 +145,10 @@ endif()
 
 if(NOVA_BUILD_TESTS)
     enable_testing()
+    add_executable(nova_benchmark_thermoelastic_3d EXCLUDE_FROM_ALL
+        verification/benchmark_thermoelastic_3d.cpp)
+    target_link_libraries(nova_benchmark_thermoelastic_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_benchmark_thermoelastic_3d)
     add_executable(nova_tests
         tests/test_main.cpp
         tests/test_csr_matrix.cpp
@@ -167,6 +171,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_energy_balance_3d.cpp
         tests/test_conservative_face_heat_3d.cpp
         tests/test_linear_elasticity_3d.cpp
+        tests/test_thermoelasticity_3d.cpp
         tests/test_electrostatics_3d.cpp
         tests/test_electrothermal_3d.cpp
         tests/test_nonlinear_electrothermal_3d.cpp
@@ -268,6 +273,9 @@ if(NOVA_BUILD_TESTS)
             PASS_REGULAR_EXPRESSION "Minimum mean ratio")
         find_package(Python3 COMPONENTS Interpreter QUIET)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME nova_gmsh_thermoelastic_3d_verify COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_thermoelastic_3d.py"
+                "$<TARGET_FILE:nova_gmsh_diffusion_3d>" "$<TARGET_FILE:nova_gmsh_transient_heat_3d>")
             add_test(NAME nova_adaptive_diffusion_3d_vtk_verify
                 COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_adaptive_diffusion_3d_vtk.py"

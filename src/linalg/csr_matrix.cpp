@@ -4,6 +4,7 @@
 #include <cmath>
 #include <map>
 #include <stdexcept>
+#include <utility>
 
 namespace nova::linalg {
 
@@ -50,6 +51,34 @@ CsrMatrix CsrMatrix::from_triplets(
     }
 
     return matrix;
+}
+
+CsrMatrix CsrMatrix::from_sorted_rows(
+    std::size_t rows, std::size_t columns, std::vector<std::size_t> row_offsets,
+    std::vector<std::size_t> column_indices, std::vector<double> values
+) {
+    if (row_offsets.empty() || row_offsets.size() - 1U != rows ||
+        row_offsets.front() != 0U || row_offsets.back() != values.size() ||
+        column_indices.size() != values.size() ||
+        !std::is_sorted(row_offsets.begin(), row_offsets.end())) {
+        throw std::invalid_argument("Invalid CSR row offsets or storage sizes.");
+    }
+    for (std::size_t row = 0; row < rows; ++row) {
+        for (auto i = row_offsets[row]; i < row_offsets[row + 1U]; ++i) {
+            if (column_indices[i] >= columns ||
+                (i > row_offsets[row] && column_indices[i-1U] >= column_indices[i]) ||
+                !std::isfinite(values[i]) || values[i] == 0.0) {
+                throw std::invalid_argument("Invalid column order, index or value in canonical CSR.");
+            }
+        }
+    }
+    CsrMatrix result;
+    result.rows_ = rows;
+    result.columns_ = columns;
+    result.row_offsets_ = std::move(row_offsets);
+    result.column_indices_ = std::move(column_indices);
+    result.values_ = std::move(values);
+    return result;
 }
 
 std::size_t CsrMatrix::rows() const noexcept {

@@ -1,0 +1,26 @@
+$MeshFormat
+2.2 0 8
+$EndMeshFormat
+$PhysicalNames
+5
+2 7 "base"
+2 8 "x_min"
+2 9 "y_min"
+2 10 "incline"
+3 42 "solid"
+$EndPhysicalNames
+$Nodes
+4
+90 0 0 1
+10 0 0 0
+30 1 0 0
+50 0 1 0
+$EndNodes
+$Elements
+5
+101 2 2 7 1 10 30 50
+102 2 2 8 1 10 50 90
+103 2 2 9 1 10 90 30
+104 2 2 10 1 30 90 50
+200 4 2 42 1 10 30 50 90
+$EndElements

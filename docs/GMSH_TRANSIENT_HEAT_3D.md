@@ -92,7 +92,7 @@ capacity, non-finite values and output-path collisions are rejected.
 `--vtk` and `--vtk-series` are mutually exclusive. The PVD destination must
 have a safe ASCII basename and an existing parent directory. Existing PVD or
 frame files are not overwritten. Individual frames and the collection are
-staged and renamed after successful writes; if a later solve fails, already
+staged and published exclusively after successful writes; if a later solve fails, already
 published frames remain without a PVD collection.
 
 ## Tetrahedral mesh quality inspection and gates
@@ -146,3 +146,7 @@ unsupported sections, high-order elements and entities with multiple physical
 groups are rejected. The current MSH 4.1 adapter buffers and normalizes the
 input before topology validation, so its peak memory is higher than a future
 streaming native reader.
+
+## Heat-induced mechanical response
+
+Add `--elastic VOL E nu alpha T_ref` for each volume and prescribe displacement supports with `--clamp` or `--fix-component`. The same PVD collection can carry temperature, displacement, heat flux, strain and stress at every completed thermal step. [Run the verified cooling and thermal expansion cases](THERMOELASTIC_3D.md).

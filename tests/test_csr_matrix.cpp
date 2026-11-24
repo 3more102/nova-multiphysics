@@ -2,6 +2,7 @@
 
 #include "nova/linalg/csr_matrix.hpp"
 
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -96,4 +97,26 @@ NOVA_TEST(csr_exact_equality_checks_dimensions_pattern_and_coefficients) {
     NOVA_REQUIRE(!a.exactly_equal(changed_value));
     NOVA_REQUIRE(!a.exactly_equal(changed_pattern));
     NOVA_REQUIRE(!a.exactly_equal(changed_dimensions));
+}
+
+NOVA_TEST(csr_accepts_only_canonical_row_storage) {
+    using nova::linalg::CsrMatrix;
+    const auto m = CsrMatrix::from_sorted_rows(3, 4, {0,2,2,3}, {0,3,2}, {1.0,-2.0,4.0});
+    NOVA_REQUIRE(m.exactly_equal(CsrMatrix::from_triplets(3,4,{{0,0,1},{0,3,-2},{2,2,4}})));
+    const auto invalid = [](std::vector<std::size_t> offsets, std::vector<std::size_t> columns,
+                            std::vector<double> values) {
+        try { (void)CsrMatrix::from_sorted_rows(2,2,std::move(offsets),std::move(columns),std::move(values)); }
+        catch (const std::invalid_argument&) { return true; }
+        return false;
+    };
+    NOVA_REQUIRE(invalid({0,2,1},{0},{1}));
+    NOVA_REQUIRE(invalid({1,1,1},{0},{1}));
+    NOVA_REQUIRE(invalid({0,0},{},{}));
+    NOVA_REQUIRE(invalid({0,0,2},{0},{1}));
+    NOVA_REQUIRE(invalid({0,1,1},{},{1}));
+    NOVA_REQUIRE(invalid({0,2,2},{1,0},{1,2}));
+    NOVA_REQUIRE(invalid({0,2,2},{1,1},{1,2}));
+    NOVA_REQUIRE(invalid({0,1,1},{2},{1}));
+    NOVA_REQUIRE(invalid({0,1,1},{0},{0}));
+    NOVA_REQUIRE(invalid({0,1,1},{0},{std::numeric_limits<double>::infinity()}));
 }
