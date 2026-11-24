@@ -22,6 +22,8 @@ cmake --preset default
 cmake --build --preset default
 ctest --preset default --output-on-failure
 ```
+The additional CTest target `nova_optics_stack_crosscheck` compares complex reflection and transmission against an independently assembled E/H characteristic matrix for 108 combinations of wavelength, exterior refractive indices and layer absorption. It also checks reciprocal power transmission, lossless conservation and reflection reciprocity, passivity, layer splitting and zero-thickness invariance. The amplitude and power comparisons use absolute tolerance 2e-11. The reference matrix is restricted to moderate optical depth; the existing thick-layer test separately exercises the stable scattering recursion.
+
 Passing reference tests alone do not validate a general optical solver.
 
 ## Next implementation gates
