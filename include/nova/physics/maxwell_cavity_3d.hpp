@@ -1,5 +1,6 @@
 #pragma once
 #include "nova/physics/maxwell_3d.hpp"
+#include "nova/physics/maxwell_uniaxial_3d.hpp"
 #include "nova/linalg/symmetric_eigen.hpp"
 
 namespace nova::physics {
@@ -14,6 +15,13 @@ struct MaxwellCavityMatrices3D {
 [[nodiscard]] MaxwellCavityMatrices3D assemble_maxwell_cavity_3d(
     const fem::TetrahedralMesh3D& mesh,
     std::span<const MaxwellCellMaterial3D> materials);
+
+// PEC on the entire boundary, nondispersive lossless positive principal
+// permittivities and positive scalar permeability. Reuses the bounded
+// generalized eigensolver below; no complex-frequency modes.
+[[nodiscard]] MaxwellCavityMatrices3D assemble_maxwell_uniaxial_cavity_3d(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellUniaxialMaterial3D> materials);
 
 struct MaxwellCavityMode3D {
     double vacuum_wavenumber_squared{};
