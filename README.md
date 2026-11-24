@@ -4,7 +4,7 @@
 
 **NOVA Multiphysics** is an independent, C++20-based finite-element simulation project focused on building a verifiable numerical foundation for next-generation computer-aided engineering (CAE) software. Its long-term direction is a modular multiphysics platform spanning model definition, meshing, numerical solution, postprocessing, and a desktop engineering environment.
 
-**Current release track:** `0.8.0` development SDK · **Platforms:** Windows and Linux · **Interface:** C++ library and command-line examples
+**Current release track:** `0.8.0` development SDK · **Platforms:** Windows and Linux · **Interface:** C++ library, native thermal project runner and command-line examples
 
 > [!IMPORTANT]
 > **Research and development software.** NOVA is an experimental numerical platform, **not** a certified, production-ready or general-purpose multiphysics product. Features have different levels of maturity, results require independent verification, and no claim of equivalence to commercial CAE packages is made.
@@ -83,6 +83,16 @@ ctest --test-dir build -C Release --output-on-failure
 ~~~
 
 On Windows with a multi-configuration generator, executables are typically found in `build/Release/`; with the default Ninja preset, they are in `build/`. A successful compilation is not a substitute for running the tests.
+
+## Run a saved thermal project
+
+The installed `nova-run` executable opens a versioned `.nova` model, generates a tetrahedral box mesh and solves stationary heat conduction. The example runs without custom C++ or an external mesher.
+
+~~~bash
+./build/nova-run solve examples/projects/convecting_wall.nova --vtk wall.vtk
+~~~
+
+The output includes temperature extrema, CG residual and signed heat rates. [Project format, analytical checks and limits](docs/THERMAL_PROJECT.md) · [Commercial readiness matrix](docs/COMMERCIAL_READINESS.md).
 
 ## Reproducible examples
 

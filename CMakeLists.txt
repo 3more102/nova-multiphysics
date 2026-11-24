@@ -62,6 +62,9 @@ add_library(nova_core
     src/physics/electrode_charge_3d.cpp
     src/physics/floating_electrodes_3d.cpp
     src/physics/floating_conductor_schur_3d.cpp
+    src/model/thermal_project.cpp
+    src/io/thermal_project.cpp
+    src/io/atomic_file.cpp
     src/io/gmsh22_tetrahedral.cpp
     src/io/gmsh_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
@@ -94,6 +97,12 @@ set_target_properties(nova_core PROPERTIES
     POSITION_INDEPENDENT_CODE ON
 )
 nova_enable_warnings(nova_core)
+
+add_executable(nova-run apps/nova-run/main.cpp)
+set_target_properties(nova-run PROPERTIES EXPORT_NAME Runner)
+target_link_libraries(nova-run PRIVATE NOVA::Core)
+nova_enable_warnings(nova-run)
+nova_assert_unique_target_sources(nova-run)
 
 if(NOVA_BUILD_EXAMPLES)
     add_executable(nova_poisson_1d examples/poisson_1d/main.cpp)
@@ -153,6 +162,7 @@ if(NOVA_BUILD_TESTS)
     enable_testing()
     add_executable(nova_tests
         tests/test_main.cpp
+        tests/test_thermal_project.cpp
         tests/test_csr_matrix.cpp
         tests/test_conjugate_gradient.cpp
         tests/test_incomplete_cholesky.cpp
@@ -209,6 +219,14 @@ if(NOVA_BUILD_TESTS)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)
     nova_enable_warnings(nova_tests)
     add_test(NAME nova_unit_tests COMMAND nova_tests)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        foreach(suite wall generated persistence)
+            add_test(NAME nova_thermal_project_${suite}
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_thermal_project.py"
+                "${suite}" "$<TARGET_FILE:nova-run>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/projects/convecting_wall.nova")
+        endforeach()
+    endif()
     add_executable(nova_optics_reference_tests tests/test_optics_reference.cpp)
     target_link_libraries(nova_optics_reference_tests PRIVATE NOVA::Core)
     nova_enable_warnings(nova_optics_reference_tests)
@@ -291,7 +309,6 @@ if(NOVA_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/unit_tetrahedron41.msh" --check-mesh)
         set_tests_properties(nova_gmsh_mesh_quality_msh41_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "Minimum mean ratio")
-        find_package(Python3 COMPONENTS Interpreter QUIET)
         if(Python3_Interpreter_FOUND)
             add_test(NAME nova_adaptive_diffusion_3d_vtk_verify
                 COMMAND "${Python3_EXECUTABLE}"
@@ -376,6 +393,9 @@ endif()
 # This packages the experimental SDK, not a commercial release or license grant.
 set(NOVA_INSTALL_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/NOVA")
 
+install(TARGETS nova-run EXPORT NOVATargets RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(FILES examples/projects/convecting_wall.nova DESTINATION "${CMAKE_INSTALL_DATADIR}/nova/projects")
+
 install(TARGETS nova_core EXPORT NOVATargets
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
@@ -390,6 +410,7 @@ configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NOVAConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/NOVAConfig.cmake"
     INSTALL_DESTINATION "${NOVA_INSTALL_CMAKE_DIR}"
+    PATH_VARS CMAKE_INSTALL_DATADIR
 )
 # NOVA is pre-1.0: do not promise compatibility across minor versions.
 write_basic_package_version_file(

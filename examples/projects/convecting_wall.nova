@@ -1,0 +1,12 @@
+NOVA_PROJECT 1
+# SI verification fixture: homogeneous 0.5 m wall, 0.25 m^2 cross section.
+project convecting-wall
+geometry wall box 0.5 0.5 0.5
+mesh tets wall structured_tet 8 3 2
+material homogeneous isotropic 2
+study steady steady_heat tets homogeneous
+source steady 0
+solver steady cg jacobi 2000 1e-13 1e-14
+boundary steady wall xmin temperature 400
+boundary steady wall xmax convection 12 300
+end

@@ -1,4 +1,5 @@
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/NOVATargets.cmake")
+set(NOVA_PROJECT_EXAMPLE_DIR "@PACKAGE_CMAKE_INSTALL_DATADIR@/nova/projects")
 check_required_components(NOVA)
