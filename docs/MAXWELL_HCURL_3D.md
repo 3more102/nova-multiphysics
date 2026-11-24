@@ -78,3 +78,27 @@ matrix equivalence, reversed orientations and invalid face selection.
 These are proposed regression gates, not a new measured convergence study.
 No nonhomogeneous tangential excitation, impedance condition, ports or
 absorbing boundary is provided by this API.
+
+
+## Exterior Poynting power diagnostic
+
+`integrate_maxwell_boundary_flux_3d(mesh, materials, k0, system, edge_field)`
+returns one signed time-averaged power in watts per exterior triangle,
+with sorted node IDs and the owning tetrahedron index. Positive values
+leave the domain. Sum selected face values to measure net power through
+a mesh-aligned exterior surface. The area vector is oriented away from
+the owner tetrahedron; local vertex ordering does not affect the result.
+
+For lowest-order affine tetrahedral H(curl) fields, E is affine and
+H is constant in each cell. Therefore S = Re(E cross conjugate(H))/2
+is affine and centroid integration of S dot n is exact on a planar face.
+The method excludes internal faces and rejects nonmanifold face incidence,
+incompatible edge ordering, nonfinite coefficients and invalid materials.
+The regression fixtures check signed analytic flux, permutation invariance,
+zero net flux of a constant S, shared-face exclusion and invalid input.
+
+This is a one-sided reconstructed field diagnostic, not an equilibrated
+flux. Do not assume an exact global power balance for arbitrary discrete
+fields. No absorbing boundary, incident/scattered separation, waveguide
+port normalization, S-parameter extraction or PML is implemented by this
+API. Full C++ build and test execution are required before merging.
