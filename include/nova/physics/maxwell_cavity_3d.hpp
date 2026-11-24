@@ -36,4 +36,22 @@ struct MaxwellCavityResult3D {
     double relative_nullspace_tolerance=1e-10,
     const linalg::SymmetricEigenOptions& options={});
 
+
+struct MaxwellCavityParticipation3D {
+    std::vector<double> electric_fraction; // epsilon_r integral |E|^2, normalized
+    std::vector<double> magnetic_fraction; // mu_r^-1 integral |curl E|^2, normalized
+    double mass_norm_squared{};
+    double curl_energy{};
+};
+
+// Cell participation in a real, lossless PEC field. Edge coefficients use
+// the lexicographic ordering returned by assemble_maxwell_cavity_3d.
+// For a simple eigenmode, d(log f) = -0.5 sum_c(p_e d(log epsilon_r)
+// + p_m d(log mu_r)). Degenerate modes require subspace perturbation.
+[[nodiscard]] MaxwellCavityParticipation3D maxwell_cavity_participation_3d(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellCellMaterial3D> materials,
+    const MaxwellCavityMatrices3D& matrices,
+    std::span<const double> edge_field);
+
 } // namespace nova::physics
