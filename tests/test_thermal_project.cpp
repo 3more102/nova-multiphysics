@@ -7,6 +7,7 @@
 #include <limits>
 #include <locale>
 #include <sstream>
+#include <string>
 
 namespace {
 using namespace nova::model;
@@ -107,4 +108,94 @@ NOVA_TEST(thermal_project_anchors_absolute_temperature_using_only_convection) {
     const auto result = solve_thermal_project(p);
     for (double value : result.temperature.values) NOVA_REQUIRE_NEAR(value, 315, 1e-8);
     NOVA_REQUIRE_NEAR(result.balance.robin_outward_heat, 0, 1e-9);
+}
+
+
+
+NOVA_TEST(thermal_project_schema_two_accepts_isotropic_material_and_canonicalizes_to_schema_one) {
+    const auto project = fixture();
+    std::ostringstream original;
+    nova::io::write_thermal_project(original, project);
+    auto schema_two = original.str();
+    NOVA_REQUIRE(schema_two.rfind("NOVA_PROJECT 1\n", 0) == 0);
+    schema_two.replace(0, 14, "NOVA_PROJECT 2");
+
+    std::istringstream input(schema_two);
+    const auto restored = nova::io::read_thermal_project(input);
+    NOVA_REQUIRE(!restored.material.conductivity_tensor_w_m_k.has_value());
+    NOVA_REQUIRE(restored.material.conductivity_w_m_k == project.material.conductivity_w_m_k);
+
+    std::ostringstream canonical;
+    nova::io::write_thermal_project(canonical, restored);
+    NOVA_REQUIRE(canonical.str() == original.str());
+}
+
+NOVA_TEST(thermal_project_schema_two_round_trips_anisotropic_tensor_and_solves_exact_off_diagonal_case) {
+    auto p = fixture();
+    const nova::fem::SymmetricTensor3D full_tensor{2.0, 3.0, 4.0, 0.25, -0.15, 0.10};
+    p.material.conductivity_tensor_w_m_k = full_tensor;
+
+    std::ostringstream out;
+    nova::io::write_thermal_project(out, p);
+    NOVA_REQUIRE(out.str().find("NOVA_PROJECT 2\n") == 0);
+
+    std::istringstream input(out.str());
+    const auto restored = nova::io::read_thermal_project(input);
+    NOVA_REQUIRE(restored.material.conductivity_tensor_w_m_k.has_value());
+    const auto& round_trip = *restored.material.conductivity_tensor_w_m_k;
+    NOVA_REQUIRE(round_trip.xx == full_tensor.xx);
+    NOVA_REQUIRE(round_trip.yy == full_tensor.yy);
+    NOVA_REQUIRE(round_trip.zz == full_tensor.zz);
+    NOVA_REQUIRE(round_trip.xy == full_tensor.xy);
+    NOVA_REQUIRE(round_trip.xz == full_tensor.xz);
+    NOVA_REQUIRE(round_trip.yz == full_tensor.yz);
+    std::ostringstream second;
+    nova::io::write_thermal_project(second, restored);
+    NOVA_REQUIRE(second.str() == out.str());
+
+    // The full off-diagonal tensor has an exact linear field with prescribed
+    // transverse Neumann fluxes and an analytical convective exit.
+    auto anisotropic = restored;
+    anisotropic.boundaries[BoxSide::YMin] = OutwardHeatFlux{-37.5};
+    anisotropic.boundaries[BoxSide::YMax] = OutwardHeatFlux{37.5};
+    anisotropic.boundaries[BoxSide::ZMin] = OutwardHeatFlux{22.5};
+    anisotropic.boundaries[BoxSide::ZMax] = OutwardHeatFlux{-22.5};
+    const auto result = solve_thermal_project(anisotropic);
+    for (std::size_t node = 0; node < result.mesh.nodes.size(); ++node) {
+        NOVA_REQUIRE_NEAR(result.temperature.values[node], 400.0 - 150.0 * result.mesh.nodes[node].x, 2e-8);
+    }
+    for (const auto& flux : result.cell_fluxes) {
+        NOVA_REQUIRE_NEAR(flux.flux.x, 300.0, 2e-8);
+        NOVA_REQUIRE_NEAR(flux.flux.y, 37.5, 2e-8);
+        NOVA_REQUIRE_NEAR(flux.flux.z, -22.5, 2e-8);
+    }
+    NOVA_REQUIRE_NEAR(result.balance.robin_outward_heat, 9.375, 2e-8);
+    NOVA_REQUIRE_NEAR(result.balance.neumann_outward_heat, 0.0, 2e-8);
+    NOVA_REQUIRE_NEAR(result.balance.signed_balance_defect, 0.0, 2e-8);
+}
+
+NOVA_TEST(thermal_project_rejects_non_spd_anisotropic_tensors_and_schema_one_tensor_records) {
+    auto p = fixture();
+    for (const auto tensor : {
+            nova::fem::SymmetricTensor3D{1.0, 1.0, 1.0, 2.0, 0.0, 0.0},
+            nova::fem::SymmetricTensor3D{1.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+            nova::fem::SymmetricTensor3D{1.0, 1.0, 1.0,
+                std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0}}) {
+        p.material.conductivity_tensor_w_m_k = tensor;
+        NOVA_REQUIRE(rejects([&] { validate_thermal_project(p); }));
+    }
+
+    const std::string legacy_tensor =
+        "NOVA_PROJECT 1\n"
+        "project p\n"
+        "geometry g box 1 1 1\n"
+        "mesh m g structured_tet 1 1 1\n"
+        "material s anisotropic 2 3 4 0 0 0\n"
+        "study st steady_heat m s\n"
+        "source st 0\n"
+        "solver st cg jacobi 1000 1e-10 1e-14\n"
+        "boundary st g xmin temperature 300\n"
+        "end\n";
+    std::istringstream legacy_input(legacy_tensor);
+    NOVA_REQUIRE(rejects([&] { (void)nova::io::read_thermal_project(legacy_input); }));
 }

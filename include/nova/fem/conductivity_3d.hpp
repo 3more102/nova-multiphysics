@@ -16,4 +16,7 @@ struct SymmetricTensor3D {
 
 using SymmetricTensorField3D = std::function<SymmetricTensor3D(double, double, double)>;
 
+// Validate finite, numerically positive-definite symmetric conductivity.
+void validate_symmetric_tensor_3d(const SymmetricTensor3D& tensor);
+
 } // namespace nova::fem

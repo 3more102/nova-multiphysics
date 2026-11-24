@@ -100,9 +100,14 @@ void validate_thermal_project(const ThermalProject& project) {
         }
         tetrahedra *= count;
     }
-    if (!std::isfinite(project.material.conductivity_w_m_k) || project.material.conductivity_w_m_k <= 0.0 ||
-        !std::isfinite(project.generation_w_m3)) {
-        throw std::invalid_argument("Thermal conductivity must be finite and positive; heat generation must be finite.");
+    if (!std::isfinite(project.generation_w_m3)) {
+        throw std::invalid_argument("Heat generation must be finite.");
+    }
+    if (project.material.conductivity_tensor_w_m_k) {
+        fem::validate_symmetric_tensor_3d(*project.material.conductivity_tensor_w_m_k);
+    } else if (!std::isfinite(project.material.conductivity_w_m_k) ||
+               project.material.conductivity_w_m_k <= 0.0) {
+        throw std::invalid_argument("Thermal conductivity must be finite and positive.");
     }
     const auto& options = project.solver;
     using P = linalg::PreconditionerType;
@@ -124,7 +129,12 @@ fem::ScalarDiffusion3DProblem prepare_thermal_project(const ThermalProject& proj
     auto box = fem::make_box_mesh_3d(0, l[0], 0, l[1], 0, l[2], n[0], n[1], n[2]);
     fem::ScalarDiffusion3DProblem problem;
     problem.mesh = std::move(box.mesh);
-    problem.diffusivity = constant(project.material.conductivity_w_m_k);
+    if (project.material.conductivity_tensor_w_m_k) {
+        const auto tensor = *project.material.conductivity_tensor_w_m_k;
+        problem.diffusivity_tensor = [tensor](double, double, double) { return tensor; };
+    } else {
+        problem.diffusivity = constant(project.material.conductivity_w_m_k);
+    }
     problem.source = constant(project.generation_w_m3);
     for (const auto& face : box.boundary_faces) {
         const auto it = project.boundaries.find(side_of(face, problem.mesh, l));
