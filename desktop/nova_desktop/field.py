@@ -55,7 +55,17 @@ class NodalField:
                         raise ValueError("Result coordinates disagree with the structured mesh.")
             expect(f"CELLS {cells} {5 * cells}")
             referenced = bytearray(count)
-            cube_counts = bytearray(math.prod(divisions))
+            # Canonical corner IDs use x + 2*y + 4*z. These are the six
+            # body-diagonal tetrahedra emitted by make_box_mesh_3d().
+            expected_tetrahedra = {
+                (0, 1, 3, 7): 0,
+                (0, 2, 3, 7): 1,
+                (0, 2, 6, 7): 2,
+                (0, 4, 6, 7): 3,
+                (0, 4, 5, 7): 4,
+                (0, 1, 5, 7): 5,
+            }
+            cube_masks = bytearray(math.prod(divisions))
             for _ in range(cells):
                 words = line().split()
                 if len(words) != 5 or words[0] != "4":
@@ -75,14 +85,22 @@ class NodalField:
                 if any(max(point[axis] for point in grid) - lower[axis] != 1
                        for axis in range(3)):
                     raise ValueError("Tetrahedron does not occupy one structured mesh cell.")
+                local_tetrahedron = tuple(sorted(
+                    (point[0] - lower[0]) + 2 * (point[1] - lower[1]) +
+                    4 * (point[2] - lower[2]) for point in grid
+                ))
+                pattern = expected_tetrahedra.get(local_tetrahedron)
+                if pattern is None:
+                    raise ValueError("Tetrahedron does not match NOVA's six-tetrahedron cell split.")
                 cube = lower[0] + divisions[0] * (lower[1] + divisions[1] * lower[2])
-                cube_counts[cube] += 1
-                if cube_counts[cube] > 6:
-                    raise ValueError("Structured mesh cell contains more than six tetrahedra.")
+                bit = 1 << pattern
+                if cube_masks[cube] & bit:
+                    raise ValueError("Duplicate tetrahedron in structured mesh cell.")
+                cube_masks[cube] |= bit
                 for node in nodes:
                     referenced[node] = 1
-            if not all(referenced) or any(number != 6 for number in cube_counts):
-                raise ValueError("Tetrahedral connectivity does not cover the structured mesh.")
+            if not all(referenced) or any(mask != 0b111111 for mask in cube_masks):
+                raise ValueError("Tetrahedral connectivity does not cover the native structured mesh.")
             expect(f"CELL_TYPES {cells}")
             for _ in range(cells):
                 expect("10")
