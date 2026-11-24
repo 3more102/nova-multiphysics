@@ -6,6 +6,8 @@
 #include <iostream>
 #include <limits>
 #include <locale>
+#include <span>
+#include <vector>
 #include <string_view>
 
 namespace {
@@ -13,11 +15,13 @@ namespace fs = std::filesystem;
 
 constexpr std::string_view usage =
     "Usage: nova-run check PROJECT\n"
+    "       nova-run show PROJECT\n"
     "       nova-run save-as PROJECT OUTPUT.nova\n"
     "       nova-run solve PROJECT [--vtk OUTPUT.vtk]\n";
 
-int run(int argc, char** argv) {
-    if (argc == 2 && std::string_view(argv[1]) == "--help") {
+int run(std::span<const fs::path> args) {
+    const auto argc = args.size();
+    if (argc == 2 && args[1] == "--help") {
         std::cout << usage;
         return 0;
     }
@@ -25,18 +29,23 @@ int run(int argc, char** argv) {
         std::cerr << usage;
         return 2;
     }
-    const std::string_view command = argv[1];
+    const auto& command = args[1];
     const bool check = command == "check" && argc == 3;
+    const bool show = command == "show" && argc == 3;
     const bool save = command == "save-as" && argc == 4;
-    const bool export_vtk = command == "solve" && argc == 5 && std::string_view(argv[3]) == "--vtk";
-    if (!check && !save && !export_vtk && !(command == "solve" && argc == 3)) {
+    const bool export_vtk = command == "solve" && argc == 5 && args[3] == "--vtk";
+    if (!check && !show && !save && !export_vtk && !(command == "solve" && argc == 3)) {
         std::cerr << usage;
         return 2;
     }
-    const fs::path input(argv[2]);
+    const auto& input = args[2];
     const auto project = nova::io::load_thermal_project(input);
+    if (show) {
+        nova::io::write_thermal_project(std::cout, project);
+        return 0;
+    }
     if (save) {
-        const fs::path output(argv[3]);
+        const auto& output = args[3];
         if (output.extension() != ".nova") throw std::invalid_argument("Save destination requires .nova.");
         nova::io::save_thermal_project(output, project);
         return 0;
@@ -49,7 +58,7 @@ int run(int argc, char** argv) {
     }
     fs::path output;
     if (export_vtk) {
-        output = argv[4];
+        output = args[4];
         if (output.extension() != ".vtk" || (fs::exists(output) && fs::equivalent(input, output))) {
             throw std::invalid_argument("VTK destination must be a .vtk file distinct from the input project.");
         }
@@ -73,9 +82,14 @@ int run(int argc, char** argv) {
 }
 } // namespace
 
+#ifdef _WIN32
+int wmain(int argc, wchar_t** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
     try {
-        const int status = run(argc, argv);
+        const std::vector<std::filesystem::path> args(argv, argv + argc);
+        const int status = run(args);
         std::cout.flush();
         if (!std::cout) throw std::runtime_error("Failed to write solver response.");
         return status;

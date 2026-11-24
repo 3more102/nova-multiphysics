@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nova-thermal-desktop"
+version = "0.1.0"
+description = "Desktop editor for NOVA native stationary thermal projects"
+requires-python = ">=3.10"
+dependencies = ["PySide6-Essentials>=6.8,<7"]
+
+[project.gui-scripts]
+nova-desktop = "nova_desktop.app:main"
+
+[tool.setuptools]
+packages = ["nova_desktop"]

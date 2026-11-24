@@ -43,6 +43,16 @@ jobs:
       - name: Test installed SDK consumer
         run: ctest --test-dir build-package-consumer -C Release --output-on-failure
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install thermal desktop client with tested Qt version
+        run: python -m pip install ./desktop "PySide6-Essentials==6.8.3"
+      - name: Exercise desktop authoring, solve, cancellation and field probes
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python desktop/tests/test_desktop.py "${{ runner.temp }}/nova-sdk/bin"
+
   sanitize:
     name: Linux address, leak and undefined behavior checks
     runs-on: ubuntu-latest
