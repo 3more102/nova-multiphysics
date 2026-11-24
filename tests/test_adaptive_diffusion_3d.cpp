@@ -221,11 +221,6 @@ NOVA_TEST(adaptive_diffusion_3d_rejects_unrepresented_physics) {
     NOVA_REQUIRE(rejects([&] {
         (void)nova::fem::solve_adaptive_diffusion_step_3d(modified, 0.5);
     }));
-    modified = problem;
-    modified.cell_source.assign(box.mesh.elements.size(), 1.0);
-    NOVA_REQUIRE(rejects([&] {
-        (void)nova::fem::solve_adaptive_diffusion_step_3d(modified, 0.5);
-    }));
 }
 
 
@@ -509,5 +504,45 @@ NOVA_TEST(adaptive_diffusion_3d_transfers_cell_tensors_and_robin_neumann_faces) 
     }
     NOVA_REQUIRE(saw_robin_residual);
     NOVA_REQUIRE(saw_neumann_residual);
+    NOVA_REQUIRE(std::isfinite(result.refined_indicators.total_error));
+}
+
+
+NOVA_TEST(adaptive_diffusion_3d_transfers_additive_cell_source_to_children) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    nova::fem::ScalarDiffusion3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.cell_diffusivity.assign(box.mesh.elements.size(), 2.0);
+    problem.source = [](double, double, double) { return 1.0; };
+    problem.cell_source.resize(box.mesh.elements.size());
+    for (std::size_t cell = 0; cell < problem.cell_source.size(); ++cell) {
+        problem.cell_source[cell] = 0.25 * static_cast<double>(cell + 1U);
+    }
+    for (const auto& face : box.boundary_faces) {
+        if (is_x_plate(box.mesh, face, 0.0) || is_x_plate(box.mesh, face, 1.0)) {
+            problem.dirichlet_faces.push_back({
+                face, [](double, double, double) { return 0.0; }});
+        }
+    }
+
+    const auto result = nova::fem::solve_adaptive_diffusion_step_3d(problem, 1.0);
+    NOVA_REQUIRE(result.coarse_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.refined_solution.linear_solver.converged);
+    NOVA_REQUIRE(!result.adaptation.marked_elements.empty());
+    NOVA_REQUIRE(result.refined_problem.cell_source.size() ==
+                 result.refined_problem.mesh.elements.size());
+    NOVA_REQUIRE_NEAR(result.refined_problem.source(0.2, 0.3, 0.4), 1.0, 1.0e-14);
+
+    const auto& refinement = result.adaptation.refinement;
+    NOVA_REQUIRE(refinement.parent_elements.size() ==
+                 result.refined_problem.cell_source.size());
+    for (std::size_t child = 0; child < refinement.parent_elements.size(); ++child) {
+        const auto parent = refinement.parent_elements[child];
+        NOVA_REQUIRE(parent < problem.cell_source.size());
+        NOVA_REQUIRE_NEAR(result.refined_problem.cell_source[child],
+                          problem.cell_source[parent], 1.0e-14);
+    }
+    NOVA_REQUIRE(std::isfinite(result.coarse_indicators.total_error));
     NOVA_REQUIRE(std::isfinite(result.refined_indicators.total_error));
 }
