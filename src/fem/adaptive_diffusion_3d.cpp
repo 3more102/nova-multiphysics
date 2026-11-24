@@ -3,6 +3,7 @@
 #include "nova/fem/p1_flux_3d.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <map>
 #include <set>
@@ -255,6 +256,82 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
     }
     result.refined_indicators = estimate(
         result.refined_problem, result.refined_solution, refined.boundary_faces);
+    return result;
+}
+
+AdaptiveDiffusionRun3D solve_adaptive_diffusion_3d(
+    const ScalarDiffusion3DProblem& problem,
+    const AdaptiveDiffusionOptions3D& options,
+    const linalg::SolverOptions& solver_options
+) {
+    if (!std::isfinite(options.dorfler_theta) ||
+        !(options.dorfler_theta > 0.0) || options.dorfler_theta > 1.0) {
+        throw std::invalid_argument(
+            "Adaptive 3D Dörfler theta must be finite and in (0, 1].");
+    }
+    if (!std::isfinite(options.absolute_tolerance) ||
+        options.absolute_tolerance < 0.0 ||
+        !std::isfinite(options.relative_tolerance) ||
+        options.relative_tolerance < 0.0) {
+        throw std::invalid_argument(
+            "Adaptive 3D indicator tolerances must be finite and nonnegative.");
+    }
+    if (options.max_cycles == 0U) {
+        throw std::invalid_argument(
+            "Adaptive 3D multi-cycle solve requires at least one cycle.");
+    }
+
+    AdaptiveDiffusionRun3D result;
+    ScalarDiffusion3DProblem current_problem = problem;
+    result.cycles.reserve(options.max_cycles);
+
+    for (std::size_t cycle = 0; cycle < options.max_cycles; ++cycle) {
+        const std::size_t coarse_nodes = current_problem.mesh.nodes.size();
+        const std::size_t coarse_elements = current_problem.mesh.elements.size();
+        auto step = solve_adaptive_diffusion_step_3d(
+            current_problem, options.dorfler_theta, solver_options);
+
+        if (cycle == 0U) {
+            result.initial_indicator = step.coarse_indicators.total_error;
+            result.target_indicator = std::max(
+                options.absolute_tolerance,
+                options.relative_tolerance * result.initial_indicator);
+            if (!std::isfinite(result.target_indicator)) {
+                throw std::overflow_error(
+                    "Adaptive 3D indicator target exceeds the finite range.");
+            }
+        }
+
+        AdaptiveDiffusionCycleSummary3D summary;
+        summary.cycle = cycle + 1U;
+        summary.coarse_nodes = coarse_nodes;
+        summary.coarse_elements = coarse_elements;
+        summary.marked_elements = step.adaptation.marked_elements.size();
+        summary.coarse_indicator = step.coarse_indicators.total_error;
+        summary.refined_indicator = step.refined_indicators.total_error;
+
+        current_problem = std::move(step.refined_problem);
+        summary.refined_nodes = current_problem.mesh.nodes.size();
+        summary.refined_elements = current_problem.mesh.elements.size();
+        result.final_solution = std::move(step.refined_solution);
+        result.final_indicators = std::move(step.refined_indicators);
+        result.cycles.push_back(summary);
+
+        if (result.final_indicators.total_error <= result.target_indicator) {
+            result.tolerance_satisfied = true;
+            result.stop_reason = AdaptiveDiffusionStopReason3D::ToleranceSatisfied;
+            break;
+        }
+        if (summary.marked_elements == 0U) {
+            result.stop_reason = AdaptiveDiffusionStopReason3D::NoRefinementRequired;
+            break;
+        }
+        if (cycle + 1U == options.max_cycles) {
+            result.stop_reason = AdaptiveDiffusionStopReason3D::MaximumCyclesReached;
+        }
+    }
+
+    result.final_problem = std::move(current_problem);
     return result;
 }
 
