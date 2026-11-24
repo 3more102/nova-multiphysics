@@ -27,6 +27,15 @@ struct MaxwellSystem3D {
     std::span<const MaxwellCellMaterial3D> materials,
     double vacuum_wavenumber, bool pec_on_exterior);
 
+// Homogeneous PEC on selected exterior triangular faces; the remaining
+// exterior faces have homogeneous natural curl conditions. Face orientation
+// and order are immaterial. Duplicate, interior and nonexistent faces reject.
+[[nodiscard]] MaxwellSystem3D assemble_maxwell_3d_selective_pec(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellCellMaterial3D> materials,
+    double vacuum_wavenumber,
+    std::span<const fem::BoundaryFace3D> pec_faces);
+
 // Assemble a piecewise constant vector weak source F in
 // curl(mu_r^-1 curl E)-k0^2 epsilon_r E=F, in global edge order.
 using ComplexVector3D = std::array<std::complex<double>,3>;

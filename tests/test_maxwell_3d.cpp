@@ -247,3 +247,71 @@ NOVA_TEST(maxwell_pec_smooth_manufactured_h_convergence) {
         previous=relative;
     }
 }
+
+NOVA_TEST(maxwell_selective_pec_exact_mixed_boundary_field) {
+    using C=std::complex<double>;
+    const auto mesh=unit_cell();
+    const C eps(2.0,0.5), amplitude(1.0,-0.3);
+    constexpr double k=2.0;
+    const std::array<MaxwellCellMaterial3D,1> materials{{{eps,1.0}}};
+    // x=0 face, deliberately reversed; E=(amplitude,0,0) has zero
+    // tangential trace there and zero curl on all remaining faces.
+    const std::array<BoundaryFace3D,1> pec{{{3,2,0}}};
+    const auto sys=assemble_maxwell_3d_selective_pec(mesh,materials,k,pec);
+    NOVA_REQUIRE(sys.free_edges.size()==3);
+    const std::array<ComplexVector3D,1> sources{{{-k*k*eps*amplitude,C{},C{}}}};
+    const auto load=assemble_maxwell_cell_load_3d(mesh,sources,sys);
+    nova::linalg::GmresOptions opts;
+    opts.restart=6;
+    opts.solver.max_iterations=100;
+    opts.solver.relative_tolerance=1e-12;
+    const auto sol=solve_maxwell_3d(sys,load,opts);
+    NOVA_REQUIRE(sol.diagnostics.converged);
+    for (std::size_t e=0;e<sys.edges.size();++e) {
+        const auto a=mesh.nodes[sys.edges[e][0]], b=mesh.nodes[sys.edges[e][1]];
+        const C expected=amplitude*(b.x-a.x);
+        NOVA_REQUIRE_NEAR(std::abs(sol.edge_field[e]-expected),0.0,1e-10);
+        if (a.x==0.0 && b.x==0.0)
+            NOVA_REQUIRE_NEAR(std::abs(sol.edge_field[e]),0.0,0.0);
+    }
+}
+
+NOVA_TEST(maxwell_selective_pec_legacy_equivalence) {
+    const auto mesh=make_box_mesh_3d(0,1,0,1,0,1,1,1,1).mesh;
+    auto faces=extract_boundary_faces_3d(mesh);
+    std::reverse(faces.begin(),faces.end());
+    for (auto& face : faces) std::reverse(face.begin(),face.end());
+    const std::vector<MaxwellCellMaterial3D> materials(mesh.elements.size(),{{2.0,0.4},1.0});
+    for (bool all : {false,true}) {
+        const auto legacy=assemble_maxwell_3d(mesh,materials,2.0,all);
+        const auto selective=assemble_maxwell_3d_selective_pec(
+            mesh,materials,2.0,all ? std::span<const BoundaryFace3D>(faces)
+                                   : std::span<const BoundaryFace3D>{});
+        NOVA_REQUIRE(legacy.edges==selective.edges);
+        NOVA_REQUIRE(legacy.free_edges==selective.free_edges);
+        for (std::size_t i=0;i<legacy.real_block.rows();++i)
+            for (std::size_t j=0;j<legacy.real_block.columns();++j)
+                NOVA_REQUIRE_NEAR(legacy.real_block.at(i,j),selective.real_block.at(i,j),0.0);
+    }
+}
+
+NOVA_TEST(maxwell_selective_pec_rejects_invalid_faces) {
+    const TetrahedralMesh3D mesh{
+        {{0,0,0},{1,0,0},{0,1,0},{0,0,1},{0,0,-1}},
+        {{0,1,2,3},{0,2,1,4}}};
+    const std::vector<MaxwellCellMaterial3D> materials(mesh.elements.size(),{{2.0,0.4},1.0});
+    const auto reject=[&](std::span<const BoundaryFace3D> faces) {
+        bool rejected=false;
+        try { (void)assemble_maxwell_3d_selective_pec(mesh,materials,2.0,faces); }
+        catch (const std::invalid_argument&) { rejected=true; }
+        NOVA_REQUIRE(rejected);
+    };
+    const std::array<BoundaryFace3D,1> interior{{{0,1,2}}};
+    const std::array<BoundaryFace3D,1> missing{{{0,1,99}}};
+    const std::array<BoundaryFace3D,1> degenerate{{{0,0,3}}};
+    const std::array<BoundaryFace3D,2> duplicate{{{0,1,3},{3,0,1}}};
+    reject(interior);
+    reject(missing);
+    reject(degenerate);
+    reject(duplicate);
+}
