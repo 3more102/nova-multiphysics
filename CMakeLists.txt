@@ -48,6 +48,7 @@ add_library(nova_core
     src/fem/energy_balance_3d.cpp
     src/fem/conservative_face_heat_3d.cpp
     src/physics/linear_elasticity_3d.cpp
+    src/physics/optics.cpp
     src/physics/electrostatics_3d.cpp
     src/physics/electrothermal_3d.cpp
     src/physics/nonlinear_electrothermal_3d.cpp
@@ -200,6 +201,11 @@ if(NOVA_BUILD_TESTS)
     target_link_libraries(nova_tests PRIVATE NOVA::Core)
     nova_enable_warnings(nova_tests)
     add_test(NAME nova_unit_tests COMMAND nova_tests)
+    add_executable(nova_optics_reference_tests tests/test_optics_reference.cpp)
+    target_link_libraries(nova_optics_reference_tests PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_optics_reference_tests)
+    nova_assert_unique_target_sources(nova_optics_reference_tests)
+    add_test(NAME nova_optics_reference_tests COMMAND nova_optics_reference_tests)
     # Positive and negative configure tests verify the source-duplication guard.
     add_test(NAME nova_source_guard_accepts_unique COMMAND "${CMAKE_COMMAND}"
         -S "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/source_guard_fixture"
