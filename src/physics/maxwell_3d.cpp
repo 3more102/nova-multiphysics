@@ -319,4 +319,79 @@ MaxwellCavityMatrices3D assemble_maxwell_cavity_3d(
         linalg::CsrMatrix::from_triplets(n,n,mass)};
 }
 
+
+std::vector<MaxwellBoundaryFlux3D> integrate_maxwell_boundary_flux_3d(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellCellMaterial3D> materials,
+    double vacuum_wavenumber,
+    const MaxwellSystem3D& system, std::span<const Complex> edge_field) {
+    mesh.validate();
+    const auto map=edge_map(mesh);
+    if (materials.size()!=mesh.elements.size() || system.edges.size()!=map.size()
+        || edge_field.size()!=map.size() || !(vacuum_wavenumber>0.0)
+        || !std::isfinite(vacuum_wavenumber*light_speed))
+        throw std::invalid_argument("Invalid Maxwell boundary flux dimensions or frequency.");
+    for (const auto& [edge,id] : map)
+        if (system.edges[id]!=edge || !finite(edge_field[id]))
+            throw std::invalid_argument("Invalid Maxwell boundary flux edge data.");
+    for (const auto& material : materials)
+        (void)checked_omega(material,vacuum_wavenumber);
+
+    struct FaceOwner {
+        std::size_t cell;
+        std::size_t opposite;
+        unsigned count;
+    };
+    std::map<fem::BoundaryFace3D,FaceOwner> faces;
+    for (std::size_t c=0;c<mesh.elements.size();++c) {
+        const auto& nodes=mesh.elements[c];
+        for (std::size_t opposite=0;opposite<4;++opposite) {
+            fem::BoundaryFace3D face{};
+            std::size_t j=0;
+            for (std::size_t v=0;v<4;++v)
+                if (v!=opposite) face[j++]=nodes[v];
+            std::sort(face.begin(),face.end());
+            auto [it,inserted]=faces.try_emplace(face,FaceOwner{c,opposite,1});
+            if (!inserted && ++it->second.count>2)
+                throw std::invalid_argument("Nonmanifold Maxwell boundary face.");
+        }
+    }
+    const auto subtract=[](const auto& a,const auto& b) {
+        return fem::EdgeVector3D{a.x-b.x,a.y-b.y,a.z-b.z};
+    };
+    const auto dot=[](const auto& a,const auto& b) {
+        return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+    };
+    std::vector<MaxwellBoundaryFlux3D> result;
+    for (const auto& [face,owner] : faces) {
+        if (owner.count!=1) continue;
+        const auto& a=mesh.nodes[face[0]];
+        const auto u=subtract(mesh.nodes[face[1]],a);
+        const auto v=subtract(mesh.nodes[face[2]],a);
+        fem::EdgeVector3D area{
+            0.5*(u[1]*v[2]-u[2]*v[1]),
+            0.5*(u[2]*v[0]-u[0]*v[2]),
+            0.5*(u[0]*v[1]-u[1]*v[0])};
+        const auto inward=subtract(mesh.nodes[mesh.elements[owner.cell][owner.opposite]],a);
+        const double orientation=dot(area,inward);
+        if (!std::isfinite(orientation) || orientation==0.0)
+            throw std::invalid_argument("Invalid Maxwell boundary face geometry.");
+        if (orientation>0.0)
+            for (auto& component : area) component=-component;
+        const auto cell=fem::make_nedelec_tetrahedron_3d(mesh,owner.cell);
+        std::array<Complex,6> coefficients{};
+        for (std::size_t e=0;e<6;++e)
+            coefficients[e]=edge_field[map.at(cell.edges[e])];
+        std::array<double,4> bary{1.0/3.0,1.0/3.0,1.0/3.0,1.0/3.0};
+        bary[owner.opposite]=0.0;
+        const auto sample=evaluate_maxwell_field_3d(cell,coefficients,
+            materials[owner.cell],vacuum_wavenumber,bary[1],bary[2],bary[3]);
+        const double power=dot(area,sample.time_averaged_poynting);
+        if (!std::isfinite(power))
+            throw std::overflow_error("Maxwell boundary power overflow.");
+        result.push_back({face,owner.cell,power});
+    }
+    return result;
+}
+
 } // namespace nova::physics
