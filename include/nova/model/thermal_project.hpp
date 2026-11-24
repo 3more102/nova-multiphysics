@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -27,7 +28,11 @@ struct StructuredTetMesh {
 
 struct IsotropicThermalMaterial {
     std::string id{"solid"};
+    // Used when conductivity_tensor_w_m_k is empty.
     double conductivity_w_m_k{1.0};
+    // Optional homogeneous symmetric tensor in global Cartesian axes.
+    // When present, the scalar coefficient is not used by the solver.
+    std::optional<fem::SymmetricTensor3D> conductivity_tensor_w_m_k{};
 };
 
 struct FixedTemperature { double kelvin; };
@@ -35,7 +40,7 @@ struct OutwardHeatFlux { double watts_per_m2; };
 struct Convection { double film_w_m2_k; double ambient_kelvin; };
 using ThermalBoundary = std::variant<FixedTemperature, OutwardHeatFlux, Convection>;
 
-// Schema 1 contains one origin-aligned box, mesh, material and stationary study.
+// Schemas 1 and 2 contain one origin-aligned box, mesh, homogeneous material and stationary study.
 // Missing side assignments mean zero outward heat flux.
 struct ThermalProject {
     std::string id{"project"};
