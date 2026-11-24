@@ -148,7 +148,7 @@ class DesktopWorkflow(unittest.TestCase):
         project = self.directory / "anisotropic.nova"
         self.assertTrue(self.win.save_to(project), self.win.console.toPlainText())
         saved = project.read_text(encoding="ascii")
-        self.assertTrue(saved.startswith("NOVA_PROJECT 2\\n"))
+        self.assertTrue(saved.startswith("NOVA_PROJECT 2\n"))
         material = next(line.split() for line in saved.splitlines()
                         if line.startswith("material "))
         self.assertEqual(material[:3], ["material", "silicon", "anisotropic"])
