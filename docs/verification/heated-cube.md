@@ -44,6 +44,8 @@ The same independent finite-difference solution also gives the center temperatur
 
 The observed order from successive center-value differences between 16, 32 and 64 subdivisions is 1.9886. At 16 subdivisions, the independent center value agrees with NOVA's center nodal result within the 0.025 K comparison allowance. This supports the peak-location and local refinement checks, but is not a rigorous continuum error bound for the peak temperature.
 
+At 16 subdivisions, the optional SciPy run additionally compares every one of the 4,913 exported NOVA nodal temperatures against the independent seven-point finite-difference field at the same Cartesian coordinates. The maximum absolute and RMS nodal differences must each remain below 2e-8 K. This is a full-field cross-discretization check for this structured homogeneous cube; it does not extend the continuum mean bound into a rigorous local peak-temperature bound.
+
 Recorded using Debian 13 x86-64, GCC 14.2 Release, Python 3.12.14 and SciPy 1.17.0 with solver commit `3ab9afa446ea92392e8910fd42b90ce24d221eea`. The continuum comparison uses Python's standard library and runs in CTest. Ubuntu CI also runs the SciPy comparison against the installed runner and installed project. To repeat the external calculation:
 
 ~~~sh
