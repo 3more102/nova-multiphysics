@@ -40,7 +40,10 @@ original problem and solution without a redundant second linear solve.
   positive scalar, or cellwise symmetric positive-definite tensor.
 - Tensor components use global Cartesian axes; all six independent symmetric
   entries, including off-diagonal terms, are retained.
-- An optional spatial source callback, or an absent (zero) source.
+- An optional spatial source callback plus an optional additive cellwise source
+  vector. Cell-source values are copied from each parent tetrahedron to all
+  children; the residual estimator integrates the sum of spatial and cellwise
+  source densities.
 - Per-vertex Dirichlet constraints and facewise Dirichlet functions.
   A boundary triangle whose three nodes are explicitly constrained (and
   which has no separately prescribed natural-boundary model) has a fully
@@ -58,9 +61,8 @@ original problem and solution without a redundant second linear solve.
   to all of its children. Spatial material callbacks remain attached to the
   refined problem and are re-evaluated by the FEM quadrature.
 
-Cellwise source vectors, higher-order bases, curved boundary geometry, and
-automatic multicycle stopping are not implemented by this wrapper. Cellwise
-source vectors are rejected rather than silently omitted. The caller may feed
+Higher-order bases, curved boundary geometry, and automatic multicycle
+stopping are not implemented by this wrapper. The caller may feed
 `refined_problem` into a later cycle if the model remains in this supported
 subset.
 
@@ -135,7 +137,9 @@ interior-face jumps instead of approximating a tensor by a scalar coefficient.
 Regression coverage includes an affine field with a non-diagonal tensor and
 its exact flux, plus a locally refined heterogeneous cell-tensor model with
 both Robin and Neumann boundary faces. Parent-to-child tensor transfer and
-both boundary callback transfers are checked explicitly.
+both boundary callback transfers are checked explicitly. A further regression
+combines a spatial source callback with nonuniform cellwise source densities
+and verifies exact parent-to-child source transfer.
 
 The indicator remains heuristic. For spatially varying coefficients, the
 current cell residual does not include within-cell coefficient-gradient terms,
