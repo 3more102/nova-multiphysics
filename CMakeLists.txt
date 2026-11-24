@@ -219,6 +219,12 @@ if(NOVA_BUILD_TESTS)
     nova_enable_warnings(nova_optical_helmholtz_1d_tests)
     nova_assert_unique_target_sources(nova_optical_helmholtz_1d_tests)
     add_test(NAME nova_optical_helmholtz_1d_tests COMMAND nova_optical_helmholtz_1d_tests)
+
+    add_executable(nova_photothermal_1d_tests tests/test_photothermal_1d.cpp)
+    target_link_libraries(nova_photothermal_1d_tests PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_photothermal_1d_tests)
+    nova_assert_unique_target_sources(nova_photothermal_1d_tests)
+    add_test(NAME nova_photothermal_1d_tests COMMAND nova_photothermal_1d_tests)
     # Positive and negative configure tests verify the source-duplication guard.
     add_test(NAME nova_source_guard_accepts_unique COMMAND "${CMAKE_COMMAND}"
         -S "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/source_guard_fixture"
