@@ -1,0 +1,63 @@
+# Native thermal project, schema 1
+
+The installed C++20 `nova-run` process reads a self-contained SI model. It builds the mesh, assigns the material and boundary conditions, solves stationary heat conduction, and returns temperatures and heat rates. The model and codec are also available to SDK clients in `nova/model/thermal_project.hpp` and `nova/io/thermal_project.hpp`.
+
+## Run the reference wall
+
+~~~sh
+nova-run check convecting_wall.nova
+nova-run save-as convecting_wall.nova saved.nova
+nova-run solve saved.nova --vtk wall.vtk
+~~~
+
+The SDK installs the runner in `bin` and the example in `share/nova/projects` under the default install layout. A CMake consumer can use `NOVA::Runner` and `NOVA_PROJECT_EXAMPLE_DIR`. Open the VTK unstructured grid in ParaView to inspect point temperature in K and cell heat flux in W/m². Material tag 1 designates the single homogeneous solid.
+
+## Model contract
+
+Use printable ASCII, spaces or tabs between fields, and LF or CRLF line endings. Blank lines and comments beginning with `#` are accepted. Each non-comment line has the indicated fields in order. Example input:
+
+~~~text
+NOVA_PROJECT 1
+project convecting-wall
+geometry wall box 0.5 0.5 0.5
+mesh tets wall structured_tet 8 3 2
+material homogeneous isotropic 2
+study steady steady_heat tets homogeneous
+source steady 0
+solver steady cg jacobi 2000 1e-13 1e-14
+boundary steady wall xmin temperature 400
+boundary steady wall xmax convection 12 300
+end
+~~~
+
+| Record | Meaning and units |
+| --- | --- |
+| project | Unique persistent project ID |
+| geometry | Geometry ID, box, three positive axis lengths in m, with the minimum corner at the origin |
+| mesh | Mesh ID, geometry ID, structured tetrahedra, three positive subdivision counts |
+| material | Material ID and positive isotropic conductivity in W/(m·K) |
+| study | Study ID, stationary heat conduction, mesh ID and material ID |
+| source | Study ID and spatially uniform signed volumetric generation in W/m³ |
+| solver | Study ID, CG, preconditioner (`none`, `jacobi`, `ic0`), iteration budget, relative and absolute residual tolerances |
+| boundary | Study ID, geometry ID, one of `xmin xmax ymin ymax zmin zmax`, then `temperature T` (K), `outward_flux g` (W/m²) or `convection h T_ambient` (W/(m²·K), K) |
+| end | Required final record |
+
+The box, mesh, study, material and project use distinct identifiers of up to 64 ASCII characters, beginning with a letter and continuing with letters, digits, underscores or hyphens. Boundary records can appear in any order after the solver. Each side accepts one assignment. Unassigned sides are insulated. At least one fixed temperature or positive convection coefficient anchors absolute temperature. Intersecting fixed sides must agree. Changing the dimensions or the mesh density preserves side selections. Parameters are model inputs, and the example uses constructed verification values.
+
+`check` parses the record, validates physical inputs and references, and constructs and validates the mesh. `save-as` writes canonical ASCII with round-trip double precision, reopens the staged record and replaces the destination after successful read-back. The format rejects unknown versions, missing or extra fields, trailing data, invalid references, and nonfinite numbers. Project streams are limited to 64 KiB, generated meshes to 196,608 tetrahedra and CG to 100,000 iterations. These are file-runner resource limits. The underlying numerical SDK has its own interfaces. Relative tolerance must be in [0, 1), absolute tolerance nonnegative, and at least one must be positive.
+
+A successful solve emits a `NOVA_RESULT 1` header followed by named scalar fields, and optionally a VTK result. Positive heat rates are outward. `residual` is the CG residual of the constrained linear system. `max_free_residual_W` and `balance_defect_W` come from reassembly of the thermal weak form. Failed solves return a nonzero process status and leave any previous VTK result intact. Project and VTK writes use a same-filesystem staging directory. Recovery from whole-machine power loss or an untrusted shared output directory is outside this contract.
+
+## Formulation and verification
+
+The runner uses NOVA's existing P1 tetrahedral diffusion assembly for `−div(k grad T) = Q` and Fourier heat flux `q = −k grad T`. Exterior Neumann data prescribe `q·n = g`; convection prescribes `q·n = h(T−T∞)`. The balance is generated power minus prescribed, convective and fixed-temperature outward power. The adapter calls the FEM routines for flux recovery and reaction accounting.
+
+For the supplied wall, `q_x = (T_hot−T∞)/(L/k + 1/h)`, giving 300 W/m², 75 W through the 0.25 m² cross section, and a 325 K cold surface. The independent verifier reads every exported nodal temperature and cell flux. For the heated wall it uses `T(x) = T_hot + ((QL−g)x − Qx²/2)/k` and `q_x(x) = g − Q(L−x)`. It evaluates cell-centroid temperature and vector-flux RMS errors on four uniform refinements. These sampled norms use equal-volume tetrahedra. The test checks boundary reactions and power separately. [Plane-wall heat equation derivation, Ankara University](https://acikders.ankara.edu.tr/pluginfile.php/206354/mod_resource/content/0/ENE%20305335-Chapter%203%20continues-1.pdf).
+
+~~~sh
+ctest --test-dir build -R 'nova_thermal_project|nova_unit_tests' --output-on-failure
+python verification/verify_thermal_project.py generated build/nova-run examples/projects/convecting_wall.nova
+python verification/benchmark_thermal_project.py build/nova-run examples/projects/convecting_wall.nova 8 16 32
+~~~
+
+The benchmark records end-to-end solve time without VTK export, process peak RSS (Linux KiB), CG iterations and true residual, cold-surface and power error, and energy defect. Each row starts a new process. Supported geometry is a single axis-aligned box with one constant isotropic material. Transient studies, external meshes, electric coupling and material catalogues are outside schema 1. Legacy SDK APIs and checkpoint formats keep their own version contracts.

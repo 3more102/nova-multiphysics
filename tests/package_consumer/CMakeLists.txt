@@ -14,6 +14,9 @@ target_link_libraries(nova_elasticity_consumer PRIVATE NOVA::Core)
 
 include(CTest)
 if(BUILD_TESTING)
+    add_test(NAME nova_installed_thermal_project
+        COMMAND NOVA::Runner solve "${NOVA_PROJECT_EXAMPLE_DIR}/convecting_wall.nova")
+    set_tests_properties(nova_installed_thermal_project PROPERTIES PASS_REGULAR_EXPRESSION "NOVA_RESULT 1")
     add_test(NAME nova_installed_package_consumer COMMAND nova_package_consumer)
     add_test(NAME nova_installed_elasticity_consumer COMMAND nova_elasticity_consumer)
     add_test(NAME nova_installed_adaptive_refinement_consumer COMMAND nova_adaptive_refinement_consumer)
