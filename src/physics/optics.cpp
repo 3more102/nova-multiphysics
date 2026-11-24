@@ -58,6 +58,9 @@ StackResult normal_incidence_stack(double wavelength, double incident, double ex
     // Cascade from the exit backwards. Only decaying propagation factors are used.
     for (std::size_t j = layers.size(); j > 0; --j) {
         const auto& l = layers[j - 1];
+        // A zero-width layer has no propagation or physical interface pair.
+        // Skip before computing interface ratios to avoid catastrophic cancellation.
+        if (l.thickness_m == 0.0) continue;
         const Complex ri = interface_r(l.index, right);
         const Complex den = 1.0 + ri * r;
         if (den == Complex{}) throw std::domain_error("singular stack");
