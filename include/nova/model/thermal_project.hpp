@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nova/fem/conductivity_3d.hpp"
 #include "nova/fem/energy_balance_3d.hpp"
 #include "nova/fem/p1_flux_3d.hpp"
 
