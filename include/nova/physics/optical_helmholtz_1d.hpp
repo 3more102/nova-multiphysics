@@ -1,4 +1,5 @@
 #pragma once
+#include "nova/physics/optics.hpp"
 #include <complex>
 #include <span>
 #include <vector>
@@ -22,5 +23,26 @@ struct Helmholtz1DResult {
 [[nodiscard]] Helmholtz1DResult solve_helmholtz_1d(
     double wavelength_m, double incident_index, double exit_index,
     std::span<const double> nodes_m,
+    std::span<const std::complex<double>> relative_permittivity);
+
+// Scalar field normalized to unit incident scalar amplitude: E_y for TE,
+// Z0*H_y for TM (the TM scalar is normalized independently of E_x).
+// Reflection/transmission use tangential E amplitudes, matching optics.hpp.
+struct ObliqueHelmholtz1DResult {
+    std::vector<std::complex<double>> scalar_field;
+    std::vector<double> cell_absorptance;
+    std::complex<double> reflection;
+    std::complex<double> transmission;
+    double reflectance;
+    double transmittance;
+    double absorptance;
+    double power_balance_residual;
+};
+// Isotropic nonmagnetic passive layers; real positive exterior indices.
+// Angle from normal in radians. Evanescent exit supported; exact exit
+// critical angle and zero TM permittivity are excluded.
+[[nodiscard]] ObliqueHelmholtz1DResult solve_oblique_helmholtz_1d(
+    double wavelength_m, double incident_index, double exit_index,
+    double angle_rad, Polarization polarization, std::span<const double> nodes_m,
     std::span<const std::complex<double>> relative_permittivity);
 } // namespace nova::optics
