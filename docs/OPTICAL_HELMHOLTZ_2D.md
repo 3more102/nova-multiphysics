@@ -46,3 +46,14 @@ electric and magnetic dissipation against the exponential integral, exact
 affine Ez at epsilon=0 and singular Hz rejection, invalid interior edges and
 active material rejection. Run cmake --build <build> then ctest --test-dir
 <build> --output-on-failure. Full CI and numerical results pending.
+
+Independent SciPy reference (separate physical-coordinate polynomial
+interpolation, three-point triangle quadrature, dense LAPACK solve):
+lossless Ez/Hz maximum nodal errors 0.01105535 (52 nodes) and 0.00314519
+(175 nodes), refinement ratio 0.284495; lossy Ez/Hz error 0.00151875
+(297 nodes). Normalized lossy Ez integral 0.323999200 versus 0.324262469
+analytical, Hz 0.144149835 versus 0.144266623 analytical; relative errors
+0.0812% and 0.0810%. Independent backward errors below 2.5e-16.
+An initial x-only refinement failed the intended ratio (0.4398), so the
+regression now refines both axes rather than weakening the tolerance.
+These are independent reference calculations, not execution of NOVA C++.

@@ -9,7 +9,7 @@ using namespace nova::optics;
 using C=std::complex<double>;
 namespace {
 double wave_error(std::size_t nx, ScalarPolarization2D pol, C eps, C mu, bool reverse) {
-    auto rect=nova::fem::make_rectangle_mesh_2d(0,1,0,0.25,nx,2);
+    auto rect=nova::fem::make_rectangle_mesh_2d(0,1,0,0.25,nx,nx/4);
     if (reverse) for (auto& e:rect.mesh.elements) std::swap(e[1],e[2]);
     const double k=2.0;
     const C a=1.0/(pol==ScalarPolarization2D::TE_Ez?mu:eps);
