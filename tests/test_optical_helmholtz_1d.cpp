@@ -19,6 +19,42 @@ Helmholtz1DResult slab(std::size_t count, Complex index, double length) {
     return solve_helmholtz_1d(wavelength,1.0,1.0,nodes,eps);
 }
 
+void exact_zero_permittivity_limit() {
+    // At epsilon=0 the dimensionless equation is E''=0, so P1 is
+    // exact on any mesh. The outgoing exit sets E'=i*nt*t.
+    constexpr double ni=1.3, nt=1.8;
+    constexpr double k0=2*std::numbers::pi_v<double>/wavelength;
+    const Complex I{0,1};
+    for (double length : {0.05, 0.4, 2.0}) {
+        const double L=k0*(length*wavelength);
+        const Complex t=2.0/(1.0+nt/ni-I*nt*L);
+        const Complex r=t*(1.0-I*nt*L)-1.0;
+        for (std::size_t count : {1u, 7u, 31u}) {
+            std::vector<double> nodes(count+1);
+            for (std::size_t j=0;j<=count;++j)
+                nodes[j]=length*wavelength*std::pow(
+                    static_cast<double>(j)/static_cast<double>(count),1.4);
+            const std::vector<Complex> eps(count,Complex{});
+            const auto fem=solve_helmholtz_1d(wavelength,ni,nt,nodes,eps);
+            require(std::abs(fem.transmission-t)<2e-10,"ENZ exact transmission");
+            require(std::abs(fem.reflection-r)<2e-10,"ENZ exact reflection");
+            require(fem.electric_field.size()==nodes.size(),"ENZ field size");
+            require(fem.cell_absorptance.size()==count,"ENZ cell loss size");
+            for (std::size_t j=0;j<nodes.size();++j) {
+                const Complex exact=t*(1.0+I*nt*(k0*nodes[j]-L));
+                require(std::abs(fem.electric_field[j]-exact)<2e-10,
+                        "ENZ exact affine field");
+            }
+            for (double a : fem.cell_absorptance) require(a==0,"ENZ zero cell loss");
+            require(fem.absorptance==0,"ENZ zero absorption");
+            require(std::abs(fem.reflectance-std::norm(r))<2e-10,"ENZ reflectance");
+            require(std::abs(fem.transmittance-nt/ni*std::norm(t))<2e-10,
+                    "ENZ transmittance");
+            require(std::abs(fem.power_balance_residual)<2e-10,"ENZ power balance");
+        }
+    }
+}
+
 void graded_multilayer_reference() {
     // Independent exact propagation of [E,dE/ds], s=k0*x, rather than
     // the scattering cascade used by the existing single-slab tests.
@@ -93,6 +129,7 @@ void graded_multilayer_reference() {
 }
 int main() {
     try {
+        exact_zero_permittivity_limit();
         graded_multilayer_reference();
         const Complex exact = std::exp(Complex{0,2*std::numbers::pi_v<double>*0.73});
         const auto coarse=slab(40,1.0,0.73*wavelength);
