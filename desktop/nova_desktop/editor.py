@@ -64,7 +64,7 @@ class ModelEditor(QWidget):
                     "components in global Cartesian axes."
                 )
                 form.insertRow(1, "Conductivity model", self.material_mode)
-                self.material_mode.currentIndexChanged.connect(self._material_mode_changed)
+                self.material_mode.currentIndexChanged.connect(lambda _index: self._material_mode_changed())
             if page == "Boundaries":
                 table = QGridLayout()
                 form.addRow(table)
