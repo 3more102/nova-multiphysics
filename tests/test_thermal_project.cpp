@@ -111,6 +111,25 @@ NOVA_TEST(thermal_project_anchors_absolute_temperature_using_only_convection) {
 }
 
 
+
+NOVA_TEST(thermal_project_schema_two_accepts_isotropic_material_and_canonicalizes_to_schema_one) {
+    const auto project = fixture();
+    std::ostringstream original;
+    nova::io::write_thermal_project(original, project);
+    auto schema_two = original.str();
+    NOVA_REQUIRE(schema_two.rfind("NOVA_PROJECT 1\\n", 0) == 0);
+    schema_two.replace(0, 14, "NOVA_PROJECT 2");
+
+    std::istringstream input(schema_two);
+    const auto restored = nova::io::read_thermal_project(input);
+    NOVA_REQUIRE(!restored.material.conductivity_tensor_w_m_k.has_value());
+    NOVA_REQUIRE(restored.material.conductivity_w_m_k == project.material.conductivity_w_m_k);
+
+    std::ostringstream canonical;
+    nova::io::write_thermal_project(canonical, restored);
+    NOVA_REQUIRE(canonical.str() == original.str());
+}
+
 NOVA_TEST(thermal_project_schema_two_round_trips_anisotropic_tensor_and_solves_exact_off_diagonal_case) {
     auto p = fixture();
     const nova::fem::SymmetricTensor3D full_tensor{2.0, 3.0, 4.0, 0.25, -0.15, 0.10};
