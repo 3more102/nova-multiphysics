@@ -54,8 +54,35 @@ class NodalField:
                     elif axis[i] != coordinate:
                         raise ValueError("Result coordinates disagree with the structured mesh.")
             expect(f"CELLS {cells} {5 * cells}")
+            referenced = bytearray(count)
+            cube_counts = bytearray(math.prod(divisions))
             for _ in range(cells):
-                line()
+                words = line().split()
+                if len(words) != 5 or words[0] != "4":
+                    raise ValueError("Invalid tetrahedral connectivity record.")
+                try:
+                    nodes = tuple(int(word, 10) for word in words[1:])
+                except ValueError as error:
+                    raise ValueError("Invalid tetrahedral node index.") from error
+                if len(set(nodes)) != 4 or any(node < 0 or node >= count for node in nodes):
+                    raise ValueError("Tetrahedron contains duplicate or out-of-range node indices.")
+                grid = tuple(
+                    (node % shape[0], node // shape[0] % shape[1],
+                     node // (shape[0] * shape[1]))
+                    for node in nodes
+                )
+                lower = tuple(min(point[axis] for point in grid) for axis in range(3))
+                if any(max(point[axis] for point in grid) - lower[axis] != 1
+                       for axis in range(3)):
+                    raise ValueError("Tetrahedron does not occupy one structured mesh cell.")
+                cube = lower[0] + divisions[0] * (lower[1] + divisions[1] * lower[2])
+                cube_counts[cube] += 1
+                if cube_counts[cube] > 6:
+                    raise ValueError("Structured mesh cell contains more than six tetrahedra.")
+                for node in nodes:
+                    referenced[node] = 1
+            if not all(referenced) or any(number != 6 for number in cube_counts):
+                raise ValueError("Tetrahedral connectivity does not cover the structured mesh.");
             expect(f"CELL_TYPES {cells}")
             for _ in range(cells):
                 expect("10")
