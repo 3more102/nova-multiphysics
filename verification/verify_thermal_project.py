@@ -108,6 +108,78 @@ def generated(runner, fixture, work):
         previous = t_rms, q_rms
 
 
+def cube_mean_reference(length, k, source, cutoff=127):
+    """Positive volume-mean sine series; upper bound includes every omitted mode."""
+    odd = range(1, cutoff + 1, 2)
+    terms = (1.0 / (a*a * b*b * c*c * (a*a + b*b + c*c)) for a in odd for b in odd for c in odd)
+    scale = source * length**2 / k
+    lower = 512 * scale * math.fsum(terms) / math.pi**8
+    tail = 8 * scale / (math.pi**4 * cutoff**3)
+    return lower, lower + tail
+
+
+def cube_fd_mean(n, length, k, source):
+    """Independent seven-point FD solve using SciPy's orthonormal sine transform."""
+    import numpy as np
+    from scipy.fft import dstn, idstn
+
+    h = length / n
+    mode = np.arange(1, n, dtype=float)
+    axis = 4 * np.sin(np.pi * mode / (2 * n))**2 / h**2
+    eigenvalues = axis[:, None, None] + axis[None, :, None] + axis[None, None, :]
+    rhs = np.full((n - 1, n - 1, n - 1), source / k)
+    rise = idstn(dstn(rhs, type=1, norm="ortho") / eigenvalues, type=1, norm="ortho")
+    # All boundary rises are zero in the tensor-product trapezoidal integral.
+    return float(np.sum(rise, dtype=float) / n**3)
+
+
+def cube(runner, fixture, work, check_scipy=False):
+    length, k, source, boundary = 0.5, 2.0, 240.0, 300.0
+    lower, upper = cube_mean_reference(length, k, source)
+    print(f"Continuum mean rise bracket [{lower:.12g}, {upper:.12g}] K")
+    base = fixture.read_text(encoding="ascii")
+    mesh_record = "structured_tet 16 16 16"
+    require(base.count(mesh_record) == 1, "Expected one 16-subdivision cube mesh record")
+    previous_errors = None
+    for n in (4, 8, 16):
+        path = work / "cube.nova"
+        path.write_text(base.replace(mesh_record, f"structured_tet {n} {n} {n}"), encoding="ascii")
+        metrics, (points, cells, temperature, _) = solve(runner, path, work / "cube.vtk")
+        boundary_error = max(abs(t - boundary) for point, t in zip(points, temperature)
+                             if any(x in (0, length) for x in point))
+        near(boundary_error, 0, 2e-8, "All fixed boundary nodes [K]")
+        # An affine P1 field integrates exactly as the mean of its four vertices.
+        # The structured cube contains only equal-volume tetrahedra.
+        mean_rise = math.fsum(math.fsum(temperature[i] - boundary for i in cell) / 4
+                              for cell in cells) / len(cells)
+        errors = (lower - mean_rise, upper - mean_rise)
+        require(errors[0] > 0, f"Expected refinement from below, observed {mean_rise:g} K")
+        near(metrics["generated_W"], source * length**3, 2e-8, "Cube heat generation [W]")
+        near(metrics["fixed_out_W"], source * length**3, 2e-8, "Six-face outward reaction [W]")
+        near(metrics["balance_defect_W"], 0, 2e-8, "Cube heat balance [W]")
+        print(f"cube n={n} mean_rise_K={mean_rise:.12g} error_upper_K={errors[1]:.8g} "
+              f"fixed_out_W={metrics['fixed_out_W']:.12g} balance_W={metrics['balance_defect_W']:.6g}")
+        if previous_errors:
+            # Worst-case order over both continuum error intervals.
+            order_lower = math.log2(previous_errors[0] / errors[1])
+            require(order_lower > 1.65, f"Cube mean convergence order lower bound {order_lower}")
+            print(f"mean_order_lower={order_lower:.7g}")
+        previous_errors = errors
+    require(errors[1] < 0.025, "Finest cube mean exceeds its 0.025 K error allowance")
+    if check_scipy:
+        previous = None
+        for n in (16, 32, 64):
+            fd = cube_fd_mean(n, length, k, source)
+            require(fd < lower, "FD cube reference exceeds continuum bracket")
+            if previous is not None:
+                require(math.log2((lower - previous) / (upper - fd)) > 1.8, "FD cube refinement")
+            if n == 16:
+                near(fd, mean_rise, 0.025, "Independent FD and FEM mean temperature [K]")
+            print(f"SciPy FD n={n} mean_rise_K={fd:.12g} error_upper_K={upper-fd:.8g}")
+            previous = fd
+        require(upper - previous < 0.002, "Finest FD cube mean exceeds 0.002 K")
+
+
 def persistence(runner, fixture, work):
     src, dst = work / "input.nova", work / "saved model.nova"
     vtk = work / "result.vtk"
@@ -158,10 +230,16 @@ def persistence(runner, fixture, work):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("suite", choices=("wall", "generated", "persistence"))
+    parser.add_argument("suite", choices=("wall", "generated", "cube", "persistence"))
     parser.add_argument("runner", type=Path)
     parser.add_argument("fixture", type=Path)
+    parser.add_argument("--scipy", action="store_true", help="Also solve the cube with SciPy finite differences")
     args = parser.parse_args()
+    if args.scipy and args.suite != "cube":
+        parser.error("--scipy applies to the cube reference")
     with tempfile.TemporaryDirectory() as directory:
-        {"wall": wall, "generated": generated, "persistence": persistence}[args.suite](
-            args.runner.resolve(), args.fixture.resolve(), Path(directory))
+        inputs = (args.runner.resolve(), args.fixture.resolve(), Path(directory))
+        if args.suite == "cube":
+            cube(*inputs, check_scipy=args.scipy)
+        else:
+            {"wall": wall, "generated": generated, "persistence": persistence}[args.suite](*inputs)

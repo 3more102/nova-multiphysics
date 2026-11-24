@@ -1,0 +1,16 @@
+NOVA_PROJECT 1
+# Synthetic verification values, SI. All six surfaces remain at 300 K.
+project heated-cube
+geometry cube box 0.5 0.5 0.5
+mesh tets cube structured_tet 16 16 16
+material homogeneous isotropic 2
+study steady steady_heat tets homogeneous
+source steady 240
+solver steady cg jacobi 2000 1e-13 1e-14
+boundary steady cube xmin temperature 300
+boundary steady cube xmax temperature 300
+boundary steady cube ymin temperature 300
+boundary steady cube ymax temperature 300
+boundary steady cube zmin temperature 300
+boundary steady cube zmax temperature 300
+end

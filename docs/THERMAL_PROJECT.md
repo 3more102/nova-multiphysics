@@ -64,3 +64,5 @@ python verification/benchmark_thermal_project.py build/nova-run examples/project
 ~~~
 
 The benchmark records end-to-end solve time without VTK export, process peak RSS (Linux KiB), CG iterations and true residual, cold-surface and power error, and energy defect. Each row starts a new process. Supported geometry is a single axis-aligned box with one constant isotropic material. Transient studies, external meshes, electric coupling and material catalogues are outside schema 1. Legacy SDK APIs and checkpoint formats keep their own version contracts.
+
+The [internally heated cube verification](verification/heated-cube.md) checks genuinely three-dimensional conduction against a bounded continuum series and an independent SciPy finite-difference calculation. Open `internally_heated_cube.nova` from the installed projects directory to reproduce the study.
