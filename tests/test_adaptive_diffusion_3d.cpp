@@ -208,7 +208,7 @@ NOVA_TEST(adaptive_diffusion_3d_transfers_prescribed_neumann_faces) {
     }
 }
 
-NOVA_TEST(adaptive_diffusion_3d_rejects_unrepresented_physics) {
+NOVA_TEST(adaptive_diffusion_3d_rejects_invalid_parameter_and_material_selection) {
     const auto box = nova::fem::make_box_mesh_3d(
         0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
     auto problem = make_wall(box, 1.0);
@@ -216,7 +216,8 @@ NOVA_TEST(adaptive_diffusion_3d_rejects_unrepresented_physics) {
         (void)nova::fem::solve_adaptive_diffusion_step_3d(problem, 0.0);
     }));
     auto modified = problem;
-    modified.cell_diffusivity.clear();
+    // Keep the cellwise coefficient while adding a spatial coefficient: the
+    // base solver must reject selecting two material representations.
     modified.diffusivity = [](double, double, double) { return 2.0; };
     NOVA_REQUIRE(rejects([&] {
         (void)nova::fem::solve_adaptive_diffusion_step_3d(modified, 0.5);
