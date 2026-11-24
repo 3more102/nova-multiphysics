@@ -50,4 +50,4 @@ Recorded using Debian 13 x86-64, GCC 14.2 Release, Python 3.12.14 and SciPy 1.17
 python verification/verify_thermal_project.py cube build/nova-run examples/projects/internally_heated_cube.nova --scipy
 ~~~
 
-The evidence covers a homogeneous stationary cube, a global mean and boundary reactions. It does not establish experimental accuracy or local peak-temperature tolerances for other geometries.
+The evidence covers a homogeneous stationary cube, its global mean, nodal inversion symmetry, center-peak location, and integrated boundary reactions. It does not establish experimental accuracy or local peak-temperature tolerances for other geometries.
