@@ -35,27 +35,34 @@ original problem and solution without a redundant second linear solve.
 ## Supported boundary and material conditions
 
 - Straight-sided, conforming first-order tetrahedral meshes.
-- Positive scalar **cellwise constant conductivity** only.
+- Exactly one conductivity representation accepted by the base solver:
+  spatial scalar, spatial symmetric positive-definite tensor, cellwise
+  positive scalar, or cellwise symmetric positive-definite tensor.
+- Tensor components use global Cartesian axes; all six independent symmetric
+  entries, including off-diagonal terms, are retained.
 - An optional spatial source callback, or an absent (zero) source.
 - Per-vertex Dirichlet constraints and facewise Dirichlet functions.
   A boundary triangle whose three nodes are explicitly constrained (and
-  which has no separately prescribed face flux) has a fully prescribed P1
-  trace. Its natural-boundary residual is excluded, and any new edge-midpoint
-  DOFs on such triangles receive the linear midpoint value of their two
-  prescribed parents. A face with only some constrained vertices remains a
-  pointwise-constraint case and is not reclassified as fully Dirichlet.
-- Selected Neumann outward flux functions.
-- All remaining exterior faces insulated, with their zero-flux mismatch
+  which has no separately prescribed natural-boundary model) has a fully
+  prescribed P1 trace. Its natural-boundary residual is excluded, and any new
+  edge-midpoint DOFs on such triangles receive the linear midpoint value of
+  their two prescribed parents. A face with only some constrained vertices
+  remains a pointwise-constraint case and is not reclassified as fully Dirichlet.
+- Selected Neumann outward-flux functions and Robin transfer/ambient functions.
+- All remaining exterior faces are insulated, with their zero-flux mismatch
   included explicitly in each estimator.
-- All boundary callbacks are carried to children through original-face
-  ownership. On a subdivided face, the callback is evaluated at the fine
-  quadrature coordinates.
+- Dirichlet, Neumann and Robin callbacks are carried to children through
+  original-face ownership. On a subdivided face, callbacks are evaluated at
+  the fine quadrature coordinates.
+- Cellwise scalar/tensor material data are copied from each parent tetrahedron
+  to all of its children. Spatial material callbacks remain attached to the
+  refined problem and are re-evaluated by the FEM quadrature.
 
-Cellwise source vectors, spatial conductivity, anisotropic tensors,
-Robin faces, higher-order bases, curved boundary geometry, and automatic
-multicycle stopping are not implemented by this wrapper. They are rejected
-rather than silently omitted. The caller may feed `refined_problem`
-into a later cycle if the model remains in this supported subset.
+Cellwise source vectors, higher-order bases, curved boundary geometry, and
+automatic multicycle stopping are not implemented by this wrapper. Cellwise
+source vectors are rejected rather than silently omitted. The caller may feed
+`refined_problem` into a later cycle if the model remains in this supported
+subset.
 
 The estimator is a **heuristic spatial error indicator**, not a certified
 bound on the continuum solution. Refinement does not guarantee a lower
@@ -117,3 +124,19 @@ finite data, unit-cube volume conservation, retained Dirichlet values and
 the increase in resolution. The demo fails if the independently measured
 manufactured energy error does not decrease. This is a representative
 verification case, not a guarantee for arbitrary adaptive refinements.
+
+
+### Tensor and Robin regression coverage
+
+The adaptive workflow now reconstructs the physical cell flux through the same
+material evaluator used by the base FEM solve, then feeds those fluxes into the
+residual estimator. This preserves off-diagonal anisotropic conductivity in
+interior-face jumps instead of approximating a tensor by a scalar coefficient.
+Regression coverage includes an affine field with a non-diagonal tensor and
+its exact flux, plus a locally refined heterogeneous cell-tensor model with
+both Robin and Neumann boundary faces. Parent-to-child tensor transfer and
+both boundary callback transfers are checked explicitly.
+
+The indicator remains heuristic. For spatially varying coefficients, the
+current cell residual does not include within-cell coefficient-gradient terms,
+and the estimator is not a certified continuum error bound.
