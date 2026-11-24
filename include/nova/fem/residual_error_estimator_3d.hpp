@@ -55,6 +55,18 @@ struct DiffusionResidualIndicators3D {
 // residuals, within-cell coefficient gradients and tensor materials are
 // omitted by this four-argument overload; neither overload is a certified
 // error bound. No unlabeled or Dirichlet boundary face is automatically added.
+// Uses caller-reconstructed physical P1 cell fluxes. This overload supports
+// scalar or tensor materials, including spatially varying conductivity, when
+// the supplied fields come from evaluate_p1_tetrahedral_flux_3d().
+[[nodiscard]] DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
+    const TetrahedralMesh3D& mesh,
+    std::span<const double> nodal_values,
+    std::span<const P1TetrahedralFlux3D> cell_fields,
+    const std::function<double(double, double, double)>& source,
+    std::span<const NeumannResidualFace3D> natural_boundary_faces,
+    std::span<const RobinResidualFace3D> robin_boundary_faces
+);
+
 [[nodiscard]] DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     const TetrahedralMesh3D& mesh,
     std::span<const double> nodal_values,
