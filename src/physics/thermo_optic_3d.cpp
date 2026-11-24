@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace nova::physics {
 namespace {
@@ -122,15 +123,17 @@ ThermoOptic3DResult solve_thermo_optic_3d(
             relative_power_change,
             absorbed_power
         });
-        result.photothermal = std::move(coupled);
-        result.optical_materials = std::move(materials);
 
         if (max_temperature_residual <= problem.temperature_tolerance_kelvin &&
             relative_power_change <= problem.relative_absorbed_power_tolerance) {
+            result.photothermal = std::move(coupled);
+            result.optical_materials = std::move(materials);
             result.converged = true;
             return result;
         }
 
+        // Consume the next field before moving the coupled result into the
+        // persistent return object; moving first would invalidate this reference.
         for (std::size_t node = 0; node < current_temperature.size(); ++node) {
             current_temperature[node] += problem.relaxation_factor *
                 (next_temperature[node] - current_temperature[node]);
@@ -139,6 +142,8 @@ ThermoOptic3DResult solve_thermo_optic_3d(
             }
         }
         previous_absorbed_power = absorbed_power;
+        result.photothermal = std::move(coupled);
+        result.optical_materials = std::move(materials);
     }
 
     return result;
