@@ -29,6 +29,9 @@ add_library(nova_core
     src/linalg/incomplete_cholesky.cpp
     src/linalg/bicgstab.cpp
     src/linalg/gmres.cpp
+    src/time/implicit_formula.cpp
+    src/physics/package_transport.cpp
+    src/physics/package_3d.cpp
     src/nonlinear/newton_solver.cpp
     src/fem/mesh2d.cpp
     src/fem/mesh3d.cpp
@@ -172,6 +175,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_conservative_face_heat_3d.cpp
         tests/test_linear_elasticity_3d.cpp
         tests/test_thermoelasticity_3d.cpp
+        tests/test_package_3d.cpp
         tests/test_electrostatics_3d.cpp
         tests/test_electrothermal_3d.cpp
         tests/test_nonlinear_electrothermal_3d.cpp

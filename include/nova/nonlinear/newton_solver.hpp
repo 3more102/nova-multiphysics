@@ -33,6 +33,7 @@ struct NewtonOptions {
     NewtonLinearSolver linear_solver{NewtonLinearSolver::GMRES};
     linalg::GmresOptions gmres{};
     linalg::SolverOptions bicgstab{};
+    double relative_residual_tolerance{}; // fraction of initial residual, optional
 };
 
 struct NewtonResult {

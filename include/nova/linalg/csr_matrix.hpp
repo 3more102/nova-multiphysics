@@ -44,6 +44,11 @@ public:
     [[nodiscard]] double at(std::size_t row, std::size_t column) const;
     [[nodiscard]] std::vector<double> diagonal() const;
 
+    // Principal block [first,first+count) with diagonal left/right scaling.
+    // Scale arrays are full-system length. Traverses only the selected rows.
+    [[nodiscard]] CsrMatrix scaled_block(std::size_t first, std::size_t count,
+        std::span<const double> left, std::span<const double> right) const;
+
     // Sparse linear combination; merges sorted CSR rows in O(nnz(A)+nnz(B)).
     [[nodiscard]] static CsrMatrix linear_combination(
         const CsrMatrix& a, double scale_a,

@@ -81,6 +81,26 @@ CsrMatrix CsrMatrix::from_sorted_rows(
     return result;
 }
 
+CsrMatrix CsrMatrix::scaled_block(std::size_t first, std::size_t count,
+    std::span<const double> left, std::span<const double> right) const {
+    if (rows_!=columns_ || first>rows_ || count>rows_-first ||
+        left.size()!=rows_ || right.size()!=columns_)
+        throw std::invalid_argument("Invalid CSR block range or scaling dimensions.");
+    std::vector<std::size_t> offsets{0}, columns;
+    std::vector<double> values;
+    offsets.reserve(count+1);
+    for (std::size_t row=first;row<first+count;++row) {
+        for (auto k=row_offsets_[row];k<row_offsets_[row+1];++k) {
+            const auto col=column_indices_[k];
+            if (col<first || col>=first+count) continue;
+            const double v=left[row]*values_[k]*right[col];
+            if (v!=0) { columns.push_back(col-first); values.push_back(v); }
+        }
+        offsets.push_back(values.size());
+    }
+    return from_sorted_rows(count,count,std::move(offsets),std::move(columns),std::move(values));
+}
+
 std::size_t CsrMatrix::rows() const noexcept {
     return rows_;
 }
