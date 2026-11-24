@@ -13,8 +13,8 @@ namespace nova::fem {
 //
 // Supports any one of the scalar/tensor spatial or cellwise conductivity
 // representations accepted by ScalarDiffusion3DProblem, with a spatial source
-// callback (or zero source). Dirichlet, Neumann, Robin and insulated exterior
-// faces are transferred. Cellwise source vectors remain unsupported.
+// callback (or zero source), with optional additive cellwise source vectors.
+// Dirichlet, Neumann, Robin and insulated exterior faces are transferred.
 // Flux-jump indicators use the full reconstructed physical P1 cell flux.
 //
 // A zero indicator field causes no refinement and no redundant second solve.
