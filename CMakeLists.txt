@@ -213,6 +213,11 @@ if(NOVA_BUILD_TESTS)
     nova_enable_warnings(nova_optics_reference_tests)
     nova_assert_unique_target_sources(nova_optics_reference_tests)
     add_test(NAME nova_optics_reference_tests COMMAND nova_optics_reference_tests)
+    add_executable(nova_polarization_reference_tests tests/test_polarization.cpp)
+    target_link_libraries(nova_polarization_reference_tests PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_polarization_reference_tests)
+    nova_assert_unique_target_sources(nova_polarization_reference_tests)
+    add_test(NAME nova_polarization_reference_tests COMMAND nova_polarization_reference_tests)
     # Positive and negative configure tests verify the source-duplication guard.
     add_test(NAME nova_source_guard_accepts_unique COMMAND "${CMAKE_COMMAND}"
         -S "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/source_guard_fixture"
