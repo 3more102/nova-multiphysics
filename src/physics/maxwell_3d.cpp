@@ -29,13 +29,23 @@ EdgeMap edge_map(const fem::TetrahedralMesh3D& mesh) {
     return map;
 }
 MaxwellSystem3D make_topology(const fem::TetrahedralMesh3D& mesh,
-    const EdgeMap& map,bool pec_on_exterior) {
+    const EdgeMap& map,std::span<const fem::BoundaryFace3D> pec_faces) {
     std::set<fem::Edge3D> pec;
-    if (pec_on_exterior)
-        for (const auto& face : fem::extract_boundary_faces_3d(mesh))
+    if (!pec_faces.empty()) {
+        std::set<fem::BoundaryFace3D> available;
+        for (auto face : fem::extract_boundary_faces_3d(mesh)) {
+            std::sort(face.begin(),face.end());
+            available.insert(face);
+        }
+        for (auto face : pec_faces) {
+            std::sort(face.begin(),face.end());
+            if (available.erase(face)!=1)
+                throw std::invalid_argument("Maxwell PEC face is duplicate or not an exterior face.");
             for (std::size_t i=0;i<3;++i)
                 for (std::size_t j=i+1;j<3;++j)
-                    pec.insert({std::min(face[i],face[j]),std::max(face[i],face[j])});
+                    pec.insert({face[i],face[j]});
+        }
+    }
     MaxwellSystem3D out;
     const auto invalid=std::numeric_limits<std::size_t>::max();
     for (const auto& [edge,id] : map) {
@@ -62,6 +72,18 @@ MaxwellSystem3D assemble_maxwell_3d(
     const fem::TetrahedralMesh3D& mesh,
     std::span<const MaxwellCellMaterial3D> materials,
     double vacuum_wavenumber, bool pec_on_exterior) {
+    if (pec_on_exterior) {
+        const auto faces=fem::extract_boundary_faces_3d(mesh);
+        return assemble_maxwell_3d_selective_pec(mesh,materials,vacuum_wavenumber,faces);
+    }
+    return assemble_maxwell_3d_selective_pec(mesh,materials,vacuum_wavenumber,{});
+}
+
+MaxwellSystem3D assemble_maxwell_3d_selective_pec(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellCellMaterial3D> materials,
+    double vacuum_wavenumber,
+    std::span<const fem::BoundaryFace3D> pec_faces) {
     mesh.validate();
     const double k2=vacuum_wavenumber*vacuum_wavenumber;
     if (!(vacuum_wavenumber>0.0) || !(k2>0.0) || !std::isfinite(k2)
@@ -72,7 +94,7 @@ MaxwellSystem3D assemble_maxwell_3d(
             || !(m.relative_permeability>0.0) || !std::isfinite(m.relative_permeability))
             throw std::invalid_argument("Invalid passive Maxwell cell material.");
     const auto map=edge_map(mesh);
-    auto out=make_topology(mesh,map,pec_on_exterior);
+    auto out=make_topology(mesh,map,pec_faces);
     const auto n=out.free_edges.size();
     const auto invalid=std::numeric_limits<std::size_t>::max();
     const auto reduced=make_reduced(out);
@@ -269,7 +291,7 @@ MaxwellCavityMatrices3D assemble_maxwell_cavity_3d(
             || !(m.relative_permeability>0.0) || !std::isfinite(m.relative_permeability))
             throw std::invalid_argument("Cavity requires lossless positive isotropic materials.");
     const auto map=edge_map(mesh);
-    auto topology=make_topology(mesh,map,true);
+    auto topology=make_topology(mesh,map,fem::extract_boundary_faces_3d(mesh));
     const auto reduced=make_reduced(topology);
     const auto invalid=std::numeric_limits<std::size_t>::max();
     const auto n=topology.free_edges.size();
