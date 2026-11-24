@@ -58,7 +58,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python desktop/tests/test_desktop.py "${{ runner.temp }}/nova-sdk/bin"
 
-      - name: Check installed heated cube against independent SciPy finite differences
+      - name: Check installed heated cube against SciPy nodal and independent cell-FV references
         if: runner.os == 'Linux'
         run: |
           python -m pip install "scipy==1.17.0"
