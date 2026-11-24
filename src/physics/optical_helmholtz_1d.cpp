@@ -118,7 +118,8 @@ ObliqueHelmholtz1DResult solve_oblique_helmholtz_1d(
     if (!std::isfinite(b2)) throw std::overflow_error("nonfinite transverse wavevector");
     const double qi=ni*std::cos(angle);
     const C qt=std::sqrt(C{et-b2,0.0});
-    if (qt==C{}) throw std::domain_error("exact exit critical angle unsupported");
+    // At the exit critical angle qt=0: the limiting outgoing field is
+    // constant in the half space, so its normal derivative and flux vanish.
     // Scalar flux coefficient: q for TE and q/epsilon for TM.
     const double ai=tm?qi/ei:qi;
     const C at=tm?qt/et:qt;

@@ -25,6 +25,51 @@ ObliqueHelmholtz1DResult run(double ni,double nt,double angle,Polarization pol,
     }
     return solve_oblique_helmholtz_1d(wavelength,ni,nt,angle,pol,nodes,eps);
 }
+// Independent exact critical-angle solution in a uniform exit-matched slab.
+// The scalar field is identically 2 and the outgoing flux vanishes.
+void critical_exit_limit() {
+    const double ni=1.5, theta=0.7, nt=ni*std::sin(theta);
+    std::vector<double> nodes;
+    for(std::size_t j=0;j<=80;++j)
+        nodes.push_back(0.37*wavelength*static_cast<double>(j)/80.0);
+    for(auto pol:{Polarization::te,Polarization::tm}) {
+        const bool tm=pol==Polarization::tm;
+        for(auto material:{Complex{nt*nt,0},Complex{2.1,0.3}}) {
+            const std::vector<Complex> eps(80,material);
+            const auto exact=solve_oblique_helmholtz_1d(wavelength,ni,nt,
+                theta,pol,nodes,eps);
+            require(exact.transmittance==0,"critical exit has zero normal flux");
+            require(std::abs(exact.power_balance_residual)<1e-9,
+                "critical exit power balance");
+            if(material.imag()==0) {
+                require(std::abs(exact.reflection-(tm?-1.0:1.0))<1e-9,
+                    "critical exit exact reflected amplitude");
+                require(std::abs(exact.transmission-(tm?0.0:2.0))<1e-9,
+                    "critical exit tangential electric amplitude");
+                require(exact.absorptance==0,"lossless critical exit absorption");
+                for(auto u:exact.scalar_field)
+                    require(std::abs(u-2.0)<1e-9,"critical exit constant scalar field");
+            } else {
+                require(exact.absorptance>0 && exact.absorptance<1,
+                    "lossy critical exit absorbs power");
+                for(double a:exact.cell_absorptance)
+                    require(a>=0,"critical exit passive cell loss");
+            }
+            for(double side:{-1.0,1.0}) {
+                const auto near=solve_oblique_helmholtz_1d(wavelength,ni,nt,
+                    theta+side*1e-9,pol,nodes,eps);
+                require(std::abs(near.reflection-exact.reflection)<5e-4 &&
+                    std::abs(near.transmission-exact.transmission)<5e-4 &&
+                    std::abs(near.absorptance-exact.absorptance)<5e-4,
+                    "continuous amplitude and absorption across exit critical angle");
+                require(std::abs(near.power_balance_residual)<1e-9,
+                    "near-critical exit power balance");
+                require(side<0?near.transmittance>0:near.transmittance==0,
+                    "propagating versus evanescent exit flux");
+            }
+        }
+    }
+}
 void reciprocity_and_normal_limit(std::span<const Layer> layers) {
     constexpr double ni=1.3, nt=1.8, angle=0.62;
     const double reverse_angle=std::asin(ni*std::sin(angle)/nt);
@@ -115,6 +160,7 @@ int main() {
         try { (void)solve_oblique_helmholtz_1d(wavelength,1,1,-0.2,Polarization::te,x,e); }
         catch(const std::invalid_argument&) { rejected=true; }
         require(rejected,"reject negative incidence angle");
+        critical_exit_limit();
         std::cout<<"NOVA polarized oblique Helmholtz FEM tests passed\n";
     } catch(const std::exception& e) {
         std::cerr<<e.what()<<'\n'; return 1;
