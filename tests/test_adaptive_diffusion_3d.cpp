@@ -535,6 +535,29 @@ NOVA_TEST(adaptive_diffusion_3d_transfers_additive_cell_source_to_children) {
                  result.refined_problem.mesh.elements.size());
     NOVA_REQUIRE_NEAR(result.refined_problem.source(0.2, 0.3, 0.4), 1.0, 1.0e-14);
 
+    // Independently verify h_K * ||f_spatial + f_cell||_L2(K) for the
+    // piecewise-constant cell source plus the constant spatial source.
+    const auto coarse_quality = nova::fem::evaluate_mesh_quality_3d(problem.mesh);
+    NOVA_REQUIRE(result.coarse_indicators.cell_residual_errors.size() ==
+                 problem.mesh.elements.size());
+    for (std::size_t cell = 0; cell < problem.mesh.elements.size(); ++cell) {
+        const auto& tetra = problem.mesh.elements[cell];
+        double diameter = 0.0;
+        for (std::size_t i = 0; i < 4; ++i) {
+            for (std::size_t j = i + 1; j < 4; ++j) {
+                const auto& a = problem.mesh.nodes[tetra[i]];
+                const auto& b = problem.mesh.nodes[tetra[j]];
+                diameter = std::max(diameter, std::hypot(
+                    b.x - a.x, b.y - a.y, b.z - a.z));
+            }
+        }
+        const double source_value = 1.0 + problem.cell_source[cell];
+        const double expected = diameter *
+            std::sqrt(coarse_quality.elements[cell].volume) * source_value;
+        NOVA_REQUIRE_NEAR(
+            result.coarse_indicators.cell_residual_errors[cell], expected, 1.0e-10);
+    }
+
     const auto& refinement = result.adaptation.refinement;
     NOVA_REQUIRE(refinement.parent_elements.size() ==
                  result.refined_problem.cell_source.size());
