@@ -111,7 +111,7 @@ NOVA_TEST(thermal_project_anchors_absolute_temperature_using_only_convection) {
 }
 
 
-NOVA_TEST(thermal_project_schema_two_round_trips_anisotropic_tensor_and_solves_exact_diagonal_case) {
+NOVA_TEST(thermal_project_schema_two_round_trips_anisotropic_tensor_and_solves_exact_off_diagonal_case) {
     auto p = fixture();
     const nova::fem::SymmetricTensor3D full_tensor{2.0, 3.0, 4.0, 0.25, -0.15, 0.10};
     p.material.conductivity_tensor_w_m_k = full_tensor;
