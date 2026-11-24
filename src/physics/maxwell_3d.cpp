@@ -145,4 +145,100 @@ MaxwellSolution3D solve_maxwell_3d(
     return out;
 }
 
+
+namespace {
+// SI vacuum constants. c is exact; epsilon0 uses the 2018 CODATA value.
+// mu0 follows from epsilon0*mu0*c^2=1.
+constexpr double light_speed=299792458.0;
+constexpr double vacuum_epsilon=8.8541878128e-12;
+constexpr double vacuum_mu=1.0/(vacuum_epsilon*light_speed*light_speed);
+
+double checked_omega(const MaxwellCellMaterial3D& m,double k) {
+    const double omega=k*light_speed;
+    if (!(omega>0.0) || !std::isfinite(omega) || !finite(m.relative_permittivity)
+        || m.relative_permittivity.imag()<0.0 || !(m.relative_permeability>0.0)
+        || !std::isfinite(m.relative_permeability))
+        throw std::invalid_argument("Invalid Maxwell field material or frequency.");
+    return omega;
+}
+}
+
+MaxwellFieldSample3D evaluate_maxwell_field_3d(
+    const fem::NedelecTetrahedron3D& cell,
+    const std::array<Complex,6>& coefficients,
+    const MaxwellCellMaterial3D& material, double vacuum_wavenumber,
+    double r,double s,double t) {
+    const double omega=checked_omega(material,vacuum_wavenumber);
+    const double magnetic_scale=omega*vacuum_mu*material.relative_permeability;
+    if (!(magnetic_scale>0.0) || !std::isfinite(magnetic_scale))
+        throw std::overflow_error("Invalid magnetic field scale.");
+    const auto basis=fem::evaluate_nedelec_basis_3d(cell,r,s,t);
+    MaxwellFieldSample3D out;
+    ComplexVector3D curl{};
+    for (std::size_t e=0;e<6;++e) {
+        if (!finite(coefficients[e])) throw std::invalid_argument("Nonfinite edge coefficient.");
+        for (std::size_t d=0;d<3;++d) {
+            out.electric_field[d]+=coefficients[e]*basis[e][d];
+            curl[d]+=coefficients[e]*cell.curls[e][d];
+        }
+    }
+    for (std::size_t d=0;d<3;++d) {
+        out.magnetic_field[d]=curl[d]/Complex(0.0,magnetic_scale);
+        if (!finite(out.electric_field[d]) || !finite(out.magnetic_field[d]))
+            throw std::overflow_error("Maxwell field reconstruction overflow.");
+    }
+    for (std::size_t d=0;d<3;++d) {
+        const auto j=(d+1)%3, k=(d+2)%3;
+        out.time_averaged_poynting[d]=0.5*std::real(
+            out.electric_field[j]*std::conj(out.magnetic_field[k])
+           -out.electric_field[k]*std::conj(out.magnetic_field[j]));
+        if (!std::isfinite(out.time_averaged_poynting[d]))
+            throw std::overflow_error("Maxwell Poynting flux overflow.");
+    }
+    if (material.relative_permittivity.imag()>0.0) {
+        double intensity=0.0;
+        for (auto z : out.electric_field) intensity+=std::norm(z);
+        out.absorbed_power_density=0.5*omega*vacuum_epsilon
+            *material.relative_permittivity.imag()*intensity;
+        if (!std::isfinite(out.absorbed_power_density))
+            throw std::overflow_error("Maxwell dielectric loss overflow.");
+    }
+    return out;
+}
+
+std::vector<double> integrate_maxwell_absorption_3d(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellCellMaterial3D> materials,
+    double vacuum_wavenumber,
+    const MaxwellSystem3D& system, std::span<const Complex> edge_field) {
+    mesh.validate();
+    const auto map=edge_map(mesh);
+    if (materials.size()!=mesh.elements.size() || map.size()!=system.edges.size()
+        || edge_field.size()!=map.size())
+        throw std::invalid_argument("Maxwell absorption dimensions mismatch.");
+    for (const auto& [edge,id] : map)
+        if (system.edges[id]!=edge)
+            throw std::invalid_argument("Maxwell absorption edge ordering mismatch.");
+    // Symmetric four-point tetrahedral rule, degree two, positive weights.
+    constexpr double a=0.5854101966249685, b=0.1381966011250105;
+    constexpr std::array<std::array<double,3>,4> points{{
+        {b,b,b},{a,b,b},{b,a,b},{b,b,a}
+    }};
+    std::vector<double> result(mesh.elements.size());
+    for (std::size_t c=0;c<mesh.elements.size();++c) {
+        const auto cell=fem::make_nedelec_tetrahedron_3d(mesh,c);
+        std::array<Complex,6> coefficients{};
+        for (std::size_t e=0;e<6;++e)
+            coefficients[e]=edge_field[map.at(cell.edges[e])];
+        for (const auto& p : points) {
+            const auto sample=evaluate_maxwell_field_3d(
+                cell,coefficients,materials[c],vacuum_wavenumber,p[0],p[1],p[2]);
+            result[c]+=cell.volume/4.0*sample.absorbed_power_density;
+        }
+        if (!std::isfinite(result[c]))
+            throw std::overflow_error("Maxwell integrated loss overflow.");
+    }
+    return result;
+}
+
 } // namespace nova::physics

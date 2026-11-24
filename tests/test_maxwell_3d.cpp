@@ -118,3 +118,57 @@ NOVA_TEST(maxwell_rejects_active_material_and_invalid_frequency) {
     catch (const std::invalid_argument&) { rejected=true; }
     NOVA_REQUIRE(rejected);
 }
+
+NOVA_TEST(maxwell_affine_field_curl_poynting_and_absorption) {
+    using C=std::complex<double>;
+    const auto mesh=unit_cell();
+    const auto cell=make_nedelec_tetrahedron_3d(mesh,0);
+    const MaxwellCellMaterial3D material{{2.0,0.4},1.0};
+    const double k=2.0;
+    constexpr double c=299792458.0, eps0=8.8541878128e-12;
+    const double omega=k*c;
+    const double mu0=1.0/(eps0*c*c);
+    // E=(-y,x,i), curl(E)=(0,0,2); integral along each edge is
+    // exactly the midpoint value dotted with the oriented edge vector.
+    std::array<C,6> coefficients{};
+    for (std::size_t e=0;e<6;++e) {
+        const auto a=mesh.nodes[cell.edges[e][0]], b=mesh.nodes[cell.edges[e][1]];
+        coefficients[e]=-(a.y+b.y)/2.0*(b.x-a.x)
+                       +(a.x+b.x)/2.0*(b.y-a.y)+C(0,b.z-a.z);
+    }
+    const auto s=evaluate_maxwell_field_3d(cell,coefficients,material,k,0.2,0.3,0.1);
+    NOVA_REQUIRE_NEAR(std::abs(s.electric_field[0]+0.3),0.0,1e-14);
+    NOVA_REQUIRE_NEAR(std::abs(s.electric_field[1]-0.2),0.0,1e-14);
+    NOVA_REQUIRE_NEAR(std::abs(s.electric_field[2]-C(0,1)),0.0,1e-14);
+    NOVA_REQUIRE_NEAR(std::abs(s.magnetic_field[2]-C(0,-2/(omega*mu0))),0.0,1e-14);
+    NOVA_REQUIRE_NEAR(s.time_averaged_poynting[0],0.0,1e-14);
+    NOVA_REQUIRE_NEAR(s.time_averaged_poynting[1],0.0,1e-14);
+    NOVA_REQUIRE_NEAR(s.time_averaged_poynting[2],0.0,1e-14);
+    NOVA_REQUIRE_NEAR(s.absorbed_power_density,0.5*omega*eps0*0.4*1.13,1e-14);
+    const std::array<MaxwellCellMaterial3D,1> materials{material};
+    const auto sys=assemble_maxwell_3d(mesh,materials,k,false);
+    NOVA_REQUIRE(std::equal(sys.edges.begin(),sys.edges.end(),cell.edges.begin(),cell.edges.end()));
+    const auto q=integrate_maxwell_absorption_3d(mesh,materials,k,sys,coefficients);
+    // Integral of x^2+y^2+1 over unit tetrahedron is V*(1+2/10).
+    const double exact=0.5*omega*eps0*0.4*1.2/6.0;
+    NOVA_REQUIRE_NEAR(q[0],exact,1e-14);
+    std::cout<<"Maxwell dielectric absorption: numerical="<<q[0]
+             <<" exact="<<exact<<" absolute error="<<std::abs(q[0]-exact)<<'\n';
+}
+
+NOVA_TEST(maxwell_poynting_nonzero_and_lossless_material) {
+    using C=std::complex<double>;
+    const auto mesh=unit_cell();
+    const auto cell=make_nedelec_tetrahedron_3d(mesh,0);
+    // E=(1-i*y,i*x,0), curl(E)=(0,0,2i), so H_z is positive real.
+    std::array<C,6> coefficients{};
+    for (std::size_t e=0;e<6;++e) {
+        const auto a=mesh.nodes[cell.edges[e][0]], b=mesh.nodes[cell.edges[e][1]];
+        coefficients[e]=C(1,-(a.y+b.y)/2.0)*(b.x-a.x)
+                       +C(0,(a.x+b.x)/2.0)*(b.y-a.y);
+    }
+    const auto s=evaluate_maxwell_field_3d(cell,coefficients,{{2,0},1},2,0.2,0.3,0.1);
+    NOVA_REQUIRE(s.magnetic_field[2].real()>0.0);
+    NOVA_REQUIRE_NEAR(s.time_averaged_poynting[1],-0.5*s.magnetic_field[2].real(),1e-14);
+    NOVA_REQUIRE_NEAR(s.absorbed_power_density,0.0,0.0);
+}
