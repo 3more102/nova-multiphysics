@@ -82,3 +82,30 @@ NOVA_TEST(maxwell_cavity_dielectric_frequency_scaling_and_loss_rejection) {
     catch(const std::invalid_argument&){rejected=true;}
     NOVA_REQUIRE(rejected);
 }
+
+NOVA_TEST(maxwell_cavity_uniform_geometry_and_permeability_scaling) {
+    const auto unit=nova::fem::make_box_mesh_3d(0,1,0,1,0,1,2,2,2).mesh;
+    const auto large=nova::fem::make_box_mesh_3d(0,2,0,2,0,2,2,2,2).mesh;
+    std::vector<MaxwellCellMaterial3D> materials(unit.elements.size());
+    const auto reference=solve_maxwell_cavity_3d(
+        assemble_maxwell_cavity_3d(unit,materials),3);
+    const auto scaled=solve_maxwell_cavity_3d(
+        assemble_maxwell_cavity_3d(large,materials),3);
+    for (auto& material:materials) material.relative_permeability=9.0;
+    const auto magnetic=solve_maxwell_cavity_3d(
+        assemble_maxwell_cavity_3d(unit,materials),3);
+    NOVA_REQUIRE(reference.converged && scaled.converged && magnetic.converged);
+    NOVA_REQUIRE(reference.modes.size()==3);
+    NOVA_REQUIRE(scaled.modes.size()==3);
+    NOVA_REQUIRE(magnetic.modes.size()==3);
+    NOVA_REQUIRE(reference.nullspace_dimension==scaled.nullspace_dimension);
+    NOVA_REQUIRE(reference.nullspace_dimension==magnetic.nullspace_dimension);
+    for (std::size_t i=0;i<reference.modes.size();++i) {
+        NOVA_REQUIRE_NEAR(scaled.modes[i].frequency_hz/
+                          reference.modes[i].frequency_hz,0.5,1e-10);
+        NOVA_REQUIRE_NEAR(magnetic.modes[i].frequency_hz/
+                          reference.modes[i].frequency_hz,1.0/3.0,1e-10);
+        NOVA_REQUIRE(scaled.modes[i].relative_residual<1e-10);
+        NOVA_REQUIRE(magnetic.modes[i].relative_residual<1e-10);
+    }
+}
