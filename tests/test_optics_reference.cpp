@@ -1,4 +1,5 @@
 #include "nova/physics/optics.hpp"
+#include "nova/physics/nonlinear_optical_propagation.hpp"
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -60,6 +61,35 @@ int main() {
         rejected=false;
         try { (void)passive_index({1,-1}); } catch (const std::invalid_argument&) { rejected=true; }
         require(rejected,"reject gain");
+        // Closed-form propagation with linear loss and two-photon absorption.
+        const auto uniform = nonlinear_propagation(lambda, 10, 0.5, 0, 0, 2e-9);
+        near(uniform.output_intensity_w_per_m2, 10, 1e-13, "uniform intensity");
+        near(uniform.integrated_intensity_w_per_m, 5, 1e-13, "uniform integral");
+        near(uniform.kerr_phase_rad, k*2e-9*5, 1e-13, "uniform Kerr");
+        const auto linear = nonlinear_propagation(lambda, 10, 0.5, 2, 0, 0);
+        near(linear.output_intensity_w_per_m2, 10/std::exp(1.0), 1e-13, "Beer Lambert");
+        near(linear.integrated_intensity_w_per_m, 5*(1-std::exp(-1.0)), 1e-13, "linear integral");
+        const auto tpa = nonlinear_propagation(lambda, 10, 0.5, 0, 0.2, 0);
+        near(tpa.output_intensity_w_per_m2, 5, 1e-13, "pure TPA");
+        near(tpa.integrated_intensity_w_per_m, std::log(2.0)/0.2, 1e-13, "TPA integral");
+        const auto total = nonlinear_propagation(lambda, 10, 0.5, 2, 0.2, -2e-9);
+        const auto first = nonlinear_propagation(lambda, 10, 0.2, 2, 0.2, -2e-9);
+        const auto second = nonlinear_propagation(lambda, first.output_intensity_w_per_m2, 0.3, 2, 0.2, -2e-9);
+        near(total.output_intensity_w_per_m2, second.output_intensity_w_per_m2, 1e-13, "propagation composition");
+        near(total.integrated_intensity_w_per_m, first.integrated_intensity_w_per_m+second.integrated_intensity_w_per_m, 1e-13, "integral composition");
+        near(total.kerr_phase_rad, first.kerr_phase_rad+second.kerr_phase_rad, 1e-13, "phase composition");
+        near(total.output_intensity_w_per_m2+total.absorbed_intensity_w_per_m2, 10, 1e-13, "intensity conservation");
+        require(total.kerr_phase_rad < 0, "negative Kerr phase");
+        const auto weak = nonlinear_propagation(lambda, 10, 1, 1e-18, 0, 0);
+        require(weak.absorbed_intensity_w_per_m2 > 0, "weak loss cancellation");
+        near(weak.absorbed_intensity_w_per_m2, 1e-17, 1e-30, "weak loss value");
+        const auto zero = nonlinear_propagation(lambda, 10, 0, 2, 0.2, 2e-9);
+        near(zero.output_intensity_w_per_m2, 10, 0, "zero length");
+        near(zero.kerr_phase_rad, 0, 0, "zero length phase");
+        rejected = false;
+        try { (void)nonlinear_propagation(lambda, 10, 1, 0, -1, 0); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        require(rejected, "reject negative TPA");
         std::cout << "NOVA optics analytical reference cases passed\n";
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n'; return 1;
