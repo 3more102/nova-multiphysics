@@ -1,5 +1,7 @@
 #include "nova/fem/adaptive_diffusion_3d.hpp"
 
+#include "nova/fem/p1_flux_3d.hpp"
+
 #include <algorithm>
 #include <array>
 #include <map>
@@ -65,9 +67,23 @@ using BoundaryEdge3D = std::array<std::size_t, 2>;
     return result;
 }
 
+[[nodiscard]] std::map<BoundaryFace3D, RobinBoundaryFace3D> robin_map(
+    const ScalarDiffusion3DProblem& problem
+) {
+    std::map<BoundaryFace3D, RobinBoundaryFace3D> result;
+    for (const auto& condition : problem.robin_faces) {
+        auto copy = condition;
+        const auto key = canonical_face(condition.face);
+        copy.face = key;
+        if (!result.emplace(key, std::move(copy)).second) {
+            throw std::invalid_argument("Duplicate adaptive 3D Robin face.");
+        }
+    }
+    return result;
+}
+
 // Every exterior face omitted from the essential-boundary set has either
-// the prescribed Neumann flux or the physical zero (insulation) flux.
-// This prevents an unlabelled insulated face from disappearing from eta.
+// prescribed Neumann/Robin data or the physical zero (insulation) flux.
 [[nodiscard]] DiffusionResidualIndicators3D estimate(
     const ScalarDiffusion3DProblem& problem,
     const ScalarDiffusion3DResult& solved,
@@ -75,28 +91,57 @@ using BoundaryEdge3D = std::array<std::size_t, 2>;
 ) {
     const auto essential = dirichlet_map(problem);
     const auto neumann = neumann_map(problem);
+    const auto robin = robin_map(problem);
     const auto fixed_vertices = fixed_vertex_values(problem);
     const ScalarField3D zero = [](double, double, double) { return 0.0; };
     const ScalarField3D source = problem.source ? problem.source : zero;
     std::vector<NeumannResidualFace3D> natural;
+    std::vector<RobinResidualFace3D> robin_residuals;
     natural.reserve(exterior.size());
+    robin_residuals.reserve(robin.size());
+
     for (const auto& face : exterior) {
         const auto key = canonical_face(face);
         // A P1 face with all three vertices explicitly fixed already has
-        // a prescribed trace, even without a facewise callback. Do not
-        // incorrectly estimate an insulated (zero-flux) boundary there.
+        // a prescribed trace unless a natural boundary model is explicitly
+        // assigned to that face.
         if (essential.contains(key) ||
-            (!neumann.contains(key) && entirely_fixed_face(key, fixed_vertices))) {
+            (!neumann.contains(key) && !robin.contains(key) &&
+             entirely_fixed_face(key, fixed_vertices))) {
             continue;
         }
-        const auto found = neumann.find(key);
-        natural.push_back({
-            face,
-            found == neumann.end() ? zero : found->second
-        });
+        if (const auto found = neumann.find(key); found != neumann.end()) {
+            natural.push_back({face, found->second});
+        } else if (const auto found = robin.find(key); found != robin.end()) {
+            robin_residuals.push_back({
+                face,
+                found->second.transfer_coefficient,
+                found->second.ambient_value
+            });
+        } else {
+            natural.push_back({face, zero});
+        }
     }
+
+    const auto cell_fields = evaluate_p1_tetrahedral_flux_3d(problem, solved.values);
     return estimate_diffusion_residual_error_3d(
-        problem.mesh, solved.values, problem.cell_diffusivity, source, natural);
+        problem.mesh, solved.values, cell_fields, source, natural, robin_residuals);
+}
+
+template<class T>
+[[nodiscard]] std::vector<T> transfer_cellwise_values(
+    const RefinedTetrahedralMesh3D& refined,
+    const std::vector<T>& coarse_values
+) {
+    std::vector<T> child_values;
+    child_values.reserve(refined.parent_elements.size());
+    for (const auto parent : refined.parent_elements) {
+        if (parent >= coarse_values.size()) {
+            throw std::logic_error("Adaptive 3D cell-material parent index is invalid.");
+        }
+        child_values.push_back(coarse_values[parent]);
+    }
+    return child_values;
 }
 
 } // namespace
@@ -106,15 +151,13 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
     const double dorfler_theta,
     const linalg::SolverOptions& solver_options
 ) {
-    // Reject unsupported inputs instead of silently solving a different PDE
-    // or computing an indicator inconsistent with its material/source model.
-    if (problem.diffusivity || problem.diffusivity_tensor ||
-        !problem.cell_diffusivity_tensors.empty() ||
-        problem.cell_diffusivity.size() != problem.mesh.elements.size() ||
-        !problem.cell_source.empty() || !problem.robin_faces.empty()) {
+    // Cellwise source arrays are not yet represented in the residual estimator.
+    // All material forms and Robin boundaries supported by the base solver are
+    // otherwise preserved through flux reconstruction and parent-cell transfer.
+    if (!problem.cell_source.empty()) {
         throw std::invalid_argument(
-            "Adaptive 3D diffusion requires per-cell scalar conductivity, "
-            "spatial or zero source, and Dirichlet/Neumann/insulated faces only.");
+            "Adaptive 3D diffusion currently requires a spatial or zero source; "
+            "cellwise source vectors are not supported.");
     }
 
     AdaptiveDiffusionStep3D result;
@@ -139,14 +182,24 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
 
     const auto essential = dirichlet_map(problem);
     const auto neumann = neumann_map(problem);
+    const auto robin = robin_map(problem);
     const auto fixed_vertices = fixed_vertex_values(problem);
     const auto& refined = result.adaptation.refinement;
     result.refined_problem = problem;
     result.refined_problem.mesh = refined.mesh;
-    result.refined_problem.cell_diffusivity = prolongate_cellwise_constant_refined_3d(
-        refined, problem.cell_diffusivity);
+
+    if (!problem.cell_diffusivity.empty()) {
+        result.refined_problem.cell_diffusivity =
+            prolongate_cellwise_constant_refined_3d(refined, problem.cell_diffusivity);
+    }
+    if (!problem.cell_diffusivity_tensors.empty()) {
+        result.refined_problem.cell_diffusivity_tensors =
+            transfer_cellwise_values(refined, problem.cell_diffusivity_tensors);
+    }
+
     result.refined_problem.dirichlet_faces.clear();
     result.refined_problem.neumann_faces.clear();
+    result.refined_problem.robin_faces.clear();
 
     for (std::size_t i = 0; i < refined.boundary_faces.size(); ++i) {
         const auto parent_index = refined.parent_boundary_faces[i];
@@ -160,6 +213,10 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
         } else if (const auto found = neumann.find(parent_key);
                    found != neumann.end()) {
             result.refined_problem.neumann_faces.push_back({child, found->second});
+        } else if (const auto found = robin.find(parent_key); found != robin.end()) {
+            auto condition = found->second;
+            condition.face = child;
+            result.refined_problem.robin_faces.push_back(std::move(condition));
         }
         // Remaining faces are naturally insulated.
     }
@@ -170,7 +227,7 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
     std::set<BoundaryEdge3D> implicitly_fixed_edges;
     for (const auto& face : exterior) {
         const auto key = canonical_face(face);
-        if (essential.contains(key) || neumann.contains(key) ||
+        if (essential.contains(key) || neumann.contains(key) || robin.contains(key) ||
             !entirely_fixed_face(key, fixed_vertices)) {
             continue;
         }
@@ -181,7 +238,6 @@ AdaptiveDiffusionStep3D solve_adaptive_diffusion_step_3d(
     for (std::size_t i = 0; i < refined.midpoint_parent_edges.size(); ++i) {
         const auto edge = canonical_edge(refined.midpoint_parent_edges[i]);
         if (!implicitly_fixed_edges.contains(edge)) continue;
-        // Both endpoints are explicit fixed nodes on a coarse boundary face.
         const double value = 0.5 * fixed_vertices.at(edge[0]) +
                              0.5 * fixed_vertices.at(edge[1]);
         result.refined_problem.dirichlet_constraints.push_back({
