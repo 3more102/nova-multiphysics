@@ -41,4 +41,13 @@ struct SurfacePlasmon {
 // Bound TM mode at a planar interface between a lossless dielectric and passive metal.
 [[nodiscard]] SurfacePlasmon planar_surface_plasmon(double wavelength_m,
     double dielectric_permittivity, Complex metal_permittivity);
+
+// Tangential electric-field amplitudes for both polarizations.
+// Angle is in radians, measured from the interface normal in the incident medium.
+// Exit may be evanescent (zero transmitted normal power); exact critical
+// angles in any retained medium are excluded.
+enum class Polarization { te, tm };
+[[nodiscard]] StackResult oblique_incidence_stack(double wavelength_m,
+    double incident_index, double exit_index, double angle_rad,
+    Polarization polarization, std::span<const Layer> layers);
 } // namespace nova::optics
