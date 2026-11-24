@@ -58,6 +58,22 @@ def solve(runner, project, vtk):
     return {k: float(v) for k, v in fields.items() if k not in {"project", "study"}}, data
 
 
+def tetrahedron_volume(points, cell):
+    """Geometric volume of a linear tetrahedron, independent of node winding."""
+    p0, p1, p2, p3 = (points[i] for i in cell)
+    a = tuple(p1[j] - p0[j] for j in range(3))
+    b = tuple(p2[j] - p0[j] for j in range(3))
+    c = tuple(p3[j] - p0[j] for j in range(3))
+    determinant = (
+        a[0] * (b[1] * c[2] - b[2] * c[1])
+        - a[1] * (b[0] * c[2] - b[2] * c[0])
+        + a[2] * (b[0] * c[1] - b[1] * c[0])
+    )
+    volume = abs(determinant) / 6.0
+    require(math.isfinite(volume) and volume > 0.0, "Invalid tetrahedron volume in exported VTK")
+    return volume
+
+
 def wall(runner, fixture, work):
     # Thermal resistances per unit area in series. No NOVA or FEM computation.
     k, length, area, h, hot, ambient = 2.0, 0.5, 0.25, 12.0, 400.0, 300.0
@@ -173,17 +189,26 @@ def cube(runner, fixture, work, check_scipy=False):
         near(metrics["max_K"], temperature[center_nodes[0]], 2e-8,
              "Reported peak temperature must match the center probe [K]")
 
-        # An affine P1 field integrates exactly as the mean of its four vertices.
-        # The structured cube contains only equal-volume tetrahedra.
-        mean_rise = math.fsum(math.fsum(temperature[i] - boundary for i in cell) / 4
-                              for cell in cells) / len(cells)
+        # A linear P1 field integrates exactly as the mean of its four vertices.
+        # Weight each element by its geometric volume; do not assume equal cells.
+        volumes, weighted_rises = [], []
+        for cell in cells:
+            volume = tetrahedron_volume(points, cell)
+            volumes.append(volume)
+            weighted_rises.append(
+                volume * math.fsum(temperature[i] - boundary for i in cell) / 4
+            )
+        total_volume = math.fsum(volumes)
+        near(total_volume, length**3, 2e-12, "Exported tetrahedral cube volume [m^3]")
+        mean_rise = math.fsum(weighted_rises) / total_volume
         errors = (lower - mean_rise, upper - mean_rise)
         require(errors[0] > 0, f"Expected refinement from below, observed {mean_rise:g} K")
         near(metrics["generated_W"], source * length**3, 2e-8, "Cube heat generation [W]")
         near(metrics["fixed_out_W"], source * length**3, 2e-8, "Six-face outward reaction [W]")
         near(metrics["balance_defect_W"], 0, 2e-8, "Cube heat balance [W]")
         print(f"cube n={n} mean_rise_K={mean_rise:.12g} center_rise_K={center_rise:.12g} "
-              f"symmetry_error_K={symmetry_error:.3g} error_upper_K={errors[1]:.8g} "
+              f"volume_m3={total_volume:.12g} symmetry_error_K={symmetry_error:.3g} "
+              f"error_upper_K={errors[1]:.8g} "
               f"fixed_out_W={metrics['fixed_out_W']:.12g} balance_W={metrics['balance_defect_W']:.6g}")
         if previous_errors:
             # Worst-case order over both continuum error intervals.
