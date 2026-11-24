@@ -33,6 +33,26 @@ boundary steady wall xmax convection 12 300
 end
 ~~~
 
+A schema-2 anisotropic project uses the same model records with the tensor material form:
+
+~~~text
+NOVA_PROJECT 2
+project anisotropic-wall
+geometry wall box 0.5 0.25 0.125
+mesh tets wall structured_tet 6 2 1
+material silicon anisotropic 2 3 4 0.25 -0.15 0.10
+study steady steady_heat tets silicon
+source steady 0
+solver steady cg jacobi 2000 1e-13 1e-14
+boundary steady wall xmin temperature 400
+boundary steady wall xmax convection 12 300
+boundary steady wall ymin outward_flux -37.5
+boundary steady wall ymax outward_flux 37.5
+boundary steady wall zmin outward_flux 22.5
+boundary steady wall zmax outward_flux -22.5
+end
+~~~
+
 | Record | Meaning and units |
 | --- | --- |
 | project | Unique persistent project ID |
