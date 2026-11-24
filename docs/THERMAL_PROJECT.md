@@ -33,7 +33,7 @@ boundary steady wall xmax convection 12 300
 end
 ~~~
 
-A schema-2 anisotropic project uses the same model records with the tensor material form:
+A runnable source-tree copy is provided at `examples/projects/anisotropic_wall.nova`. A schema-2 anisotropic project uses the same model records with the tensor material form:
 
 ~~~text
 NOVA_PROJECT 2
