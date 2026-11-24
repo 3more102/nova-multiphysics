@@ -39,8 +39,8 @@ struct ObliqueHelmholtz1DResult {
     double power_balance_residual;
 };
 // Isotropic nonmagnetic passive layers; real positive exterior indices.
-// Angle from normal in radians. Evanescent exit supported; exact exit
-// critical angle and zero TM permittivity are excluded.
+// Angle from normal in radians. Evanescent and exact critical-angle exits
+// are supported (zero normal transmitted power); zero TM permittivity excluded.
 [[nodiscard]] ObliqueHelmholtz1DResult solve_oblique_helmholtz_1d(
     double wavelength_m, double incident_index, double exit_index,
     double angle_rad, Polarization polarization, std::span<const double> nodes_m,

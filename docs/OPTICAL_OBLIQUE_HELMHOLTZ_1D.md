@@ -8,7 +8,11 @@ For scalar amplitudes r_s=u_left-1 and t_s=u_right, R=|r_s|^2 and T=Re(g_t)/g_i*
 
 Cell absorptance is computed independently from exact P1 integrals: TE uses Im(epsilon)*integral(|u|^2)/g_i; TM uses -Im(1/epsilon)*(integral(|u'|^2)+b^2*integral(|u|^2))/g_i. The sum A is not inferred from 1-R-T; the signed residual is reported separately. A small residual alone does not certify spatial accuracy.
 
-Validation excludes gain, nonfinite inputs, grazing incidence, exact exit critical angle, zero TM permittivity, and invalid meshes. The solver is not a general vector Maxwell or PML solver; it does not support anisotropy or nonlinear self-consistency.
+Validation excludes gain, nonfinite inputs, grazing incidence, zero TM permittivity, and invalid meshes. The solver is not a general vector Maxwell or PML solver; it does not support anisotropy or nonlinear self-consistency.
+
+At the exact exit critical angle, q_t=0 and the limiting outgoing boundary condition is homogeneous Neumann (zero scalar flux). Both polarizations give T=0. TE may have finite tangential E at the exit; TM has zero tangential E there, despite a potentially finite magnetic scalar field. The analytical stack API retains its separate critical-angle restriction.
+
+The critical-exit regression uses n_i=1.5, theta=0.7, n_t=n_i*sin(theta), and a slab of thickness 0.37 wavelengths with 80 elements. With epsilon=n_t^2, the exact scalar field is u=2 everywhere, R=1 and A=0. A lossy slab (epsilon=2.1+0.3i) tests independent absorption and continuity from both sides of the critical angle (theta +/- 1e-9). An independent SciPy banded P1 computation gave A=0.6275856269 (TE) and A=0.7341033682 (TM), maximum exact-critical energy residual 4.17e-14 and maximum near-critical amplitude/absorption deviation 2.34e-4. These are numerical reference checks, not C++ CI results.
 
 ## Verification
 
