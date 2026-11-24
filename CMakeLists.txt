@@ -63,6 +63,7 @@ add_library(nova_core
     src/io/gmsh22_tetrahedral.cpp
     src/io/gmsh_tetrahedral.cpp
     src/io/vtk_legacy_3d.cpp
+    src/io/vtk_maxwell_3d.cpp
     src/io/vtk_series.cpp
     src/io/thermal_checkpoint_3d.cpp
     src/io/adaptive_electrothermal_checkpoint_3d.cpp
@@ -189,6 +190,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_gmsh22_tetrahedral.cpp
         tests/test_gmsh41_tetrahedral.cpp
         tests/test_vtk_legacy_3d.cpp
+        tests/test_vtk_maxwell_3d.cpp
         tests/test_vtk_series.cpp
         tests/test_transient_heat_3d_streaming.cpp
         tests/test_diffusion_h1_2d.cpp
