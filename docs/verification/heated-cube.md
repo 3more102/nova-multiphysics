@@ -24,32 +24,32 @@ The verification code integrates the exported P1 field over every tetrahedron us
 
 The checker also verifies the full nodal field's inversion symmetry through the cube center (maximum reflected-node discrepancy below 2e-8 K), confirms that the unique center node contains the maximum nodal temperature, and checks that the runner's reported maximum matches this center probe. These are symmetry and peak-location checks, not an absolute continuum bound on the peak value.
 
-## Independent finite-difference calculation
+## SciPy implementation and independent discretization checks
 
-The optional SciPy checker solves the seven-point finite-difference equations on a separate Cartesian grid. A type-I discrete sine transform diagonalizes the operator and an inverse transform returns its temperature rise. The grid mean uses tensor-product trapezoidal integration, with zero rise on the boundary. It shares no NOVA mesh, matrix, linear solver or output fields. The finest error allowance is 0.002 K and successive orders must exceed 1.8. [SciPy multidimensional sine transform](https://docs.scipy.org/doc/scipy/reference/generated/scipy.fft.dstn.html).
+The first SciPy reference is a node-centred seven-point finite-difference solve on the same Cartesian vertices. A type-I discrete sine transform diagonalizes its operator. For this particular uniform cube, homogeneous conductivity and uniform source, the six-tetrahedron P1 Galerkin assembly reduces algebraically to the same seven-point nodal stencil. The SciPy code uses a separate implementation, matrix construction and solver, so the full-field comparison checks NOVA's assembly, solve and VTK output; it is not an independent spatial discretization. At 16 subdivisions, all 4,913 NOVA nodal temperatures are compared at identical coordinates, with maximum and RMS differences each below 2e-8 K.
 
-| Subdivisions per axis | SciPy mean rise (K) | Upper bound on continuum error (K) |
-| ---: | ---: | ---: |
-| 16 | 0.591197174133 | 0.01385846 |
-| 32 | 0.601530120040 | 0.00352551 |
-| 64 | 0.604169110303 | 0.00088652 |
+| Subdivisions per axis | Nodal SciPy mean rise (K) | Upper bound on continuum mean error (K) | Center rise (K) |
+| ---: | ---: | ---: | ---: |
+| 16 | 0.591197174133 | 0.01385846 | 1.676429964553 |
+| 32 | 0.601530120040 | 0.00352551 | 1.683880381680 |
+| 64 | 0.604169110303 | 0.00088652 | 1.685757768523 |
 
-The same independent finite-difference solution also gives the center temperature rise:
+The observed order from successive center-value differences between 16, 32 and 64 subdivisions is 1.9886. At 16 subdivisions, the nodal SciPy mean and center values agree with NOVA within the 0.025 K comparison allowance. The continuum Fourier-series bracket independently bounds the volume-mean error; the center-value sequence is a refinement check, not a rigorous continuum error bound for the peak temperature.
 
-| Subdivisions per axis | Center rise (K) |
-| ---: | ---: |
-| 16 | 1.676429964553 |
-| 32 | 1.683880381680 |
-| 64 | 1.685757768523 |
+The second SciPy reference is a cell-centred finite-volume discretization on equal-volume control volumes. Dirichlet faces are half a cell from the first and last unknowns, giving a one-dimensional operator with diagonal 3 at the two boundary cells, diagonal 2 in the interior, and -1 on adjacent cells. The orthonormal type-II discrete sine transform diagonalizes this operator; the three-dimensional eigenvalues are sums of the one-dimensional eigenvalues. This is a genuinely different spatial discretization from NOVA's vertex-based P1 tetrahedra. Its volume mean is the arithmetic mean of the cell-centre values. [SciPy multidimensional sine transform](https://docs.scipy.org/doc/scipy/reference/generated/scipy.fft.dstn.html).
 
-The observed order from successive center-value differences between 16, 32 and 64 subdivisions is 1.9886. At 16 subdivisions, the independent center value agrees with NOVA's center nodal result within the 0.025 K comparison allowance. This supports the peak-location and local refinement checks, but is not a rigorous continuum error bound for the peak temperature.
+| Subdivisions per axis | SciPy cell-FV mean rise (K) | Upper bound on continuum error (K) | Lower bound on order |
+| ---: | ---: | ---: | ---: |
+| 16 | 0.619850563835 | 0.014796136657 | — |
+| 32 | 0.608804622953 | 0.003750195774 | 1.98007 |
+| 64 | 0.605996464954 | 0.000942037775 | 1.99265 |
 
-At 16 subdivisions, the optional SciPy run additionally compares every one of the 4,913 exported NOVA nodal temperatures against the independent seven-point finite-difference field at the same Cartesian coordinates. The maximum absolute and RMS nodal differences must each remain below 2e-8 K. This is a full-field cross-discretization check for this structured homogeneous cube; it does not extend the continuum mean bound into a rigorous local peak-temperature bound.
+The cell-centred FV mean approaches the continuum bracket from above, while the NOVA P1 and nodal SciPy means approach it from below. The checker requires successive lower bounds on the finite-volume refinement order to exceed 1.8 and the finest upper error bound to be below 0.002 K.
 
-Recorded using Debian 13 x86-64, GCC 14.2 Release, Python 3.12.14 and SciPy 1.17.0 with solver commit `3ab9afa446ea92392e8910fd42b90ce24d221eea`. The continuum comparison uses Python's standard library and runs in CTest. Ubuntu CI also runs the SciPy comparison against the installed runner and installed project. To repeat the external calculation:
+Recorded using Debian 13 x86-64, GCC 14.2 Release, Python 3.12.14 and SciPy 1.17.0 with solver commit `3ab9afa446ea92392e8910fd42b90ce24d221eea`. The continuum comparison uses Python's standard library and runs in CTest. Ubuntu CI also runs both SciPy checks against the installed runner and installed project. To repeat the external calculations:
 
 ~~~sh
 python verification/verify_thermal_project.py cube build/nova-run examples/projects/internally_heated_cube.nova --scipy
 ~~~
 
-The evidence covers a homogeneous stationary cube, its global mean, nodal inversion symmetry, center-peak location, and integrated boundary reactions. It does not establish experimental accuracy or local peak-temperature tolerances for other geometries.
+The evidence covers a homogeneous stationary cube, its global mean, nodal implementation agreement, inversion symmetry, center-peak location and integrated boundary reactions. It does not establish experimental accuracy or local peak-temperature tolerances for other geometries.
