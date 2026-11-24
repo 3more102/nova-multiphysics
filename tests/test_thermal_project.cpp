@@ -134,19 +134,24 @@ NOVA_TEST(thermal_project_schema_two_round_trips_anisotropic_tensor_and_solves_e
     nova::io::write_thermal_project(second, restored);
     NOVA_REQUIRE(second.str() == out.str());
 
-    // A diagonal anisotropic material reduces to an exact one-dimensional wall.
-    auto diagonal = restored;
-    diagonal.material.conductivity_tensor_w_m_k = nova::fem::SymmetricTensor3D{2.0, 3.0, 4.0, 0.0, 0.0, 0.0};
-    const auto result = solve_thermal_project(diagonal);
+    // The full off-diagonal tensor has an exact linear field with prescribed
+    // transverse Neumann fluxes and an analytical convective exit.
+    auto anisotropic = restored;
+    anisotropic.boundaries[BoxSide::YMin] = OutwardHeatFlux{-37.5};
+    anisotropic.boundaries[BoxSide::YMax] = OutwardHeatFlux{37.5};
+    anisotropic.boundaries[BoxSide::ZMin] = OutwardHeatFlux{22.5};
+    anisotropic.boundaries[BoxSide::ZMax] = OutwardHeatFlux{-22.5};
+    const auto result = solve_thermal_project(anisotropic);
     for (std::size_t node = 0; node < result.mesh.nodes.size(); ++node) {
         NOVA_REQUIRE_NEAR(result.temperature.values[node], 400.0 - 150.0 * result.mesh.nodes[node].x, 2e-8);
     }
     for (const auto& flux : result.cell_fluxes) {
         NOVA_REQUIRE_NEAR(flux.flux.x, 300.0, 2e-8);
-        NOVA_REQUIRE_NEAR(flux.flux.y, 0.0, 2e-8);
-        NOVA_REQUIRE_NEAR(flux.flux.z, 0.0, 2e-8);
+        NOVA_REQUIRE_NEAR(flux.flux.y, 37.5, 2e-8);
+        NOVA_REQUIRE_NEAR(flux.flux.z, -22.5, 2e-8);
     }
-    NOVA_REQUIRE_NEAR(result.balance.convection_outward_heat, 75.0, 2e-8);
+    NOVA_REQUIRE_NEAR(result.balance.convection_outward_heat, 9.375, 2e-8);
+    NOVA_REQUIRE_NEAR(result.balance.neumann_outward_heat, 0.0, 2e-8);
     NOVA_REQUIRE_NEAR(result.balance.signed_balance_defect, 0.0, 2e-8);
 }
 
