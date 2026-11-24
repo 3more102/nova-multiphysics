@@ -7,6 +7,7 @@
 #include <limits>
 #include <locale>
 #include <sstream>
+#include <string>
 
 namespace {
 using namespace nova::model;
