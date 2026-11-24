@@ -150,7 +150,7 @@ NOVA_TEST(thermal_project_schema_two_round_trips_anisotropic_tensor_and_solves_e
         NOVA_REQUIRE_NEAR(flux.flux.y, 37.5, 2e-8);
         NOVA_REQUIRE_NEAR(flux.flux.z, -22.5, 2e-8);
     }
-    NOVA_REQUIRE_NEAR(result.balance.convection_outward_heat, 9.375, 2e-8);
+    NOVA_REQUIRE_NEAR(result.balance.robin_outward_heat, 9.375, 2e-8);
     NOVA_REQUIRE_NEAR(result.balance.neumann_outward_heat, 0.0, 2e-8);
     NOVA_REQUIRE_NEAR(result.balance.signed_balance_defect, 0.0, 2e-8);
 }
