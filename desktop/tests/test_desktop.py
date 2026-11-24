@@ -160,7 +160,7 @@ class DesktopWorkflow(unittest.TestCase):
             damaged_records = records.copy()
             damaged_records[first_cell] = bad_record
             damaged = self.directory / f"{name}.vtk"
-            damaged.write_text("\\n".join(damaged_records) + "\\n", encoding="ascii")
+            damaged.write_text("\n".join(damaged_records) + "\n", encoding="ascii")
             with self.subTest(connectivity=name), self.assertRaises(ValueError):
                 NodalField.read(damaged, (8, 3, 2))
 
