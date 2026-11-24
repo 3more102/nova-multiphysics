@@ -163,6 +163,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_mesh_topology_3d.cpp
         tests/test_h1_space_3d.cpp
         tests/test_maxwell_3d.cpp
+        tests/test_maxwell_spatial_source_3d.cpp
         tests/test_maxwell_power_audit_3d.cpp
         tests/test_maxwell_cavity_3d.cpp
         tests/test_diffusion_3d.cpp
