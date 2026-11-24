@@ -117,7 +117,7 @@ NOVA_TEST(thermal_project_schema_two_round_trips_anisotropic_tensor_and_solves_e
 
     std::ostringstream out;
     nova::io::write_thermal_project(out, p);
-    NOVA_REQUIRE(out.str().find("NOVA_PROJECT 2\\n") == 0);
+    NOVA_REQUIRE(out.str().find("NOVA_PROJECT 2\n") == 0);
 
     std::istringstream input(out.str());
     const auto restored = nova::io::read_thermal_project(input);
@@ -161,16 +161,16 @@ NOVA_TEST(thermal_project_rejects_non_spd_anisotropic_tensors_and_schema_one_ten
     }
 
     const std::string legacy_tensor =
-        "NOVA_PROJECT 1\\n"
-        "project p\\n"
-        "geometry g box 1 1 1\\n"
-        "mesh m g structured_tet 1 1 1\\n"
-        "material s anisotropic 2 3 4 0 0 0\\n"
-        "study st steady_heat m s\\n"
-        "source st 0\\n"
-        "solver st cg jacobi 1000 1e-10 1e-14\\n"
-        "boundary st g xmin temperature 300\\n"
-        "end\\n";
+        "NOVA_PROJECT 1\n"
+        "project p\n"
+        "geometry g box 1 1 1\n"
+        "mesh m g structured_tet 1 1 1\n"
+        "material s anisotropic 2 3 4 0 0 0\n"
+        "study st steady_heat m s\n"
+        "source st 0\n"
+        "solver st cg jacobi 1000 1e-10 1e-14\n"
+        "boundary st g xmin temperature 300\n"
+        "end\n";
     std::istringstream legacy_input(legacy_tensor);
     NOVA_REQUIRE(rejects([&] { (void)nova::io::read_thermal_project(legacy_input); }));
 }
