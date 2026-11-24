@@ -31,9 +31,9 @@ For manufactured errors, run ctest with -V -R nova_unit_tests.
 
 ## Limits
 
-No eigenvalue solver, eigenmode/spurious-mode validation, dispersive material database, nonisotropic tensors, PML, port, incident wave boundary, selective PEC, adaptive H(curl), or nonlinear optical coupling. Lossless resonant systems may be singular; a converged algebraic solve is not evidence of physical convergence. The unpreconditioned/restarted GMRES approach is not a scalable Maxwell solver; no performance claims. No cavity or waveguide accuracy claim is made. Meshes with every edge constrained are rejected. Piecewise constant isotropic passive epsilon (including negative real parts) and positive real mu are accepted; near-zero or strongly indefinite systems need additional verification.
+No eigenvalue solver, eigenmode/spurious-mode validation, dispersive material database, nonisotropic tensors, PML, port, incident wave boundary, adaptive H(curl), or nonlinear optical coupling. Lossless resonant systems may be singular; a converged algebraic solve is not evidence of physical convergence. The unpreconditioned/restarted GMRES approach is not a scalable Maxwell solver; no performance claims. No cavity or waveguide accuracy claim is made. Meshes with every edge constrained are rejected. Piecewise constant isotropic passive epsilon (including negative real parts) and positive real mu are accepted; near-zero or strongly indefinite systems need additional verification.
 
-Next gates: non-polynomial manufactured field and h-convergence, cavity eigenfrequency with gradient-space filtering, selective boundary conditions, and scattering/PML verification against existing optical reference models.
+Next gates: non-polynomial manufactured field and h-convergence, cavity eigenfrequency with gradient-space filtering, and scattering/PML verification against existing optical reference models.
 
 ## Field reconstruction and optical heating
 
@@ -58,3 +58,23 @@ The optional reference script requires NumPy and SciPy only for verification, no
 ```sh
 python verification/verify_maxwell_hcurl_reference.py
 ```
+
+## Selective homogeneous PEC
+
+`assemble_maxwell_3d_selective_pec(mesh, materials, k0, pec_faces)`
+accepts a list of exterior triangles identified by their three mesh node
+indices. Every edge belonging to a selected face is constrained to zero
+circulation, including edges shared with unselected exterior faces.
+Unselected faces retain the homogeneous natural curl condition, subject
+to those shared-edge constraints. Face orientation and list order do
+not matter. Duplicate triangles, internal interfaces, degenerate faces
+and nonexistent faces are rejected. Empty and full selections reproduce
+the existing natural and all-exterior PEC assembly respectively.
+
+Regression gates include a complex constant E normal to a selected face
+of a unit tetrahedron, with F=-k0^2 epsilon_r E; exact edge circulation
+and zero constrained values are checked. Additional tests cover legacy
+matrix equivalence, reversed orientations and invalid face selection.
+These are proposed regression gates, not a new measured convergence study.
+No nonhomogeneous tangential excitation, impedance condition, ports or
+absorbing boundary is provided by this API.
