@@ -24,7 +24,7 @@ Earned **12/12** for this workflow. This score describes Engineering Alpha evide
 | Verification | Analytical tests, conservation, convergence, negative tests and install-consumer suite | External engineering evaluation and experimental evidence |
 | Security and reliability | Size-limited project grammar, atomic file publication, CI sanitizer job | Distribution SBOM, dependency review, parser robustness campaign and signed-update verification |
 | Licensing | Repository documents pending project-wide terms. Qt for Python is an optional desktop dependency. Core project I/O uses the C++ standard library. | Owner and legal approval for distribution, provenance and dependency audit |
-| Distribution | Installable CMake SDK, runner, sample, optional desktop wheel and installed-consumer tests | Clean-machine installer, upgrade/uninstall tests and release credentials |
+| Distribution | Installable CMake SDK, runner, sample, optional desktop wheel, relocated shared-library runner and installed-consumer tests | Clean-machine installer, upgrade/uninstall tests and release credentials |
 | Documentation | Format contract, equations, independent checker, benchmark and SDK installation guide | Product manuals, support and release maintenance procedures |
 
 See the [pinned thermal verification report](verification/thermal-project-v1.md) and [desktop workflow tests](THERMAL_DESKTOP.md). Gate 2 needs clean installation and external evaluation. Gates 3 and 4 additionally require platform qualification, completed security and licensing reviews, acceptance testing and owner approval for distribution.

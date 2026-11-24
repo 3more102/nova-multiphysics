@@ -14,6 +14,8 @@ python -m pip install ./desktop "PySide6-Essentials==6.8.3"
 nova-desktop
 ~~~
 
+On a minimal Linux system, Qt needs the platform runtime libraries supplied by the distribution. Ubuntu offscreen CI installs `libegl1`, `libgl1`, `libfontconfig1` and `libxkbcommon0`. An interactive X11 or Wayland session additionally needs its Qt platform plugin dependencies. [Qt Linux platform requirements](https://doc.qt.io/qt-6/linux-requirements.html).
+
 The desktop launcher can also be opened from the environment's executable directory. In **Study → Locate solver**, select `nova-sdk/bin/nova-run` on Linux or `nova-sdk/bin/nova-run.exe` on Windows. The client remembers this path. For automation, pass `--runner PATH` and an optional project path to the launcher.
 
 ## Create, solve and inspect a study
