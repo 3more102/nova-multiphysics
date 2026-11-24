@@ -117,7 +117,7 @@ NOVA_TEST(thermal_project_schema_two_accepts_isotropic_material_and_canonicalize
     std::ostringstream original;
     nova::io::write_thermal_project(original, project);
     auto schema_two = original.str();
-    NOVA_REQUIRE(schema_two.rfind("NOVA_PROJECT 1\\n", 0) == 0);
+    NOVA_REQUIRE(schema_two.rfind("NOVA_PROJECT 1\n", 0) == 0);
     schema_two.replace(0, 14, "NOVA_PROJECT 2");
 
     std::istringstream input(schema_two);
