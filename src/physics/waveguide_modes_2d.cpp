@@ -50,7 +50,7 @@ using EdgeKey = std::pair<std::size_t, std::size_t>;
 WaveguideModesResult2D solve_waveguide_modes_2d(
     const WaveguideModeProblem2D& problem,
     const std::size_t max_modes,
-    const linalg::SymmetricEigenOptions& eigen_options) {
+    const linalg::SparseSymmetricEigenOptions& eigen_options) {
     if (max_modes == 0U) {
         throw std::invalid_argument("At least one waveguide mode must be requested.");
     }
