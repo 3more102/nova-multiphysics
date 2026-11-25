@@ -87,6 +87,38 @@ void validate_symmetric(const CsrMatrix& matrix, const char* label) {
     return result;
 }
 
+
+[[nodiscard]] long double quadratic_form_roundoff_scale(
+    const CsrMatrix& matrix,
+    const std::vector<double>& vector) {
+    if (vector.size() != matrix.columns()) {
+        throw std::invalid_argument("Sparse eigen quadratic-form dimension mismatch.");
+    }
+    std::vector<long double> row_absolute_products(vector.size(), 0.0L);
+    matrix.for_each_nonzero(
+        [&](const std::size_t row, const std::size_t column, const double value) {
+            row_absolute_products[row] +=
+                std::abs(static_cast<long double>(value)) *
+                std::abs(static_cast<long double>(vector[column]));
+        });
+    long double scale = 0.0L;
+    for (std::size_t row = 0; row < vector.size(); ++row) {
+        scale += std::abs(static_cast<long double>(vector[row])) *
+                 row_absolute_products[row];
+    }
+    if (!std::isfinite(scale)) {
+        throw std::overflow_error("Sparse eigen quadratic-form error scale overflow.");
+    }
+    return scale;
+}
+
+[[nodiscard]] long double quadratic_form_roundoff_tolerance(
+    const CsrMatrix& matrix,
+    const std::vector<double>& vector) {
+    return 256.0L * static_cast<long double>(std::numeric_limits<double>::epsilon()) *
+           quadratic_form_roundoff_scale(matrix, vector);
+}
+
 [[nodiscard]] std::uint64_t splitmix64(std::uint64_t& state) {
     std::uint64_t value = (state += 0x9e3779b97f4a7c15ULL);
     value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
@@ -182,11 +214,17 @@ SparseSymmetricEigenResult solve_sparse_symmetric_generalized_eigen(
                     axpy(mass_candidate, coefficient, mass_basis[previous]);
                 }
             }
+            // Recompute M*q after the two orthogonalization passes. Updating
+            // M*q by the same floating-point axpy operations can accumulate a
+            // mismatch that is significant when the residual is nearly zero.
+            mass_candidate = mass.multiply(candidate);
             const double norm_squared = mass_norm_squared(candidate, mass_candidate);
-            if (norm_squared < -128.0 * std::numeric_limits<double>::epsilon() * mass_norm) {
+            const long double roundoff_tolerance =
+                quadratic_form_roundoff_tolerance(mass, candidate);
+            if (static_cast<long double>(norm_squared) < -roundoff_tolerance) {
                 throw std::invalid_argument("Sparse generalized eigen mass is not positive definite.");
             }
-            if (!(norm_squared > 128.0 * std::numeric_limits<double>::epsilon() * mass_norm)) {
+            if (!(static_cast<long double>(norm_squared) > roundoff_tolerance)) {
                 continue;
             }
             const double inverse_norm = 1.0 / std::sqrt(norm_squared);
@@ -225,10 +263,13 @@ SparseSymmetricEigenResult solve_sparse_symmetric_generalized_eigen(
         auto mass_candidate = mass.multiply(candidate);
         const double initial_norm_squared =
             mass_norm_squared(candidate, mass_candidate);
-        if (initial_norm_squared < 0.0) {
+        const long double initial_roundoff_tolerance =
+            quadratic_form_roundoff_tolerance(mass, candidate);
+        if (static_cast<long double>(initial_norm_squared) < -initial_roundoff_tolerance) {
             throw std::runtime_error("Mass solve produced a vector with negative M norm.");
         }
-        const double initial_norm = std::sqrt(initial_norm_squared);
+        const double initial_norm =
+            std::sqrt(std::max(0.0, initial_norm_squared));
 
         for (int pass = 0; pass < 2; ++pass) {
             for (std::size_t previous = 0; previous < basis.size(); ++previous) {
@@ -238,12 +279,20 @@ SparseSymmetricEigenResult solve_sparse_symmetric_generalized_eigen(
             }
         }
 
+        // Re-evaluate the mass product from the updated vector. The previous
+        // incremental update is algebraically equivalent but can lose
+        // positive definiteness through cancellation near Krylov breakdown.
+        mass_candidate = mass.multiply(candidate);
         const double residual_norm_squared =
             mass_norm_squared(candidate, mass_candidate);
-        if (residual_norm_squared < -128.0 * std::numeric_limits<double>::epsilon() * mass_norm) {
+        const long double residual_roundoff_tolerance =
+            quadratic_form_roundoff_tolerance(mass, candidate);
+        if (static_cast<long double>(residual_norm_squared) <
+            -residual_roundoff_tolerance) {
             throw std::runtime_error("Generalized Krylov orthogonalization lost positive mass norm.");
         }
-        const double residual_norm = std::sqrt(std::max(0.0, residual_norm_squared));
+        const double residual_norm =
+            std::sqrt(std::max(0.0, residual_norm_squared));
         const double threshold = options.breakdown_tolerance *
             std::max(initial_norm, std::numeric_limits<double>::min());
         if (residual_norm > threshold && basis.size() < subspace_limit) {
