@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <iomanip>
+#include <initializer_list>
 #include <iostream>
 #include <utility>
 #include <vector>
