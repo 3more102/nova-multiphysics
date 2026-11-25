@@ -164,3 +164,75 @@ NOVA_TEST(csr_matrix_vector_product_returns_infinity_for_unrepresentable_exact_r
     NOVA_REQUIRE(std::isinf(result[0]));
     NOVA_REQUIRE(result[0] > 0.0);
 }
+
+
+NOVA_TEST(csr_exact_dot_rounds_positive_halfway_ties_to_even) {
+    using nova::linalg::CsrMatrix;
+    const double largest = std::numeric_limits<double>::max();
+    const auto matrix = CsrMatrix::from_triplets(1, 6, {
+        {0,0,1.0}, {0,1,1.0}, {0,2,1.0},
+        {0,3,1.0}, {0,4,1.0}, {0,5,1.0}
+    });
+    // The ordinary path overflows before the large terms cancel. The exact
+    // result is 1 + 2^-53, exactly halfway between 1 and its successor.
+    const auto result = matrix.multiply(std::vector<double>{
+        largest, largest, -largest, -largest, 1.0, std::ldexp(1.0, -53)
+    });
+    NOVA_REQUIRE(result[0] == 1.0);
+}
+
+NOVA_TEST(csr_exact_dot_rounds_positive_halfway_to_even_upper_neighbor) {
+    using nova::linalg::CsrMatrix;
+    const double largest = std::numeric_limits<double>::max();
+    const auto matrix = CsrMatrix::from_triplets(1, 7, {
+        {0,0,1.0}, {0,1,1.0}, {0,2,1.0}, {0,3,1.0},
+        {0,4,1.0}, {0,5,1.0}, {0,6,1.0}
+    });
+    // 1 + 3*2^-53 is halfway between the first and second successors
+    // of 1. The even significand is the upper neighbor.
+    const auto result = matrix.multiply(std::vector<double>{
+        largest, largest, -largest, -largest,
+        1.0, std::ldexp(1.0, -52), std::ldexp(1.0, -53)
+    });
+    const double expected = std::nextafter(
+        std::nextafter(1.0, 2.0), 2.0);
+    NOVA_REQUIRE(result[0] == expected);
+}
+
+NOVA_TEST(csr_exact_dot_rounds_subnormal_halfway_cases_to_even) {
+    using nova::linalg::CsrMatrix;
+    const double tiny = std::numeric_limits<double>::denorm_min();
+    const auto matrix = CsrMatrix::from_triplets(1, 1, {{0,0,tiny}});
+    const auto positive = matrix.multiply(std::vector<double>{0.5});
+    const auto negative = CsrMatrix::from_triplets(1, 1, {{0,0,-tiny}})
+        .multiply(std::vector<double>{0.5});
+    NOVA_REQUIRE(positive[0] == 0.0);
+    NOVA_REQUIRE(!std::signbit(positive[0]));
+    NOVA_REQUIRE(negative[0] == 0.0);
+    NOVA_REQUIRE(std::signbit(negative[0]));
+}
+
+NOVA_TEST(csr_exact_dot_rounds_subnormal_upper_halfway_to_even) {
+    using nova::linalg::CsrMatrix;
+    const double tiny = std::numeric_limits<double>::denorm_min();
+    const auto matrix = CsrMatrix::from_triplets(1, 1, {{0,0,3.0*tiny}});
+    const auto result = matrix.multiply(std::vector<double>{0.5});
+    NOVA_REQUIRE(result[0] == 2.0*tiny);
+}
+
+NOVA_TEST(csr_exact_dot_obeys_binary64_overflow_rounding_boundary) {
+    using nova::linalg::CsrMatrix;
+    const double largest = std::numeric_limits<double>::max();
+    const auto matrix = CsrMatrix::from_triplets(1, 4, {
+        {0,0,1.0}, {0,1,1.0}, {0,2,1.0}, {0,3,1.0}
+    });
+    const auto below = matrix.multiply(std::vector<double>{
+        largest, largest, -largest, std::ldexp(1.0, 969)
+    });
+    NOVA_REQUIRE(below[0] == largest);
+    const auto at_midpoint = matrix.multiply(std::vector<double>{
+        largest, largest, -largest, std::ldexp(1.0, 970)
+    });
+    NOVA_REQUIRE(std::isinf(at_midpoint[0]));
+    NOVA_REQUIRE(at_midpoint[0] > 0.0);
+}
