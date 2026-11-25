@@ -108,6 +108,8 @@ NOVA_TEST(waveguide_te_tm_fundamental_modes_match_independent_slab_reference) {
         const auto& fundamental = fine.modes.front();
         NOVA_REQUIRE(fundamental.scalar_field.size() == fine_problem.mesh.nodes.size());
         NOVA_REQUIRE(fundamental.relative_residual < 1.0e-10);
+        NOVA_REQUIRE(fundamental.core_confinement_factor > 0.8);
+        NOVA_REQUIRE(fundamental.core_confinement_factor <= 1.0);
         NOVA_REQUIRE(fundamental.effective_index > cladding_index);
         NOVA_REQUIRE(fundamental.effective_index < core_index);
         NOVA_REQUIRE_NEAR(
@@ -136,6 +138,8 @@ NOVA_TEST(waveguide_te_tm_fundamental_modes_match_independent_slab_reference) {
             NOVA_REQUIRE(
                 fine.modes[mode - 1U].effective_index >=
                 fine.modes[mode].effective_index);
+            NOVA_REQUIRE(fine.modes[mode].core_confinement_factor >= 0.0);
+            NOVA_REQUIRE(fine.modes[mode].core_confinement_factor <= 1.0);
         }
 
         std::cout << (polarization == WaveguidePolarization2D::TE_Ez ? "TE_Ez" : "TM_Hz")
