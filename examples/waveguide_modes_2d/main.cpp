@@ -44,6 +44,7 @@ int main() {
               << " vertices=" << problem.mesh.nodes.size() << '\n'
               << std::setprecision(12);
 
+    bool successful = true;
     for (const auto polarization : {
              nova::physics::WaveguidePolarization2D::TE_Ez,
              nova::physics::WaveguidePolarization2D::TM_Hz}) {
@@ -51,8 +52,9 @@ int main() {
         const auto result = nova::physics::solve_waveguide_modes_2d(problem, 4U);
         const char* name = polarization == nova::physics::WaveguidePolarization2D::TE_Ez
             ? "TE_Ez" : "TM_Hz";
-        if (result.modes.empty()) {
-            std::cout << name << ": no bound modes found\n";
+        if (!result.converged || result.modes.empty()) {
+            std::cout << name << ": no converged guided-mode candidate\\n";
+            successful = false;
             continue;
         }
         const auto& fundamental = result.modes.front();
@@ -60,7 +62,7 @@ int main() {
                   << " beta=" << fundamental.propagation_constant_per_m
                   << " core_confinement=" << fundamental.core_confinement_factor
                   << " residual=" << fundamental.relative_residual
-                  << " converged=" << (result.converged ? "yes" : "no") << '\n';
+                  << " converged=yes\\n";
     }
-    return 0;
+    return successful ? 0 : 1;
 }
