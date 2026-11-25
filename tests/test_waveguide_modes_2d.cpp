@@ -263,4 +263,11 @@ NOVA_TEST(waveguide_modes_reject_invalid_material_mesh_and_constraints) {
     try { (void)nova::physics::solve_waveguide_modes_2d(problem, 0U); }
     catch (const std::invalid_argument&) { rejected = true; }
     NOVA_REQUIRE(rejected);
+
+    auto invalid_options = nova::linalg::SymmetricEigenOptions{};
+    invalid_options.relative_tolerance = 0.0;
+    rejected = false;
+    try { (void)nova::physics::solve_waveguide_modes_2d(problem, 2U, invalid_options); }
+    catch (const std::invalid_argument&) { rejected = true; }
+    NOVA_REQUIRE(rejected);
 }
