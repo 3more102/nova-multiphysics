@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 #include "nova/fem/mesh2d.hpp"
 #include "nova/physics/waveguide_modes_2d.hpp"
+#include "nova/linalg/sparse_symmetric_eigen.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -100,10 +101,12 @@ NOVA_TEST(waveguide_te_tm_fundamental_modes_match_independent_slab_reference) {
              WaveguidePolarization2D::TM_Hz}) {
         const auto coarse_problem = make_slab_problem(20U, polarization);
         const auto fine_problem = make_slab_problem(40U, polarization);
+        nova::linalg::SparseSymmetricEigenOptions eigen_options;
+        eigen_options.max_subspace = 128U;
         const auto coarse = nova::physics::solve_waveguide_modes_2d(
-            coarse_problem, 4U);
+            coarse_problem, 4U, eigen_options);
         const auto fine = nova::physics::solve_waveguide_modes_2d(
-            fine_problem, 4U);
+            fine_problem, 4U, eigen_options);
 
         NOVA_REQUIRE(coarse.converged);
         NOVA_REQUIRE(fine.converged);
@@ -180,11 +183,14 @@ NOVA_TEST(waveguide_modes_use_permeability_weighted_te_tm_operators) {
         }
     }
 
+    nova::linalg::SparseSymmetricEigenOptions eigen_options;
+    eigen_options.max_subspace = 128U;
     for (const auto polarization : {
              WaveguidePolarization2D::TE_Ez,
              WaveguidePolarization2D::TM_Hz}) {
         problem.polarization = polarization;
-        const auto result = nova::physics::solve_waveguide_modes_2d(problem, 4U);
+        const auto result = nova::physics::solve_waveguide_modes_2d(
+            problem, 4U, eigen_options);
         const double reference = analytic_slab_fundamental_index(
             polarization, core_epsilon, core_mu,
             cladding_epsilon, cladding_mu);
@@ -264,7 +270,7 @@ NOVA_TEST(waveguide_modes_reject_invalid_material_mesh_and_constraints) {
     catch (const std::invalid_argument&) { rejected = true; }
     NOVA_REQUIRE(rejected);
 
-    auto invalid_options = nova::linalg::SymmetricEigenOptions{};
+    auto invalid_options = nova::linalg::SparseSymmetricEigenOptions{};
     invalid_options.relative_tolerance = 0.0;
     rejected = false;
     try { (void)nova::physics::solve_waveguide_modes_2d(problem, 2U, invalid_options); }
