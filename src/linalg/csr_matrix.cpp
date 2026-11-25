@@ -108,8 +108,9 @@ std::vector<double> CsrMatrix::multiply(const std::span<const double> vector) co
         bool cancellation_risk = false;
         const std::size_t term_count = end - begin;
         if (term_count > 1U && std::isfinite(sum) && absolute_scale > 0.0) {
+            const double operation_count = 2.0 * static_cast<double>(term_count);
             const double n_epsilon =
-                static_cast<double>(term_count) * std::numeric_limits<double>::epsilon();
+                operation_count * std::numeric_limits<double>::epsilon();
             const double gamma = n_epsilon < 0.5
                 ? n_epsilon / (1.0 - n_epsilon)
                 : 1.0;
