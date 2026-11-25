@@ -61,7 +61,7 @@ struct DiffusionResidualIndicators3D {
     const std::function<double(double, double, double)>& source,
     std::span<const NeumannResidualFace3D> natural_boundary_faces,
     std::span<const RobinResidualFace3D> robin_boundary_faces,
-    std::span<const double> cell_source = {}
+    std::span<const double> cell_source
 );
 
 // Convenience overloads for positive elementwise-constant scalar conductivity.

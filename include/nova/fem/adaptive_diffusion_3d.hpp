@@ -77,7 +77,8 @@ struct AdaptiveDiffusionRun3D {
 // Runs up to max_cycles, stopping when the final indicator is no larger than
 // max(absolute_tolerance, relative_tolerance * initial_indicator), or when no
 // further elements can be marked. The initial indicator is the first coarse
-// solve's total_error; the final result contains the last refined state.
+// solve's total_error. Acceptance on the input mesh records one history entry
+// with zero marked elements. Each subsequent mesh is solved and estimated once.
 [[nodiscard]] AdaptiveDiffusionRun3D solve_adaptive_diffusion_3d(
     const ScalarDiffusion3DProblem& problem,
     const AdaptiveDiffusionOptions3D& options = {},

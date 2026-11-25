@@ -2,6 +2,8 @@
 
 Release decision for NOVA 1.0 Commercial Edition: **NO-GO**. The assessed workflow is a stationary, homogeneous thermal box. The following weights apply only to this Engineering Alpha workflow. Give the full weight only when every named condition is evidenced. Partial work earns zero. Each gate remains mandatory independently of any subtotal.
 
+The [25 November 2026 release-gate inventory](verification/release-gates-2026-11-25.md) records the repository backlog, the adaptive FEM integration, and outstanding platform qualification.
+
 | Gate 1 criterion for the thermal box | Weight | Testable acceptance | Earned |
 | --- | ---: | --- | ---: |
 | Working model representation | 2 | Stable geometry, mesh, material and study IDs, checked references and physical inputs, selections surviving remeshing | 2 |

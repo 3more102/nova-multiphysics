@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <set>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
@@ -443,7 +444,12 @@ NOVA_TEST(adaptive_diffusion_3d_transfers_cell_tensors_and_robin_neumann_faces) 
     const nova::fem::SymmetricTensor3D tensor{4.0, 3.0, 2.0, 0.5, 0.1, 0.2};
     nova::fem::ScalarDiffusion3DProblem problem;
     problem.mesh = box.mesh;
-    problem.cell_diffusivity_tensors.assign(box.mesh.elements.size(), tensor);
+    for (std::size_t cell = 0; cell < box.mesh.elements.size(); ++cell) {
+        const double scale = 1.0 + 0.25 * static_cast<double>(cell);
+        problem.cell_diffusivity_tensors.push_back({
+            scale * tensor.xx, scale * tensor.yy, scale * tensor.zz,
+            scale * tensor.xy, scale * tensor.xz, scale * tensor.yz});
+    }
     problem.source = [](double, double, double) { return 4.0; };
 
     const auto on_y = [&](const nova::fem::BoundaryFace3D& face, double y) {
@@ -625,4 +631,145 @@ NOVA_TEST(adaptive_diffusion_3d_multicycle_driver_respects_cycle_cap_and_reports
     }
     NOVA_REQUIRE(result.final_problem.mesh.elements.size() ==
                  result.cycles.back().refined_elements);
+}
+
+NOVA_TEST(adaptive_diffusion_3d_accepts_a_nonzero_initial_indicator_before_marking) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    const auto problem = make_wall(box, 4.0);
+    nova::fem::AdaptiveDiffusionOptions3D options;
+    options.absolute_tolerance = 0.0;
+    options.relative_tolerance = 1.0;
+
+    const auto run = nova::fem::solve_adaptive_diffusion_3d(problem, options);
+    NOVA_REQUIRE(run.initial_indicator > 0.0);
+    NOVA_REQUIRE(run.tolerance_satisfied);
+    NOVA_REQUIRE(run.stop_reason ==
+                 nova::fem::AdaptiveDiffusionStopReason3D::ToleranceSatisfied);
+    NOVA_REQUIRE(run.cycles.size() == 1U);
+    NOVA_REQUIRE(run.cycles.front().marked_elements == 0U);
+    NOVA_REQUIRE(run.final_problem.mesh.elements == problem.mesh.elements);
+    NOVA_REQUIRE(run.final_indicators.total_error == run.initial_indicator);
+    NOVA_REQUIRE(run.final_solution.values.size() == problem.mesh.nodes.size());
+}
+
+NOVA_TEST(adaptive_diffusion_3d_reuses_the_intermediate_solve_and_estimate) {
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    auto problem = make_wall(box, 4.0);
+    std::size_t evaluations = 0;
+    problem.source = [&evaluations](double, double, double) {
+        ++evaluations;
+        return 4.0;
+    };
+
+    nova::fem::AdaptiveDiffusionOptions3D options;
+    options.absolute_tolerance = 0.0;
+    options.relative_tolerance = 0.0;
+    options.max_cycles = 2;
+    const auto first = nova::fem::solve_adaptive_diffusion_step_3d(problem, options.dorfler_theta);
+    const auto second = nova::fem::solve_adaptive_diffusion_step_3d(
+        first.refined_problem, options.dorfler_theta);
+    const auto manual_evaluations = evaluations;
+
+    // Count the work of solving and estimating just the shared mesh.
+    evaluations = 0;
+    auto accept = options;
+    accept.relative_tolerance = 1.0;
+    const auto shared = nova::fem::solve_adaptive_diffusion_3d(first.refined_problem, accept);
+    NOVA_REQUIRE(shared.cycles.front().marked_elements == 0U);
+    const auto shared_evaluations = evaluations;
+    NOVA_REQUIRE(shared_evaluations > 0U);
+
+    evaluations = 0;
+    const auto run = nova::fem::solve_adaptive_diffusion_3d(problem, options);
+    NOVA_REQUIRE(evaluations + shared_evaluations == manual_evaluations);
+    NOVA_REQUIRE(run.final_problem.mesh.elements == second.refined_problem.mesh.elements);
+    NOVA_REQUIRE(run.final_solution.values.size() == second.refined_solution.values.size());
+    for (std::size_t i = 0; i < run.final_solution.values.size(); ++i) {
+        NOVA_REQUIRE_NEAR(run.final_solution.values[i], second.refined_solution.values[i], 1.0e-12);
+    }
+    NOVA_REQUIRE_NEAR(run.final_indicators.total_error, second.refined_indicators.total_error, 1.0e-12);
+}
+
+NOVA_TEST(adaptive_diffusion_3d_layered_tensor_wall_matches_series_resistance_and_flux) {
+    using namespace nova::fem;
+    // Unit cross section, two half-length layers and a convective right end.
+    // Lateral loads impose the transverse fluxes of the rotated tensors.
+    constexpr double heat_flux = (5.5 - 1.0) / (0.5 / 2.0 + 0.5 / 8.0 + 1.0 / 4.0);
+    for (const auto divisions : {2U, 4U}) {
+        const auto box = make_box_mesh_3d(0, 1, 0, 1, 0, 1, divisions, divisions, divisions);
+        ScalarDiffusion3DProblem problem;
+        problem.mesh = box.mesh;
+        for (const auto& tet : box.mesh.elements) {
+            double centroid_x = 0.0;
+            for (const auto node : tet) centroid_x += 0.25 * box.mesh.nodes[node].x;
+            problem.cell_diffusivity_tensors.push_back(centroid_x < 0.5
+                ? SymmetricTensor3D{2, 3, 4, 0.5, -0.25, 0.125}
+                : SymmetricTensor3D{8, 5, 6, 2, -1, -0.25});
+        }
+        for (const auto& face : box.boundary_faces) {
+            if (is_x_plate(box.mesh, face, 0)) {
+                problem.dirichlet_faces.push_back({face, [](double, double, double) { return 5.5; }});
+            } else if (is_x_plate(box.mesh, face, 1)) {
+                problem.robin_faces.push_back({face, [](double, double, double) { return 4.0; },
+                                                    [](double, double, double) { return 1.0; }});
+            } else {
+                const auto& a = box.mesh.nodes[face[0]];
+                const auto& b = box.mesh.nodes[face[1]];
+                const auto& c = box.mesh.nodes[face[2]];
+                const double outward = (a.y == b.y && a.y == c.y)
+                    ? (a.y == 1.0 ? 2.0 : -2.0) : (a.z == 1.0 ? -1.0 : 1.0);
+                problem.neumann_faces.push_back({face, [outward](double, double, double) { return outward; }});
+            }
+        }
+
+        AdaptiveDiffusionOptions3D options;
+        options.absolute_tolerance = 1.0e-7;
+        options.relative_tolerance = 0.0;
+        for (const auto tolerance : {1.0e-10, 1.0e-12}) {
+            nova::linalg::SolverOptions solver;
+            solver.relative_tolerance = tolerance;
+            const auto run = solve_adaptive_diffusion_3d(problem, options, solver);
+            NOVA_REQUIRE(run.tolerance_satisfied);
+            NOVA_REQUIRE(run.cycles.front().marked_elements == 0U);
+            NOVA_REQUIRE(run.final_indicators.total_error <= options.absolute_tolerance);
+            for (std::size_t i = 0; i < box.mesh.nodes.size(); ++i) {
+                const double x = box.mesh.nodes[i].x;
+                const double resistance = std::min(x, 0.5) / 2.0 + std::max(x - 0.5, 0.0) / 8.0;
+                NOVA_REQUIRE_NEAR(run.final_solution.values[i], 5.5 - heat_flux * resistance, 2.0e-8);
+            }
+            for (const auto& field : evaluate_p1_tetrahedral_flux_3d(problem, run.final_solution.values)) {
+                NOVA_REQUIRE_NEAR(field.flux.x, heat_flux, 2.0e-7);
+                NOVA_REQUIRE_NEAR(field.flux.y, 2.0, 2.0e-7);
+                NOVA_REQUIRE_NEAR(field.flux.z, -1.0, 2.0e-7);
+            }
+        }
+    }
+}
+
+NOVA_TEST(adaptive_diffusion_3d_reports_failed_linear_solve_before_acceptance) {
+    const auto box = nova::fem::make_box_mesh_3d(0, 1, 0, 1, 0, 1, 4U, 2U, 2U);
+    const auto problem = make_wall(box, 4.0);
+    nova::linalg::SolverOptions solver;
+    solver.max_iterations = 1;
+    try {
+        (void)nova::fem::solve_adaptive_diffusion_3d(problem, {}, solver);
+    } catch (const std::runtime_error& error) {
+        const std::string detail = error.what();
+        NOVA_REQUIRE(detail.find("Coarse") != std::string::npos);
+        NOVA_REQUIRE(detail.find("residual") != std::string::npos);
+        NOVA_REQUIRE(detail.find("Maximum iteration count") != std::string::npos);
+        return;
+    }
+    NOVA_REQUIRE(false);
+}
+
+NOVA_TEST(residual_estimator_3d_preserves_six_argument_empty_material_call) {
+    const auto box = nova::fem::make_box_mesh_3d(0, 1, 0, 1, 0, 1, 1U, 1U, 1U);
+    const std::vector<double> values(box.mesh.nodes.size(), 0.0);
+    NOVA_REQUIRE(rejects([&] {
+        (void)nova::fem::estimate_diffusion_residual_error_3d(
+            box.mesh, values, {}, [](double, double, double) { return 0.0; }, {}, {});
+    }));
 }

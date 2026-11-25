@@ -3,9 +3,8 @@
 The one-cycle function `nova::fem::solve_adaptive_diffusion_step_3d`
 connects the existing 3D stationary FEM solver, residual estimator,
 Dörfler bulk marking, conforming local refinement, and P1/cell transfer.
-The multi-cycle driver `nova::fem::solve_adaptive_diffusion_3d` repeats that
-cycle until an indicator tolerance is met or a configured cycle limit is
-reached. The one-cycle sequence is:
+The multi-cycle driver `nova::fem::solve_adaptive_diffusion_3d` carries the
+solution and indicator forward until the target or cycle limit is reached. The one-cycle sequence is:
 
 1. Solve the coarse scalar diffusion problem.
 2. Evaluate element source, interior normal flux-jump, and all explicitly
@@ -55,6 +54,12 @@ const auto run = nova::fem::solve_adaptive_diffusion_3d(problem, options);
 The stopping target is
 `max(absolute_tolerance, relative_tolerance * initial_indicator)`, where
 `initial_indicator` is the first coarse solve's total residual indicator.
+The driver checks the initial indicator before marking. An accepted input mesh
+returns its original field and one history entry with zero marked cells and
+identical coarse and final sizes. Each newly refined mesh is solved and
+estimated once. A failed linear solve reports the mesh stage, iteration count,
+residual and CG termination message.
+
 The result contains the final problem, solution, indicators, and a compact
 per-cycle history of mesh sizes, marked elements, and indicator values.
 Stop reasons distinguish a satisfied tolerance, no further refinement, and
@@ -91,7 +96,7 @@ they do not certify the continuum solution error.
   refined problem and are re-evaluated by the FEM quadrature.
 
 Higher-order bases and curved boundary geometry remain unsupported. The
-multi-cycle driver automates repeated calls to the same one-cycle workflow
+multi-cycle driver uses the same marking, boundary transfer and field estimation
 without changing the estimator's heuristic status.
 
 The estimator is a **heuristic spatial error indicator**, not a certified
@@ -174,7 +179,27 @@ current cell residual does not include within-cell coefficient-gradient terms,
 and the estimator is not a certified continuum error bound.
 
 
-The multi-cycle regressions verify early termination for a zero-indicator
-manufactured case, invalid cycle-limit rejection, and a two-cycle source-loaded
-wall run that respects the configured cap while reporting mesh and indicator
-progress without assuming monotonic error reduction.
+### Two-layer tensor wall with mixed boundaries
+
+The unit cube has an interface at x = 0.5, a left temperature of 5.5,
+a right ambient of 1 and a right transfer coefficient of 4. The left and
+right conductivities have axial entries 2 and 8. Their respective first
+columns are (2, 0.5, -0.25) and (8, 2, -1). The lateral faces have signed
+outward fluxes from the constant vector (8, 2, -1); the volume source is zero.
+
+For unit cross section the axial heat flux is
+`(5.5 - 1) / (0.5/2 + 0.5/8 + 1/4) = 8`. The independent temperature
+reference at x is `5.5 - 8*(min(x, 0.5)/2 + max(x - 0.5, 0)/8)`.
+On interface-aligned grids with 2 and 4 subdivisions per axis, the exact
+temperature belongs to the P1 space. At CG relative tolerances of 1e-10
+and 1e-12, the regression checks every nodal temperature within 2e-8,
+every cell flux component within 2e-7, and a global indicator at most 1e-7.
+The benchmark uses synthetic coefficients and an exact discrete patch. The
+separate quadratic manufactured wall measures discretization error under
+refinement.
+
+A source-loaded wall with relative indicator tolerance 1 checks acceptance
+at equality for a nonzero initial indicator. A two-cycle regression counts
+source evaluations and compares the final solution and indicator with two
+explicit one-cycle calls. It verifies the work saved on their shared mesh.
+The installed SDK consumer also links and executes the multicycle entry point.
