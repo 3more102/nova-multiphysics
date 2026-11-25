@@ -95,10 +95,13 @@ returned as zero in the full global edge ordering.
 ## Verification
 
 The automated tests compare the first three sparse modes against the existing
-dense generalized-eigen reference on unit-cube meshes, check original-pencil
-residuals, M-normalization and mutual M-orthogonality, verify gradient
-orthogonality, check exact PEC zeros, and test the expected dielectric scaling
-\(\lambda\propto\epsilon_r^{-1}\), \(f\propto\epsilon_r^{-1/2}\).
+dense generalized-eigen reference on 2- and 3-division unit-cube meshes, check
+original-pencil residuals, M-normalization and mutual M-orthogonality, verify
+gradient orthogonality, check exact PEC zeros, and test the expected dielectric
+scaling \(\lambda\propto\epsilon_r^{-1}\),
+\(f\propto\epsilon_r^{-1/2}\). A separate 5-division cube test has more than
+512 free edge unknowns and qualifies three converged modes using a 96-vector
+Krylov subspace, beyond the dense solver's full-matrix dimension limit.
 
 The dense solver is a small-matrix reference, not an independent experimental
 truth source. The analytical PEC cube limit is \(k_0^2=2\pi^2\) for the
