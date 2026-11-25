@@ -2,6 +2,8 @@
 
 #include "nova/linalg/csr_matrix.hpp"
 
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -96,4 +98,58 @@ NOVA_TEST(csr_exact_equality_checks_dimensions_pattern_and_coefficients) {
     NOVA_REQUIRE(!a.exactly_equal(changed_value));
     NOVA_REQUIRE(!a.exactly_equal(changed_pattern));
     NOVA_REQUIRE(!a.exactly_equal(changed_dimensions));
+}
+
+
+NOVA_TEST(csr_matrix_vector_product_recovers_overflowing_products_that_cancel) {
+    using nova::linalg::CsrMatrix;
+    const double coefficient = std::ldexp(1.0, 800);
+    const double vector_scale = std::ldexp(1.0, 400);
+    const auto matrix = CsrMatrix::from_triplets(1, 2, {
+        {0, 0, coefficient}, {0, 1, -coefficient}
+    });
+    const auto result = matrix.multiply(std::vector<double>{vector_scale, vector_scale});
+    NOVA_REQUIRE(std::isfinite(result[0]));
+    NOVA_REQUIRE(result[0] == 0.0);
+}
+
+NOVA_TEST(csr_matrix_vector_product_preserves_small_residual_after_overflow_cancellation) {
+    using nova::linalg::CsrMatrix;
+    const double coefficient = std::ldexp(1.0, 800);
+    const double vector_scale = std::ldexp(1.0, 400);
+    const auto matrix = CsrMatrix::from_triplets(1, 3, {
+        {0, 0, coefficient}, {0, 1, -coefficient}, {0, 2, 1.0}
+    });
+    const auto result = matrix.multiply(
+        std::vector<double>{vector_scale, vector_scale, 1.0});
+    NOVA_REQUIRE(result[0] == 1.0);
+}
+
+NOVA_TEST(csr_matrix_vector_product_recovers_small_term_after_exact_cancellation) {
+    using nova::linalg::CsrMatrix;
+    const double large = std::ldexp(1.0, 500);
+    const auto matrix = CsrMatrix::from_triplets(1, 3, {
+        {0, 0, large}, {0, 1, 1.0}, {0, 2, -large}
+    });
+    const auto result = matrix.multiply(std::vector<double>{1.0, 1.0, 1.0});
+    NOVA_REQUIRE(result[0] == 1.0);
+}
+
+NOVA_TEST(csr_matrix_vector_product_preserves_representable_subnormal_result) {
+    using nova::linalg::CsrMatrix;
+    const auto matrix = CsrMatrix::from_triplets(1, 1, {
+        {0, 0, std::ldexp(1.0, -600)}
+    });
+    const auto result = matrix.multiply(std::vector<double>{std::ldexp(1.0, -500)});
+    NOVA_REQUIRE(result[0] == std::ldexp(1.0, -1100));
+}
+
+NOVA_TEST(csr_matrix_vector_product_keeps_ieee_propagation_for_nonfinite_input) {
+    using nova::linalg::CsrMatrix;
+    const auto matrix = CsrMatrix::from_triplets(1, 2, {
+        {0, 0, 1.0}, {0, 1, 1.0}
+    });
+    const double infinity = std::numeric_limits<double>::infinity();
+    const auto result = matrix.multiply(std::vector<double>{infinity, -infinity});
+    NOVA_REQUIRE(std::isnan(result[0]));
 }

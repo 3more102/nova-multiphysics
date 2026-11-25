@@ -1,7 +1,9 @@
 #include "nova/linalg/csr_matrix.hpp"
+#include "csr_exact_dot.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <stdexcept>
 
@@ -76,12 +78,43 @@ std::vector<double> CsrMatrix::multiply(const std::span<const double> vector) co
     }
 
     std::vector<double> result(rows_, 0.0);
+    constexpr double min_normal = std::numeric_limits<double>::min();
     for (std::size_t row = 0; row < rows_; ++row) {
+        const std::size_t begin = row_offsets_[row];
+        const std::size_t end = row_offsets_[row + 1U];
         double sum = 0.0;
-        for (std::size_t index = row_offsets_[row]; index < row_offsets_[row + 1]; ++index) {
+        for (std::size_t index = begin; index < end; ++index) {
             sum += values_[index] * vector[column_indices_[index]];
         }
-        result[row] = sum;
+
+        bool risky = !std::isfinite(sum) ||
+            (sum != 0.0 && std::abs(sum) < min_normal);
+        if (sum == 0.0 && begin != end) risky = true;
+        if (risky) {
+            bool finite_inputs = true;
+            bool has_nonzero_factors = false;
+            for (std::size_t index = begin; index < end; ++index) {
+                const double entry = vector[column_indices_[index]];
+                finite_inputs = finite_inputs && std::isfinite(entry);
+                has_nonzero_factors =
+                    has_nonzero_factors || (values_[index] != 0.0 && entry != 0.0);
+            }
+            if (!finite_inputs) {
+                // Preserve ordinary IEEE propagation for NaN and infinity inputs.
+                result[row] = sum;
+                continue;
+            }
+            if (sum == 0.0 && !has_nonzero_factors) {
+                result[row] = sum;
+                continue;
+            }
+            result[row] = detail::exact_finite_row_dot(
+                std::span<const double>(values_).subspan(begin, end - begin),
+                std::span<const std::size_t>(column_indices_).subspan(begin, end - begin),
+                vector);
+        } else {
+            result[row] = sum;
+        }
     }
     return result;
 }

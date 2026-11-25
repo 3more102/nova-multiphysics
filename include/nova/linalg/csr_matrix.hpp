@@ -29,6 +29,9 @@ public:
     // Compares the storage arrays directly in O(rows + nnz).
     [[nodiscard]] bool exactly_equal(const CsrMatrix& other) const noexcept;
 
+    // Ordinary rows use a binary64 fast path. Finite-input rows whose result
+    // is non-finite, subnormal, or zero despite nonzero factors are recomputed
+    // with exact product accumulation. Non-finite vector entries propagate IEEE.
     [[nodiscard]] std::vector<double> multiply(
         std::span<const double> vector
     ) const;

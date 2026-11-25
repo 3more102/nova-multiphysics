@@ -139,7 +139,8 @@ The L2 and H1 error calculator uses a 5×5 Gauss-Legendre product rule mapped to
 - Initial sparse storage is compressed sparse row (CSR).
 - Column indices within each row are stored in ascending order.
 - Duplicate assembly entries are summed.
-- Non-finite matrix and vector values are rejected.
+- Non-finite matrix coefficients are rejected during assembly. Non-finite vector entries propagate IEEE results through CSR multiplication.
+- Finite-input row products use ordinary binary64 accumulation for normal results. A non-finite, subnormal, or zero result with nonzero factors triggers an exact fixed-width integer accumulator, rounded once to binary64 using round-to-nearest, ties-to-even. This avoids intermediate product overflow and exact-cancellation loss without relying on extended-precision `long double` or an external numerical library. A mathematically out-of-range final row value remains signed infinity.
 - Matrix dimensions and vector lengths are checked at API boundaries.
 
 ## Solver convention
@@ -173,8 +174,10 @@ Breakdown checks compare \(|u^T v|/(\|u\|_2\|v\|_2)\) with machine
 precision, including the stabilization step
 \(\omega=(t^T s_k)/(t^T t)\). An absolute bound on \(\omega\) would change
 when the operator units change. Safe norms alone would leave that defect and
-the unscaled BiCGSTAB products in place. Matrix-vector products, steps and
-physical fields still have binary64 range limitations.
+the unscaled BiCGSTAB products in place. CSR row products use a binary64 fast
+path and the exact integer fallback described above when range or exact
+cancellation failure is detected. Krylov updates, coefficients and physical
+fields remain constrained by binary64 representation.
 
 The automated checks include exact nonsymmetric systems, a damped Newton solve
 with known root, and a layered, driven Maxwell problem. Its constant field is
