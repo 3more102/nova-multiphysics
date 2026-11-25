@@ -2,12 +2,12 @@
 
 ## Scope
 
-NOVA provides a P1 triangular finite-element eigenmode reference for z-invariant, isotropic, lossless waveguides with piecewise-constant positive real relative permittivity and permeability. It solves the two scalar reductions:
+NOVA provides a P1 triangular finite-element eigenmode reference for a slab waveguide propagating along the global x-axis, with a transverse y-z cross-section. The generic coordinates of `TriangleMesh2D` parameterize that cross-section. Materials are isotropic, lossless, and piecewise-constant, with positive real relative permittivity and permeability. It solves the two scalar reductions:
 
 - `TE_Ez`: the out-of-plane electric field component (E_z).
 - `TM_Hz`: the out-of-plane magnetic field component (H_z).
 
-These names identify the solved scalar component and should not be confused with plane-of-incidence TE/TM labels. This is **not** a full-vector hybrid-mode solver.
+For this propagation-axis convention, TE_Ez has a transverse z-directed electric field and TM_Hz has a transverse z-directed magnetic field. These labels should not be confused with unrelated plane-of-incidence conventions. This is **not** a full-vector hybrid-mode solver.
 
 ## Discrete formulation
 
