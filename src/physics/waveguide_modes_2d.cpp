@@ -296,9 +296,9 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
             const double u0 = mode.scalar_field[element[0]];
             const double u1 = mode.scalar_field[element[1]];
             const double u2 = mode.scalar_field[element[2]];
+            const double field_sum = u0 + u1 + u2;
             const double quadratic_sum =
-                2.0 * (u0 * u0 + u1 * u1 + u2 * u2) +
-                2.0 * (u0 * u1 + u0 * u2 + u1 * u2);
+                u0 * u0 + u1 * u1 + u2 * u2 + field_sum * field_sum;
             const double weighted_integral =
                 element_mass_coefficients[element_index] *
                 element_areas[element_index] / 12.0 * quadratic_sum;
