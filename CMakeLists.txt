@@ -39,6 +39,7 @@ add_library(nova_core
     src/physics/thermo_optic_3d.cpp
     src/physics/maxwell_cavity_3d.cpp
     src/linalg/symmetric_eigen.cpp
+    src/linalg/sparse_symmetric_eigen.cpp
     src/fem/h1_space_3d.cpp
     src/fem/conductivity_3d.cpp
     src/fem/constrained_diffusion.cpp
@@ -181,6 +182,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_incomplete_cholesky.cpp
         tests/test_bicgstab.cpp
         tests/test_gmres.cpp
+        tests/test_sparse_symmetric_eigen.cpp
         tests/test_newton_solver.cpp
         tests/test_poisson_1d.cpp
         tests/test_diffusion_2d.cpp
