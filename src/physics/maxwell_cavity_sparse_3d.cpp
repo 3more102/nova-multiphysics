@@ -115,7 +115,7 @@ std::vector<Edge> all_mesh_edges(const fem::TetrahedralMesh3D& mesh) {
             });
         }
     }
-    return {unique.begin(), unique.end()};
+    return std::vector<Edge>(unique.begin(), unique.end());
 }
 
 std::vector<std::size_t> all_free_edges(
@@ -317,7 +317,7 @@ MaxwellCavitySparseResult3D solve_maxwell_cavity_shift_invert_3d(
     result.shift = options.shift_scale * spectral_scale;
     result.nullspace_cutoff = options.nullspace_relative_tolerance * spectral_scale;
     if (!(result.shift > 0.0) || !std::isfinite(result.shift) ||
-        !std::isfinite(result.nullspace_cutoff)) {
+        !(result.nullspace_cutoff > 0.0) || !std::isfinite(result.nullspace_cutoff)) {
         throw std::overflow_error("Maxwell cavity shift or nullspace cutoff overflow.");
     }
     const CsrMatrix shifted = CsrMatrix::linear_combination(
@@ -460,6 +460,9 @@ MaxwellCavitySparseResult3D solve_maxwell_cavity_shift_invert_3d(
 
     const double k_norm = frobenius_norm(matrices.stiffness);
     const double m_norm = frobenius_norm(matrices.mass);
+    if (!std::isfinite(k_norm) || !std::isfinite(m_norm) || !(m_norm > 0.0)) {
+        throw std::overflow_error("Maxwell cavity matrix norm is outside the supported range.");
+    }
     bool residuals_converged = projected.converged;
     for (std::size_t offset = 0;
          offset < projected.eigenpairs.size() && result.modes.size() < options.max_modes;
@@ -499,6 +502,9 @@ MaxwellCavitySparseResult3D solve_maxwell_cavity_shift_invert_3d(
         for (std::size_t i = 0; i < n; ++i) residual[i] = kx[i] - lambda * mx[i];
         const double numerator = norm(residual);
         const double denominator = (k_norm + std::abs(lambda) * m_norm) * norm(x);
+        if (!std::isfinite(denominator)) {
+            throw std::overflow_error("Maxwell cavity residual normalization overflow.");
+        }
         const double relative_residual = denominator > 0.0
             ? numerator / denominator : numerator;
         if (!std::isfinite(relative_residual)) {
