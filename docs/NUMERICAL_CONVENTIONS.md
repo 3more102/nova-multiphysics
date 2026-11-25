@@ -140,7 +140,7 @@ The L2 and H1 error calculator uses a 5×5 Gauss-Legendre product rule mapped to
 - Column indices within each row are stored in ascending order.
 - Duplicate assembly entries are summed.
 - Non-finite matrix coefficients are rejected during assembly. Non-finite vector entries propagate IEEE results through CSR multiplication.
-- Finite-input row products use ordinary binary64 accumulation for normal results. A non-finite, subnormal, or zero result with nonzero factors triggers an exact fixed-width integer accumulator, rounded once to binary64 using round-to-nearest, ties-to-even. This avoids intermediate product overflow and exact-cancellation loss without relying on extended-precision `long double` or an external numerical library. A mathematically out-of-range final row value remains signed infinity.
+- Finite-input row products use a binary64 fast path while tracking the absolute product scale with a scaled positive sum. A non-finite or subnormal result, a zero result with nonzero factors, or a normal result whose magnitude is within a conservative cancellation-error bound triggers an exact fixed-width integer accumulator. The cancellation trigger uses \(\min(10^{-8},8\gamma_n)\sum_i|a_i x_i|\), where \(\gamma_n=n\epsilon/(1-n\epsilon)\) when \(n\epsilon<0.5\) and is bounded to one otherwise. Exact accumulation is rounded once to binary64 using round-to-nearest, ties-to-even. This recovers severe normal-result cancellation without using extended-precision `long double` or an external numerical library. A mathematically out-of-range final row value remains signed infinity.
 - Matrix dimensions and vector lengths are checked at API boundaries.
 
 ## Solver convention
