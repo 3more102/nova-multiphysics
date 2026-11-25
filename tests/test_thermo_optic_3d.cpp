@@ -212,3 +212,61 @@ NOVA_TEST(thermo_optic_manufactured_nonzero_temperature_shift_matches_exact_abso
                           expected_density * volume, 1e-7);
     }
 }
+
+NOVA_TEST(thermo_optic_free_robin_equilibrium_matches_independent_scalar_root) {
+    // A regular tetrahedron has equal source and surface load at each vertex.
+    // Its symmetric P1 equilibrium is uniform even though all temperatures are free.
+    ThermoOptic3DProblem problem;
+    auto& model = problem.photothermal;
+    auto& mesh = model.thermal.mesh;
+    mesh.nodes = {{1, 1, 1}, {1, -1, -1}, {-1, 1, -1}, {-1, -1, 1}};
+    mesh.elements = {{0, 1, 2, 3}};
+    model.thermal.cell_diffusivity = {4.0};
+    for (const auto& face : extract_boundary_faces_3d(mesh)) {
+        model.thermal.robin_faces.push_back({face,
+            [](double, double, double) { return 0.2; },
+            [](double, double, double) { return 300.0; }});
+    }
+
+    constexpr double k0 = 2.3;
+    const std::complex<double> reference_epsilon{2.0, 0.6};
+    model.vacuum_wavenumber = k0;
+    model.pec_on_exterior = false;
+    model.optical_materials = {{reference_epsilon, 1.0}};
+    ComplexVector3D force{};
+    force[0] = -k0 * k0 * reference_epsilon * 100.0;
+    model.optical_cell_sources = {force};
+    problem.d_relative_permittivity_d_temperature = {{0.02, 0.003}};
+    problem.reference_temperature_kelvin = 300.0;
+    problem.temperature_tolerance_kelvin = 1e-9;
+    problem.relative_absorbed_power_tolerance = 1e-10;
+    problem.max_iterations = 100;
+
+    // See docs/THERMO_OPTIC_3D.md for the independent scalar balance and root.
+    constexpr double temperature = 314.5552553103854;
+    constexpr double power = 40.3367067435588;
+    const std::complex<double> electric_x{87.72733374282475, 1.54201504058201};
+    for (const double relaxation : {0.5, 1.0}) {
+        problem.relaxation_factor = relaxation;
+        const auto result = solve_thermo_optic_3d(problem, accurate_optical_options());
+        NOVA_REQUIRE(result.converged);
+        NOVA_REQUIRE(result.history.size() > 2U);
+        const auto& fields = result.photothermal;
+        NOVA_REQUIRE(fields.thermal_balance.free_nodes == 4U);
+        NOVA_REQUIRE(fields.thermal_solution.values.size() == 4U);
+        for (double value : fields.thermal_solution.values) {
+            NOVA_REQUIRE_NEAR(value, temperature, 2e-8);
+        }
+        NOVA_REQUIRE_NEAR(fields.total_absorbed_power_watts, power, 2e-7);
+        NOVA_REQUIRE_NEAR(fields.thermal_balance.generated_heat, power, 2e-7);
+        NOVA_REQUIRE_NEAR(fields.thermal_balance.robin_outward_heat, power, 2e-7);
+        NOVA_REQUIRE_NEAR(fields.thermal_balance.signed_balance_defect, 0, 2e-8);
+        NOVA_REQUIRE(fields.optical_edges.size() == 6U);
+        NOVA_REQUIRE(fields.optical_solution.edge_field.size() == 6U);
+        for (std::size_t i = 0; i < fields.optical_edges.size(); ++i) {
+            const auto& edge = fields.optical_edges[i];
+            const auto expected = electric_x * (mesh.nodes[edge[1]].x - mesh.nodes[edge[0]].x);
+            NOVA_REQUIRE_NEAR(std::abs(fields.optical_solution.edge_field[i] - expected), 0, 2e-7);
+        }
+    }
+}

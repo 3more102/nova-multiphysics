@@ -28,3 +28,13 @@ Earned **12/12** for this workflow. This score describes Engineering Alpha evide
 | Documentation | Format contract, equations, independent checker, benchmark and SDK installation guide | Product manuals, support and release maintenance procedures |
 
 See the [pinned wall verification report](verification/thermal-project-v1.md), [heated cube comparison](verification/heated-cube.md) and [desktop workflow tests](THERMAL_DESKTOP.md). Gate 2 needs clean installation and external evaluation. Gates 3 and 4 additionally require platform qualification, completed security and licensing reviews, acceptance testing and owner approval for distribution.
+
+## Engineering checkpoints, 25 November 2026
+
+| Subsystem | Evidence submitted for review | Remaining release gate |
+| --- | --- | --- |
+| Adaptive tetrahedral diffusion | [PR #252](https://github.com/3more102/nova-multiphysics/pull/252) fixes an initially satisfied tolerance, reuses intermediate solves, and incorporates the two-generation mesh checks from #163. [Repository and release-gate inventory](https://github.com/3more102/nova-multiphysics/blob/8a498496b1a3418c13be3294d221ae56506b67bc/docs/verification/release-gates-2026-11-25.md) | Independent review and intended-use verification. The residual is a heuristic indicator. |
+| Native tensor materials | [PR #249](https://github.com/3more102/nova-multiphysics/pull/249) checks all six components through saved projects with three orthogonal temperature gradients. A disposable combination of the two PRs passed 43 Linux CTest entries and six Qt workflows. | Review of the schema and distribution compatibility |
+| Stationary thermo-optics | A [free-temperature equilibrium](THERMO_OPTIC_3D.md#coupled-equilibrium-with-four-free-thermal-nodes) compares six complex Maxwell edge integrals, four unconstrained temperatures, absorption and convection to an independent scalar solution. | Spatial convergence for coupled fields and intended-use validation |
+
+The source version remains 0.8.0. No tested end-user installer, signed release or approved redistribution terms have been established by these checkpoints.
