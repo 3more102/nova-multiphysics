@@ -37,6 +37,7 @@ struct WaveguideMode2D {
     double effective_index{};
     double propagation_constant_per_m{};
     double propagation_constant_squared_per_m2{};
+    double core_confinement_factor{}; // weighted scalar energy in cells above the cladding index
     std::vector<double> scalar_field; // full mesh-vertex ordering; zero on constrained nodes
     double relative_residual{};
 };
@@ -51,8 +52,9 @@ struct WaveguideModesResult2D {
 
 // P1 triangular FEM for lossless, isotropic, piecewise-constant materials.
 // The bounded dense generalized eigensolver currently limits the free space
-// to 512 DOFs. Only bound modes with cladding_index < n_eff < max(n_material)
-// are returned. This is a scalar reference solver, not full-vector Maxwell FEM.
+// to 512 DOFs. Light-line candidates with cladding_index < n_eff < max(n_material)
+// are returned with a core-confinement diagnostic; finite-window continuum modes
+// may also appear. This is a scalar reference solver, not full-vector Maxwell FEM.
 [[nodiscard]] WaveguideModesResult2D solve_waveguide_modes_2d(
     const WaveguideModeProblem2D& problem,
     std::size_t max_modes = 6,
