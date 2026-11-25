@@ -153,3 +153,14 @@ NOVA_TEST(csr_matrix_vector_product_keeps_ieee_propagation_for_nonfinite_input) 
     const auto result = matrix.multiply(std::vector<double>{infinity, -infinity});
     NOVA_REQUIRE(std::isnan(result[0]));
 }
+
+
+NOVA_TEST(csr_matrix_vector_product_returns_infinity_for_unrepresentable_exact_result) {
+    using nova::linalg::CsrMatrix;
+    const auto matrix = CsrMatrix::from_triplets(1, 1, {
+        {0, 0, std::ldexp(1.0, 800)}
+    });
+    const auto result = matrix.multiply(std::vector<double>{std::ldexp(1.0, 400)});
+    NOVA_REQUIRE(std::isinf(result[0]));
+    NOVA_REQUIRE(result[0] > 0.0);
+}
