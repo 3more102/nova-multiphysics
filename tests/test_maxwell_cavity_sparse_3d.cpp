@@ -145,3 +145,38 @@ NOVA_TEST(maxwell_sparse_shift_invert_rejects_wrong_mesh_and_invalid_options) {
     }
     NOVA_REQUIRE(rejected);
 }
+
+
+NOVA_TEST(maxwell_sparse_shift_invert_handles_more_than_512_edge_unknowns) {
+    const auto mesh = nova::fem::make_box_mesh_3d(
+        0, 1, 0, 1, 0, 1, 5, 5, 5).mesh;
+    const std::vector<MaxwellCellMaterial3D> materials(mesh.elements.size());
+    const auto matrices = assemble_maxwell_cavity_3d(mesh, materials);
+    NOVA_REQUIRE(matrices.free_edges.size() > 512U);
+
+    MaxwellCavitySparseOptions3D options;
+    options.max_modes = 3;
+    options.max_subspace = 96;
+    options.relative_tolerance = 2.0e-6;
+    options.shift_solve_relative_tolerance = 1.0e-11;
+    options.projection_relative_tolerance = 1.0e-11;
+    const auto result = solve_maxwell_cavity_shift_invert_3d(
+        mesh, matrices, options);
+
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.modes.size() == 3U);
+    NOVA_REQUIRE(result.gradient_nullspace_dimension == 64U);
+    NOVA_REQUIRE(result.subspace_dimension <= options.max_subspace);
+    NOVA_REQUIRE(result.operator_applications == result.subspace_dimension);
+    NOVA_REQUIRE(result.shift_solve_iterations > 0U);
+    for (std::size_t i = 0; i < result.modes.size(); ++i) {
+        NOVA_REQUIRE(result.modes[i].vacuum_wavenumber_squared > 0.0);
+        NOVA_REQUIRE(result.modes[i].frequency_hz > 0.0);
+        NOVA_REQUIRE(result.modes[i].relative_residual < options.relative_tolerance);
+        if (i > 0U) {
+            NOVA_REQUIRE(
+                result.modes[i - 1U].vacuum_wavenumber_squared <=
+                result.modes[i].vacuum_wavenumber_squared);
+        }
+    }
+}
