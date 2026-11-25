@@ -53,7 +53,7 @@ int main() {
         const char* name = polarization == nova::physics::WaveguidePolarization2D::TE_Ez
             ? "TE_Ez" : "TM_Hz";
         if (!result.converged || result.modes.empty()) {
-            std::cout << name << ": no converged guided-mode candidate\\n";
+            std::cout << name << ": no converged guided-mode candidate\n";
             successful = false;
             continue;
         }
@@ -62,7 +62,7 @@ int main() {
                   << " beta=" << fundamental.propagation_constant_per_m
                   << " core_confinement=" << fundamental.core_confinement_factor
                   << " residual=" << fundamental.relative_residual
-                  << " converged=yes\\n";
+                  << " converged=yes\n";
     }
     return successful ? 0 : 1;
 }
