@@ -54,10 +54,15 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
     if (max_modes == 0U) {
         throw std::invalid_argument("At least one waveguide mode must be requested.");
     }
-    if (eigen_options.max_dimension == 0U || eigen_options.max_sweeps == 0U ||
+    if (eigen_options.max_subspace == 0U || eigen_options.max_subspace > 512U ||
+        eigen_options.max_mass_iterations == 0U ||
         !positive_finite(eigen_options.relative_tolerance) ||
-        eigen_options.relative_tolerance >= 1.0) {
-        throw std::invalid_argument("Invalid waveguide generalized-eigensolver options.");
+        eigen_options.relative_tolerance >= 1.0 ||
+        !positive_finite(eigen_options.mass_solve_relative_tolerance) ||
+        eigen_options.mass_solve_relative_tolerance >= 1.0 ||
+        !positive_finite(eigen_options.breakdown_tolerance) ||
+        eigen_options.breakdown_tolerance >= 1.0) {
+        throw std::invalid_argument("Invalid waveguide sparse generalized-eigensolver options.");
     }
     problem.mesh.validate();
     if (problem.materials.size() != problem.mesh.elements.size()) {
@@ -231,10 +236,13 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
         free_count, free_count, operator_entries);
     const auto mass = linalg::CsrMatrix::from_triplets(
         free_count, free_count, mass_entries);
-    const auto eigen = linalg::solve_symmetric_generalized_eigen(
-        wave_operator, mass, eigen_options);
+    auto sparse_options = eigen_options;
+    sparse_options.max_modes = max_modes;
+    const auto eigen = linalg::solve_sparse_symmetric_generalized_eigen(
+        wave_operator, mass, sparse_options);
 
-    result.jacobi_sweeps = eigen.sweeps;
+    result.subspace_dimension = eigen.subspace_dimension;
+    result.mass_solve_iterations = eigen.mass_solve_iterations;
     result.converged = eigen.converged;
 
     const double cladding_beta = k0 * problem.cladding_index;
@@ -247,10 +255,10 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
     const double spectral_scale = std::max(1.0, maximum_squared);
     const double spectral_tolerance = std::max(
         128.0 * std::numeric_limits<double>::epsilon() * spectral_scale,
-        100.0 * eigen_options.relative_tolerance * spectral_scale);
+        100.0 * sparse_options.relative_tolerance * spectral_scale);
 
-    for (auto it = eigen.eigenpairs.rbegin();
-         it != eigen.eigenpairs.rend() && result.modes.size() < max_modes; ++it) {
+    for (auto it = eigen.eigenpairs.begin();
+         it != eigen.eigenpairs.end() && result.modes.size() < max_modes; ++it) {
         const double beta_squared = it->eigenvalue;
         if (!std::isfinite(beta_squared)) {
             throw std::runtime_error("Waveguide eigensolver returned a nonfinite eigenvalue.");
