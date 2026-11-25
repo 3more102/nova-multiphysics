@@ -8,8 +8,8 @@
 
 namespace nova::physics {
 
-// Scalar z-invariant reductions. The names identify the solved field:
-// TE_Ez solves for E_z; TM_Hz solves for H_z.
+// Scalar slab-waveguide reductions for propagation along x and a transverse
+// y-z cross-section. TE_Ez solves for transverse E_z; TM_Hz solves for H_z.
 enum class WaveguidePolarization2D {
     TE_Ez,
     TM_Hz
