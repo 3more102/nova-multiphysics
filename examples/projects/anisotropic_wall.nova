@@ -2,8 +2,8 @@ NOVA_PROJECT 2
 project anisotropic-wall
 geometry wall box 0.5 0.25 0.125
 mesh tets wall structured_tet 6 2 1
-material silicon anisotropic 2 3 4 0.25 -0.15 0.10
-study steady steady_heat tets silicon
+material benchmark-solid anisotropic 2 3 4 0.25 -0.15 0.10
+study steady steady_heat tets benchmark-solid
 source steady 0
 solver steady cg jacobi 2000 1e-13 1e-14
 boundary steady wall xmin temperature 400

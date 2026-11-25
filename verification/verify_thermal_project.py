@@ -92,30 +92,52 @@ def wall(runner, fixture, work):
           f"max_error_K={error:.6g}, max_flux_error_W_m2={flux_error:.6g}, balance_W={metrics['balance_defect_W']:.6g}")
 
 
-def anisotropic(runner, fixture, work):
-    metrics, (points, cells, temperature, fluxes) = solve(
-        runner, fixture, work / "anisotropic.vtk"
-    )
-    require(len(points) == 42 and len(cells) == 72,
-            "Anisotropic example structured mesh dimensions")
-    temperature_error = max(
-        abs(value - (400.0 - 150.0 * point[0]))
-        for point, value in zip(points, temperature)
-    )
-    flux_error = max(math.dist(flux, (300.0, 37.5, -22.5)) for flux in fluxes)
+def check_tensor_wall(runner, project, vtk, axis, flux, length, area):
+    metrics, (points, cells, temperature, fluxes) = solve(runner, project, vtk)
+    require(len(points) == 42 and len(cells) == 72, "Anisotropic wall mesh dimensions")
+    temperature_error = max(abs(value - (400 - 150 * point[axis]))
+                            for point, value in zip(points, temperature))
+    flux_error = max(math.dist(vector, flux) for vector in fluxes)
     near(temperature_error, 0, 2e-8, "Anisotropic exact nodal temperature field [K]")
     near(flux_error, 0, 2e-8, "Anisotropic full Fourier heat-flux vector [W/m^2]")
-    near(metrics["min_K"], 325.0, 2e-8, "Anisotropic minimum temperature [K]")
-    near(metrics["max_K"], 400.0, 2e-8, "Anisotropic maximum temperature [K]")
-    near(metrics["generated_W"], 0.0, 2e-8, "Anisotropic heat generation [W]")
-    near(metrics["neumann_out_W"], 0.0, 2e-8, "Net anisotropic Neumann power [W]")
-    near(metrics["convection_out_W"], 9.375, 2e-8, "Anisotropic Robin power [W]")
-    near(metrics["fixed_out_W"], -9.375, 2e-8, "Anisotropic fixed-temperature reaction [W]")
-    near(metrics["balance_defect_W"], 0.0, 2e-8, "Anisotropic global energy balance [W]")
-    print(f"anisotropic: nodes={len(points)} tets={len(cells)} "
+    near(metrics["min_K"], 400 - 150 * length, 2e-8, "Minimum temperature [K]")
+    near(metrics["max_K"], 400, 2e-8, "Maximum temperature [K]")
+    rate = area * flux[axis]
+    near(metrics["generated_W"], 0, 2e-8, "Heat generation [W]")
+    near(metrics["neumann_out_W"], 0, 2e-8, "Net lateral power [W]")
+    near(metrics["convection_out_W"], rate, 2e-8, "Robin power [W]")
+    near(metrics["fixed_out_W"], -rate, 2e-8, "Fixed-temperature reaction [W]")
+    near(metrics["balance_defect_W"], 0, 2e-8, "Global heat balance [W]")
+    print(f"anisotropic axis={'xyz'[axis]} nodes={len(points)} tets={len(cells)} "
           f"T_max_error_K={temperature_error:.6g} q_max_error_W_m2={flux_error:.6g} "
-          f"robin_W={metrics['convection_out_W']:.12g} "
-          f"balance_W={metrics['balance_defect_W']:.6g}")
+          f"robin_W={metrics['convection_out_W']:.12g} balance_W={metrics['balance_defect_W']:.6g}")
+
+
+def anisotropic(runner, fixture, work):
+    # Each exact temperature gradient selects a different column of the same
+    # conductivity tensor. Reference fluxes were calculated independently.
+    lengths = (0.5, 0.25, 0.125)
+    flux_vectors = ((300.0, 37.5, -22.5), (37.5, 450.0, 15.0), (-22.5, 15.0, 600.0))
+    model, boundary, _ = fixture.read_text(encoding="ascii").partition("boundary ")
+    require(boundary, "Expected boundary records in the distributed wall project")
+    for axis, flux in enumerate(flux_vectors):
+        project = fixture
+        if axis != 0:
+            # Keep the distributed geometry, mesh, material and solver records.
+            # Replace the six face data for the y- or z-directed gradient.
+            faces = []
+            for index, name in enumerate("xyz"):
+                if index == axis:
+                    ambient = 400 - 150 * lengths[axis] - flux[axis] / 12
+                    lower, upper = "temperature 400", f"convection 12 {ambient}"
+                else:
+                    lower, upper = f"outward_flux {-flux[index]}", f"outward_flux {flux[index]}"
+                faces.extend((f"boundary steady wall {name}min {lower}",
+                              f"boundary steady wall {name}max {upper}"))
+            project = work / f"anisotropic-{'xyz'[axis]}.nova"
+            project.write_text(model + "\n".join([*faces, "end", ""]), encoding="ascii")
+        area = math.prod(length for i, length in enumerate(lengths) if i != axis)
+        check_tensor_wall(runner, project, work / "anisotropic.vtk", axis, flux, lengths[axis], area)
 
 
 def generated(runner, fixture, work):

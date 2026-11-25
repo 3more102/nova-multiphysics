@@ -33,15 +33,15 @@ boundary steady wall xmax convection 12 300
 end
 ~~~
 
-A runnable source-tree copy is provided at `examples/projects/anisotropic_wall.nova`. A schema-2 anisotropic project uses the same model records with the tensor material form:
+The distributed `examples/projects/anisotropic_wall.nova` uses a synthetic material for an exact field test. A schema-2 anisotropic project uses the same model records with the tensor material form:
 
 ~~~text
 NOVA_PROJECT 2
 project anisotropic-wall
 geometry wall box 0.5 0.25 0.125
 mesh tets wall structured_tet 6 2 1
-material silicon anisotropic 2 3 4 0.25 -0.15 0.10
-study steady steady_heat tets silicon
+material benchmark-solid anisotropic 2 3 4 0.25 -0.15 0.10
+study steady steady_heat tets benchmark-solid
 source steady 0
 solver steady cg jacobi 2000 1e-13 1e-14
 boundary steady wall xmin temperature 400
@@ -86,3 +86,25 @@ python verification/benchmark_thermal_project.py build/nova-run examples/project
 The benchmark records end-to-end solve time without VTK export, process peak RSS (Linux KiB), CG iterations and true residual, cold-surface and power error, and energy defect. Each row starts a new process. Supported geometry is a single axis-aligned box with one homogeneous material. Schema 1 is isotropic; schema 2 adds one constant anisotropic tensor. Transient studies, external meshes, spatially varying materials, electric coupling and material catalogues are not yet part of the native project format. The Qt desktop editor can author, save, reopen and solve both schema-1 isotropic and schema-2 constant-anisotropic projects. Legacy SDK APIs and checkpoint formats keep their own version contracts.
 
 The [internally heated cube verification](verification/heated-cube.md) checks genuinely three-dimensional conduction against a bounded continuum series, a nodal SciPy implementation check and an independent cell-centred finite-volume calculation. Open `internally_heated_cube.nova` from the installed projects directory to reproduce the study.
+
+
+### Verification of all six tensor entries
+
+The `anisotropic` verification suite solves the distributed x-directed wall
+and generates two additional projects from the same material and mesh.
+The exact temperatures are 400 − 150x, 400 − 150y and 400 − 150z K, with
+coordinates in metres. Each selects a different column of the fixed tensor.
+The prescribed lateral fluxes and convective ambient enforce the same affine
+field throughout the box.
+
+| Temperature gradient direction | Exact heat flux (W/m²) | Convective removal (W) |
+| --- | --- | ---: |
+| x | (300, 37.5, −22.5) | 9.375 |
+| y | (37.5, 450, 15) | 28.125 |
+| z | (−22.5, 15, 600) | 75 |
+
+For each solve the checker evaluates all 42 nodal temperatures, all 72 cell
+fluxes, the opposing thermal reactions and net energy balance. The absolute
+thresholds are 2e-8 K for temperatures, 2e-8 W/m² for vector flux error, and
+2e-8 W for integrated powers. These manufactured cases exercise serialization,
+assembly and postprocessing for a homogeneous tensor on a box.

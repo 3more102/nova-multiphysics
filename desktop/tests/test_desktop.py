@@ -131,7 +131,7 @@ class DesktopWorkflow(unittest.TestCase):
         editor.fields["nx"].setText("6")
         editor.fields["ny"].setText("2")
         editor.fields["nz"].setText("1")
-        editor.fields["material"].setText("silicon")
+        editor.fields["material"].setText("benchmark-solid")
         editor.fields["study"].setText("steady")
         editor.fields["source"].setText("0")
         editor.material_mode.setCurrentIndex(editor.material_mode.findData("anisotropic"))
@@ -151,7 +151,7 @@ class DesktopWorkflow(unittest.TestCase):
         self.assertTrue(saved.startswith("NOVA_PROJECT 2\n"))
         material = next(line.split() for line in saved.splitlines()
                         if line.startswith("material "))
-        self.assertEqual(material[:3], ["material", "silicon", "anisotropic"])
+        self.assertEqual(material[:3], ["material", "benchmark-solid", "anisotropic"])
         self.assertEqual(len(material), 9)
 
         self.win.new_project()
