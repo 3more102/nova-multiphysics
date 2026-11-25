@@ -57,6 +57,7 @@ int main() {
         const auto& fundamental = result.modes.front();
         std::cout << name << " fundamental: n_eff=" << fundamental.effective_index
                   << " beta=" << fundamental.propagation_constant_per_m
+                  << " core_confinement=" << fundamental.core_confinement_factor
                   << " residual=" << fundamental.relative_residual
                   << " converged=" << (result.converged ? "yes" : "no") << '\n';
     }
