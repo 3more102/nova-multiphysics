@@ -1,0 +1,56 @@
+# 2D scalar waveguide eigenmodes (experimental)
+
+## Scope
+
+NOVA provides a P1 triangular finite-element eigenmode reference for z-invariant, isotropic, lossless waveguides with piecewise-constant positive real relative permittivity and permeability. It solves the two scalar reductions:
+
+- `TE_Ez`: the out-of-plane electric field component (E_z).
+- `TM_Hz`: the out-of-plane magnetic field component (H_z).
+
+These names identify the solved scalar component and should not be confused with plane-of-incidence TE/TM labels. This is **not** a full-vector hybrid-mode solver.
+
+## Discrete formulation
+
+Let (k_0=2\pi/\lambda_0), (\beta=k_0 n_\mathrm{eff}), and define
+
+`K_a[i,j] = integral(a * grad(phi_i) dot grad(phi_j))`
+and
+`M_a[i,j] = integral(a * phi_i * phi_j)`.
+
+The generalized symmetric eigenproblems are
+
+- TE_Ez: `(k0^2 M_epsilon - K_(1/mu)) e = beta^2 M_(1/mu) e`.
+- TM_Hz: `(k0^2 M_mu - K_(1/epsilon)) h = beta^2 M_(1/epsilon) h`.
+
+The implementation uses exact P1 triangle stiffness and consistent mass integrals for cellwise-constant material coefficients. Eigenvectors are normalized by the corresponding weighted mass matrix. Returned modes are ordered by descending effective index and carry the generalized eigenproblem residual.
+
+## Boundary treatment
+
+The computational domain is finite. If `dirichlet_boundary_nodes` is empty, all exterior vertices receive homogeneous scalar Dirichlet values. If the list is supplied, every listed node must be an exterior vertex; unlisted exterior edges receive the natural homogeneous Neumann condition. The latter supports symmetry planes and invariant directions in slab benchmarks. It is not an exact open-radiation boundary condition.
+
+Only modes satisfying `cladding_index < n_eff < max(n_material)` are returned. Cutoff modes and the radiation continuum are excluded.
+
+## Numerical limits and exclusions
+
+- P1 triangular H1 scalar fields only.
+- Real, positive, isotropic, cellwise-constant (\epsilon_r) and (\mu_r).
+- Bounded dense generalized eigensolver; at most 512 free scalar DOFs.
+- Finite computational window with homogeneous Dirichlet and natural homogeneous Neumann boundaries.
+- No complex/lossy materials, anisotropy, PML, ports, radiation boundary operators, curved geometry, higher-order elements, or full-vector hybrid modes.
+- The dense solver computes the complete reduced spectrum before filtering; requesting fewer modes does not reduce its eigensolve cost.
+
+This is an experimental numerical reference and is not qualified for engineering design or commercial release.
+
+## Verification
+
+`tests/test_waveguide_modes_2d.cpp` compares the fundamental TE_Ez and TM_Hz modes of a symmetric slab against an independently bisected analytical dispersion relation. The test checks mesh refinement, mode ordering, residuals, boundary constraints, natural side boundaries, triangle-orientation invariance, homogeneous-cladding no-mode behavior, and invalid inputs.
+
+Build and run:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+The `nova_waveguide_modes_2d` example runs both scalar polarizations on the same slab cross-section.
