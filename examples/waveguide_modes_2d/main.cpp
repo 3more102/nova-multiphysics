@@ -44,12 +44,15 @@ int main() {
               << " vertices=" << problem.mesh.nodes.size() << '\n'
               << std::setprecision(12);
 
+    nova::linalg::SparseSymmetricEigenOptions eigen_options;
+    eigen_options.max_subspace = 128U;
     bool successful = true;
     for (const auto polarization : {
              nova::physics::WaveguidePolarization2D::TE_Ez,
              nova::physics::WaveguidePolarization2D::TM_Hz}) {
         problem.polarization = polarization;
-        const auto result = nova::physics::solve_waveguide_modes_2d(problem, 4U);
+        const auto result = nova::physics::solve_waveguide_modes_2d(
+            problem, 4U, eigen_options);
         const char* name = polarization == nova::physics::WaveguidePolarization2D::TE_Ez
             ? "TE_Ez" : "TM_Hz";
         if (!result.converged || result.modes.empty()) {
@@ -62,6 +65,8 @@ int main() {
                   << " beta=" << fundamental.propagation_constant_per_m
                   << " core_confinement=" << fundamental.core_confinement_factor
                   << " residual=" << fundamental.relative_residual
+                  << " subspace=" << result.subspace_dimension
+                  << " mass_cg_iterations=" << result.mass_solve_iterations
                   << " converged=yes\n";
     }
     return successful ? 0 : 1;
