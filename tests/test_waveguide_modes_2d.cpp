@@ -55,14 +55,24 @@ constexpr double domain_half_height = 6.0e-6;
 }
 
 [[nodiscard]] double analytic_slab_fundamental_index(
-    const WaveguidePolarization2D polarization) {
+    const WaveguidePolarization2D polarization,
+    const double core_permittivity = core_index * core_index,
+    const double core_permeability = 1.0,
+    const double cladding_permittivity = cladding_index * cladding_index,
+    const double cladding_permeability = 1.0) {
     constexpr double pi = std::numbers::pi_v<double>;
     const double k0 = 2.0 * pi / wavelength;
     const double half_thickness = core_half_width;
+    const double core_material_index =
+        std::sqrt(core_permittivity * core_permeability);
+    const double cladding_material_index =
+        std::sqrt(cladding_permittivity * cladding_permeability);
     const double v = k0 * half_thickness *
-        std::sqrt(core_index * core_index - cladding_index * cladding_index);
+        std::sqrt(core_material_index * core_material_index -
+                  cladding_material_index * cladding_material_index);
     const double q = polarization == WaveguidePolarization2D::TE_Ez
-        ? 1.0 : (core_index * core_index) / (cladding_index * cladding_index);
+        ? core_permeability / cladding_permeability
+        : core_permittivity / cladding_permittivity;
 
     // Independent bisection of u - atan(q*w/u) = 0 with
     // u=V*cos(theta), w=V*sin(theta); this is the even fundamental mode.
@@ -78,7 +88,7 @@ constexpr double domain_half_height = 6.0e-6;
     const double theta = lower + 0.5 * (upper - lower);
     const double w = v * std::sin(theta);
     const double decay_over_k0 = w / (k0 * half_thickness);
-    return std::sqrt(cladding_index * cladding_index +
+    return std::sqrt(cladding_material_index * cladding_material_index +
                      decay_over_k0 * decay_over_k0);
 }
 
@@ -148,6 +158,40 @@ NOVA_TEST(waveguide_te_tm_fundamental_modes_match_independent_slab_reference) {
                   << " analytic=" << reference
                   << " error=" << fine_error
                   << " residual=" << fundamental.relative_residual << '\n';
+    }
+}
+
+NOVA_TEST(waveguide_modes_use_permeability_weighted_te_tm_operators) {
+    constexpr double core_mu = 1.2;
+    constexpr double cladding_mu = 1.0;
+    constexpr double core_epsilon = (core_index * core_index) / core_mu;
+    constexpr double cladding_epsilon = cladding_index * cladding_index;
+    auto problem = make_slab_problem(40U, WaveguidePolarization2D::TE_Ez);
+    for (std::size_t index = 0; index < problem.mesh.elements.size(); ++index) {
+        const auto& element = problem.mesh.elements[index];
+        const double center_y = (
+            problem.mesh.nodes[element[0]].y +
+            problem.mesh.nodes[element[1]].y +
+            problem.mesh.nodes[element[2]].y) / 3.0;
+        if (std::abs(center_y) < core_half_width) {
+            problem.materials[index] = {core_epsilon, core_mu};
+        } else {
+            problem.materials[index] = {cladding_epsilon, cladding_mu};
+        }
+    }
+
+    for (const auto polarization : {
+             WaveguidePolarization2D::TE_Ez,
+             WaveguidePolarization2D::TM_Hz}) {
+        problem.polarization = polarization;
+        const auto result = nova::physics::solve_waveguide_modes_2d(problem, 4U);
+        const double reference = analytic_slab_fundamental_index(
+            polarization, core_epsilon, core_mu,
+            cladding_epsilon, cladding_mu);
+        NOVA_REQUIRE(result.converged);
+        NOVA_REQUIRE(!result.modes.empty());
+        NOVA_REQUIRE_NEAR(result.modes.front().effective_index, reference, 2.0e-4);
+        NOVA_REQUIRE(result.modes.front().core_confinement_factor > 0.8);
     }
 }
 
