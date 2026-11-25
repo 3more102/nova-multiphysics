@@ -38,6 +38,7 @@ add_library(nova_core
     src/physics/photothermal_3d.cpp
     src/physics/thermo_optic_3d.cpp
     src/physics/maxwell_cavity_3d.cpp
+    src/physics/maxwell_cavity_sparse_3d.cpp
     src/linalg/symmetric_eigen.cpp
     src/linalg/sparse_symmetric_eigen.cpp
     src/fem/h1_space_3d.cpp
@@ -175,6 +176,10 @@ if(NOVA_BUILD_EXAMPLES)
     add_executable(nova_waveguide_modes_2d examples/waveguide_modes_2d/main.cpp)
     target_link_libraries(nova_waveguide_modes_2d PRIVATE NOVA::Core)
     nova_enable_warnings(nova_waveguide_modes_2d)
+
+    add_executable(nova_maxwell_cavity_sparse_3d examples/maxwell_cavity_sparse_3d/main.cpp)
+    target_link_libraries(nova_maxwell_cavity_sparse_3d PRIVATE NOVA::Core)
+    nova_enable_warnings(nova_maxwell_cavity_sparse_3d)
 endif()
 
 if(NOVA_BUILD_TESTS)
@@ -198,6 +203,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_thermo_optic_3d.cpp
         tests/test_maxwell_power_audit_3d.cpp
         tests/test_maxwell_cavity_3d.cpp
+        tests/test_maxwell_cavity_sparse_3d.cpp
         tests/test_waveguide_modes_2d.cpp
         tests/test_diffusion_3d.cpp
         tests/test_cell_conduction_3d.cpp
@@ -282,6 +288,9 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_waveguide_modes_2d_smoke COMMAND nova_waveguide_modes_2d)
         set_tests_properties(nova_waveguide_modes_2d_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "NOVA 2D scalar waveguide eigenmode reference")
+        add_test(NAME nova_maxwell_cavity_sparse_3d_smoke COMMAND nova_maxwell_cavity_sparse_3d)
+        set_tests_properties(nova_maxwell_cavity_sparse_3d_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "NOVA sparse PEC cavity shift-invert")
         add_test(NAME nova_adaptive_diffusion_3d_smoke COMMAND nova_adaptive_diffusion_3d)
         set_tests_properties(nova_adaptive_diffusion_3d_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "NOVA adaptive 3D diffusion demonstration")
