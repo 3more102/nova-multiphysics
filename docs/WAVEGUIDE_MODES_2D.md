@@ -22,13 +22,13 @@ The generalized symmetric eigenproblems are
 - TE_Ez: `(k0^2 M_epsilon - K_(1/mu)) e = beta^2 M_(1/mu) e`.
 - TM_Hz: `(k0^2 M_mu - K_(1/epsilon)) h = beta^2 M_(1/epsilon) h`.
 
-The implementation uses exact P1 triangle stiffness and consistent mass integrals for cellwise-constant material coefficients. Eigenvectors are normalized by the corresponding weighted mass matrix. Returned modes are ordered by descending effective index and carry the generalized eigenproblem residual.
+The implementation uses exact P1 triangle stiffness and consistent mass integrals for cellwise-constant material coefficients. Eigenvectors are normalized by the corresponding weighted mass matrix. Returned candidates are ordered by descending effective index and carry the generalized eigenproblem residual plus a weighted core-confinement factor (modal mass in cells whose refractive index exceeds the declared cladding index).
 
 ## Boundary treatment
 
 The computational domain is finite. If `dirichlet_boundary_nodes` is empty, all exterior vertices receive homogeneous scalar Dirichlet values. If the list is supplied, every listed node must be an exterior vertex; unlisted exterior edges receive the natural homogeneous Neumann condition. The latter supports symmetry planes and invariant directions in slab benchmarks. It is not an exact open-radiation boundary condition.
 
-Only modes satisfying `cladding_index < n_eff < max(n_material)` are returned. Cutoff modes and the radiation continuum are excluded.
+Only eigenpairs satisfying `cladding_index < n_eff < max(n_material)` are returned. This light-line filter alone cannot distinguish every physical guided mode from a finite-window discretization of the cladding continuum. Inspect `core_confinement_factor` and repeat the calculation with a larger cladding window before interpreting near-cutoff candidates as physical guided modes.
 
 ## Numerical limits and exclusions
 
@@ -37,7 +37,7 @@ Only modes satisfying `cladding_index < n_eff < max(n_material)` are returned. C
 - Bounded dense generalized eigensolver; at most 512 free scalar DOFs.
 - Finite computational window with homogeneous Dirichlet and natural homogeneous Neumann boundaries.
 - No complex/lossy materials, anisotropy, PML, ports, radiation boundary operators, curved geometry, higher-order elements, or full-vector hybrid modes.
-- The dense solver computes the complete reduced spectrum before filtering; requesting fewer modes does not reduce its eigensolve cost.
+- The dense solver computes the complete reduced spectrum before filtering; requesting fewer modes does not reduce its eigensolve cost. The confinement factor is a diagnostic, not a certified modal classification or an error bound.
 
 This is an experimental numerical reference and is not qualified for engineering design or commercial release.
 
