@@ -236,3 +236,22 @@ NOVA_TEST(csr_exact_dot_obeys_binary64_overflow_rounding_boundary) {
     NOVA_REQUIRE(std::isinf(at_midpoint[0]));
     NOVA_REQUIRE(at_midpoint[0] > 0.0);
 }
+
+
+NOVA_TEST(csr_matrix_vector_product_recovers_nonzero_normal_residual_after_cancellation) {
+    using nova::linalg::CsrMatrix;
+    const double large = std::ldexp(1.0, 500);
+    const auto matrix = CsrMatrix::from_triplets(1, 4, {
+        {0,0,1.0}, {0,1,1.0}, {0,2,1.0}, {0,3,1.0}
+    });
+    // The ordinary sum is 0.5 because 1.0 is lost beside 2^500.
+    // The exact row dot product is 1.5, a nonzero normal result.
+    const auto positive = matrix.multiply(std::vector<double>{
+        large, 1.0, -large, 0.5
+    });
+    const auto negative = matrix.multiply(std::vector<double>{
+        large, -1.0, -large, -0.5
+    });
+    NOVA_REQUIRE(positive[0] == 1.5);
+    NOVA_REQUIRE(negative[0] == -1.5);
+}
