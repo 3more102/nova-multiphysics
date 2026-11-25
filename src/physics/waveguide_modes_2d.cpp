@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <initializer_list>
 #include <numbers>
 #include <stdexcept>
 #include <utility>
