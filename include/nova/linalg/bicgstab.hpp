@@ -8,7 +8,10 @@
 namespace nova::linalg {
 
 // Solves A*x=b using BiCGSTAB for general nonsymmetric square systems.
-// Jacobi preconditioning requires a finite, nonzero matrix diagonal.
+// A successful solve satisfies the recomputed physical residual criterion.
+// Krylov corrections use power-of-two residual scaling and angle-based
+// breakdown tests. Matvecs, coefficients and the solution must fit in double.
+// Jacobi requires a finite, nonzero diagonal with representable reciprocal.
 [[nodiscard]] SolverResult solve_bicgstab(
     const CsrMatrix& matrix,
     std::span<const double> right_hand_side,

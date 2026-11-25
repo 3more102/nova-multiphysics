@@ -154,6 +154,51 @@ GMRES uses right Jacobi preconditioning, modified Gram-Schmidt Arnoldi orthogona
 
 Before returning success, the iterative linear solvers recompute the true residual \(b-Ax\). A recursive or projected residual that meets tolerance is not sufficient if the recomputed residual does not.
 
+### Residual scaling for nonsymmetric solves
+
+The acceptance threshold is
+\(\max(\mathrm{atol},\mathrm{rtol}\,\|b-Ax_0\|_2)\), in the units
+of the physical load. Purely relative tests use an explicit zero absolute
+tolerance. CG, GMRES, BiCGSTAB, and the outer Newton solver share a Euclidean
+norm with a scaled sum-of-squares fallback when the ordinary sum of squares
+falls outside the normal floating-point range. GMRES lifts a subnormal restart
+residual by an exact power of two before building its basis and returns the
+resulting correction to the original units.
+
+BiCGSTAB chooses a binary scale \(s=2^{\lfloor\log_2\|r\|_2\rfloor}\)
+at the initial iterate and after a true-residual restart. Its recurrence
+solves for a correction in units of \(s\), then applies that correction to the
+physical iterate. Dot products used in ratios can retain a separate exponent.
+Breakdown checks compare \(|u^T v|/(\|u\|_2\|v\|_2)\) with machine
+precision, including the stabilization step
+\(\omega=(t^T s_k)/(t^T t)\). An absolute bound on \(\omega\) would change
+when the operator units change. Safe norms alone would leave that defect and
+the unscaled BiCGSTAB products in place. Matrix-vector products, steps and
+physical fields still have binary64 range limitations.
+
+The automated checks include exact nonsymmetric systems, a damped Newton solve
+with known root, and a layered, driven Maxwell problem. Its constant field is
+in the lowest-order Nédélec space. Edge-circulation error therefore measures
+algebraic and rounding error. Dielectric loss is checked after normalizing the
+field to unit drive, since physical power is quadratic in the amplitude.
+
+To compare two Release builds on the same machine, compile the same driver
+against each static library. Set the two paths to their CMake build directories.
+
+```sh
+for build in "$baseline_build" "$candidate_build"; do
+    c++ -std=c++20 -O3 -DNDEBUG -Iinclude verification/benchmark_krylov_scale.cpp \
+        "$build/libnova_core.a" -o "$build/benchmark_krylov_scale"
+    "$build/benchmark_krylov_scale"
+done
+```
+
+The driver times unpreconditioned solves of a 1,024-row tridiagonal system and
+independently checks the stencil residual and forward error at three source
+amplitudes. An inaccurate result gives a nonzero exit status. Numerical
+background is available in the [reference BLAS norm documentation](https://netlib.org/lapack/explore-html/d1/d2a/group__nrm2_gab5393665c8f0e7d5de9bd1dd2ff0d9d0.html)
+and [Templates for the Solution of Linear Systems](https://netlib.org/templates/templates.html).
+
 ## Nonlinear Newton convention
 
 The Newton kernel solves \(F(x)=0\) using the Jacobian \(J(x)=dF/dx\) and a linear correction

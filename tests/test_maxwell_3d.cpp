@@ -2,6 +2,7 @@
 #include "nova/physics/maxwell_3d.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <complex>
 #include <limits>
 #include <numbers>
@@ -273,6 +274,94 @@ NOVA_TEST(maxwell_selective_pec_exact_mixed_boundary_field) {
         NOVA_REQUIRE_NEAR(std::abs(sol.edge_field[e]-expected),0.0,1e-10);
         if (a.x==0.0 && b.x==0.0)
             NOVA_REQUIRE_NEAR(std::abs(sol.edge_field[e]),0.0,0.0);
+    }
+}
+
+NOVA_TEST(maxwell_driven_layered_field_is_linear_across_source_amplitudes) {
+    using Complex = std::complex<double>;
+    const auto mesh = make_box_mesh_3d(0, 1, 0, 1, 0, 1, 1, 2, 1).mesh;
+    constexpr double k0 = 2.0;
+    const Complex field_x(1.0, -0.25);
+    std::vector<MaxwellCellMaterial3D> materials;
+    for (const auto& cell : mesh.elements) {
+        double center_y = 0.0;
+        for (const auto node : cell) center_y += 0.25 * mesh.nodes[node].y;
+        materials.push_back({center_y < 0.5 ? Complex(1.5, 0.0) : Complex(3.0, 0.5), 1.0});
+    }
+    // The constant x-directed field has zero tangential trace on x=0 and
+    // zero curl everywhere. It is in the lowest-order Nedelec space and is
+    // tangential across the y=1/2 material interface.
+    auto pec = extract_boundary_faces_3d(mesh);
+    std::erase_if(pec, [&](const auto& face) {
+        return std::any_of(face.begin(), face.end(),
+                           [&](const auto node) { return mesh.nodes[node].x != 0.0; });
+    });
+    const auto system = assemble_maxwell_3d_selective_pec(mesh, materials, k0, pec);
+    const auto n = system.free_edges.size();
+    nova::linalg::GmresOptions options;
+    options.restart = 2 * n;
+    options.solver.absolute_tolerance = 0.0;
+    options.solver.relative_tolerance = 1e-12;
+
+    for (const int exponent : {0, -660, 660}) {
+        const double scale = std::ldexp(1.0, exponent);
+        std::vector<ComplexVector3D> sources;
+        for (const auto& material : materials) {
+            sources.push_back({-k0 * k0 * material.relative_permittivity * field_x * scale, {}, {}});
+        }
+        const auto load = assemble_maxwell_cell_load_3d(mesh, sources, system);
+        const auto solution = solve_maxwell_3d(system, load, options);
+        NOVA_REQUIRE(solution.diagnostics.converged);
+        auto field = solution.edge_field;
+        double circulation_error = 0.0;
+        for (std::size_t e = 0; e < field.size(); ++e) {
+            field[e] /= scale;
+            const auto [a, b] = system.edges[e];
+            const Complex expected = field_x * (mesh.nodes[b].x - mesh.nodes[a].x);
+            const double error = std::abs(field[e] - expected);
+            NOVA_REQUIRE(std::isfinite(error));
+            circulation_error = std::max(circulation_error, error);
+            if (mesh.nodes[a].x == 0.0 && mesh.nodes[b].x == 0.0)
+                NOVA_REQUIRE(field[e] == Complex{});
+        }
+
+        // Reconstruct the complex free-edge operator from its real block.
+        // Normalize first so the independent residual and quadratic loss
+        // can be checked even when the physical power exceeds double range.
+        double residual_norm = 0.0, load_norm = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            const Complex rhs = load[system.free_edges[i]] / scale;
+            Complex residual = rhs;
+            for (std::size_t j = 0; j < n; ++j) {
+                const Complex entry(system.real_block.at(i, j), system.real_block.at(i + n, j));
+                residual -= entry * field[system.free_edges[j]];
+            }
+            residual_norm = std::hypot(residual_norm, std::abs(residual));
+            load_norm = std::hypot(load_norm, std::abs(rhs));
+        }
+        const double relative_residual = residual_norm / load_norm;
+        NOVA_REQUIRE(circulation_error < 1e-10);
+        NOVA_REQUIRE(relative_residual < 2.0 * options.solver.relative_tolerance);
+
+        // Integral of omega*eps0*Im(eps_r)*|E|^2/2 over the lossy half box.
+        const auto loss = integrate_maxwell_absorption_3d(mesh, materials, k0, system, field);
+        double total_loss = 0.0;
+        for (const double cell_loss : loss) {
+            NOVA_REQUIRE(cell_loss >= 0.0);
+            total_loss += cell_loss;
+        }
+        constexpr double light_speed = 299792458.0, eps0 = 8.8541878128e-12;
+        const double exact_loss = 0.5 * k0 * light_speed * eps0 * 0.5 * std::norm(field_x) * 0.5;
+        std::cout << "Maxwell layered drive: 2^" << exponent << " cells=" << mesh.elements.size()
+                  << " free_edges=" << n << " max normalized circulation error=" << circulation_error
+                  << " relative residual=" << relative_residual
+                  << " relative loss error=" << std::abs(total_loss / exact_loss - 1.0) << '\n';
+        NOVA_REQUIRE_NEAR(total_loss / exact_loss, 1.0, 1e-10);
+
+        const auto repeat = solve_maxwell_3d(system, load, options);
+        NOVA_REQUIRE(repeat.diagnostics.converged);
+        NOVA_REQUIRE(repeat.edge_field == solution.edge_field);
+        NOVA_REQUIRE(repeat.diagnostics.iterations == solution.diagnostics.iterations);
     }
 }
 

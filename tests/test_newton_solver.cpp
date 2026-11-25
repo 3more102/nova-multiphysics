@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -137,4 +138,41 @@ NOVA_TEST(newton_rejects_residual_dimension_mismatch) {
         threw = true;
     }
     NOVA_REQUIRE(threw);
+}
+
+NOVA_TEST(newton_matches_scaled_nonlinear_root_with_both_krylov_backends) {
+    using nova::nonlinear::NewtonLinearSolver;
+    // F(x) = scale * ((x / unit)^2 - 2). Change the equation units alone,
+    // then also the units of the unknown. The unscaled equation is the control.
+    for (const auto& [equation_exp, unknown_exp] : {
+             std::pair{-660, 0}, {-660, -660}, {0, 0}, {660, 0}, {660, 660}}) {
+        const double scale = std::ldexp(1.0, equation_exp);
+        const double unit = std::ldexp(1.0, unknown_exp);
+        const auto residual = [=](std::span<const double> x) {
+            const double y = x[0] / unit;
+            return std::vector<double>{scale * (y * y - 2.0)};
+        };
+        const auto jacobian = [=](std::span<const double> x) {
+            const double slope = (scale / unit) * (2.0 * (x[0] / unit));
+            return nova::linalg::CsrMatrix::from_triplets(1, 1, {{0, 0, slope}});
+        };
+        for (const auto backend : {NewtonLinearSolver::GMRES, NewtonLinearSolver::BiCGSTAB}) {
+            nova::nonlinear::NewtonOptions options;
+            options.linear_solver = backend;
+            options.residual_tolerance = scale * 1.0e-12;
+            options.step_tolerance = 0.0;
+            options.gmres.solver.absolute_tolerance = 0.0;
+            options.bicgstab.absolute_tolerance = 0.0;
+
+            // At y = 1/8 the full Newton step overshoots and requires damping.
+            const auto result = nova::nonlinear::solve_newton(
+                residual, jacobian, std::vector<double>{0.125 * unit}, options);
+            NOVA_REQUIRE(result.converged && result.iterations > 1);
+            NOVA_REQUIRE(result.last_linear_solve.converged);
+            const double y = result.solution[0] / unit;
+            NOVA_REQUIRE_NEAR(y, std::sqrt(2.0), 1.0e-12);
+            NOVA_REQUIRE_NEAR(result.initial_residual_norm / scale, 2.0 - 0.125 * 0.125, 1e-15);
+            NOVA_REQUIRE_NEAR(result.residual_norm / scale, std::abs(y * y - 2.0), 1e-15);
+        }
+    }
 }
