@@ -54,6 +54,11 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
     if (max_modes == 0U) {
         throw std::invalid_argument("At least one waveguide mode must be requested.");
     }
+    if (eigen_options.max_dimension == 0U || eigen_options.max_sweeps == 0U ||
+        !positive_finite(eigen_options.relative_tolerance) ||
+        eigen_options.relative_tolerance >= 1.0) {
+        throw std::invalid_argument("Invalid waveguide generalized-eigensolver options.");
+    }
     problem.mesh.validate();
     if (problem.materials.size() != problem.mesh.elements.size()) {
         throw std::invalid_argument("Waveguide material count must match triangle count.");
