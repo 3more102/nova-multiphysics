@@ -112,17 +112,15 @@ NOVA_TEST(waveguide_te_tm_fundamental_modes_match_independent_slab_reference) {
         NOVA_REQUIRE(fundamental.effective_index < core_index);
         NOVA_REQUIRE_NEAR(
             fundamental.propagation_constant_per_m *
-                fundamental.propagation_constant_per_m,
-            fundamental.propagation_constant_squared_per_m2,
-            1.0e-3);
+                fundamental.propagation_constant_per_m /
+                fundamental.propagation_constant_squared_per_m2,
+            1.0,
+            1.0e-12);
 
         for (const std::size_t node : fine_problem.dirichlet_boundary_nodes) {
             NOVA_REQUIRE_NEAR(fundamental.scalar_field[node], 0.0, 0.0);
         }
         // The x-min edge is a natural Neumann boundary, not a constrained edge.
-        const std::size_t side_midpoint = (fine_problem.mesh.nodes.size() / 2U) -
-                                          (fine_problem.mesh.nodes.size() / 2U) % 3U;
-        (void)side_midpoint;
         bool found_unconstrained_side_value = false;
         for (std::size_t node = 0; node < fine_problem.mesh.nodes.size(); ++node) {
             const auto& point = fine_problem.mesh.nodes[node];
