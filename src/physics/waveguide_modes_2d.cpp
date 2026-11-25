@@ -141,8 +141,12 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
     }
     std::vector<linalg::Triplet> operator_entries;
     std::vector<linalg::Triplet> mass_entries;
+    std::vector<double> element_areas;
+    std::vector<double> element_mass_coefficients;
     operator_entries.reserve(problem.mesh.elements.size() * 9U);
     mass_entries.reserve(problem.mesh.elements.size() * 9U);
+    element_areas.reserve(problem.mesh.elements.size());
+    element_mass_coefficients.reserve(problem.mesh.elements.size());
 
     for (std::size_t element_index = 0;
          element_index < problem.mesh.elements.size(); ++element_index) {
@@ -191,6 +195,8 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
             !positive_finite(gradient_scale) || !positive_finite(weighted_mass_scale)) {
             throw std::overflow_error("Waveguide element coefficient overflow.");
         }
+        element_areas.push_back(area);
+        element_mass_coefficients.push_back(mass_coefficient);
 
         for (std::size_t i = 0; i < 3; ++i) {
             for (std::size_t j = 0; j < 3; ++j) {
@@ -281,6 +287,39 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
         if (largest != mode.scalar_field.end() && *largest < 0.0) {
             for (double& value : mode.scalar_field) value = -value;
         }
+
+        double total_weighted_norm = 0.0;
+        double core_weighted_norm = 0.0;
+        for (std::size_t element_index = 0;
+             element_index < problem.mesh.elements.size(); ++element_index) {
+            const auto& element = problem.mesh.elements[element_index];
+            const double u0 = mode.scalar_field[element[0]];
+            const double u1 = mode.scalar_field[element[1]];
+            const double u2 = mode.scalar_field[element[2]];
+            const double quadratic_sum =
+                2.0 * (u0 * u0 + u1 * u1 + u2 * u2) +
+                2.0 * (u0 * u1 + u0 * u2 + u1 * u2);
+            const double weighted_integral =
+                element_mass_coefficients[element_index] *
+                element_areas[element_index] / 12.0 * quadratic_sum;
+            if (!std::isfinite(weighted_integral) || weighted_integral < 0.0) {
+                throw std::runtime_error("Invalid waveguide modal mass integral.");
+            }
+            total_weighted_norm += weighted_integral;
+            const auto& material = problem.materials[element_index];
+            const double material_index =
+                std::sqrt(material.relative_permittivity) *
+                std::sqrt(material.relative_permeability);
+            if (material_index > problem.cladding_index + index_tolerance) {
+                core_weighted_norm += weighted_integral;
+            }
+        }
+        if (!positive_finite(total_weighted_norm) ||
+            !std::isfinite(core_weighted_norm)) {
+            throw std::runtime_error("Invalid waveguide modal normalization integral.");
+        }
+        mode.core_confinement_factor = std::clamp(
+            core_weighted_norm / total_weighted_norm, 0.0, 1.0);
         result.modes.push_back(std::move(mode));
     }
     return result;
