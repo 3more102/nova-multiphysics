@@ -1,7 +1,7 @@
 #pragma once
 
 #include "nova/fem/mesh2d.hpp"
-#include "nova/linalg/symmetric_eigen.hpp"
+#include "nova/linalg/sparse_symmetric_eigen.hpp"
 
 #include <cstddef>
 #include <vector>
@@ -46,18 +46,19 @@ struct WaveguideModesResult2D {
     std::vector<WaveguideMode2D> modes; // descending effective-index order
     std::size_t constrained_nodes{};
     std::size_t free_nodes{};
-    std::size_t jacobi_sweeps{};
+    std::size_t subspace_dimension{};
+    std::size_t mass_solve_iterations{};
     bool converged{};
 };
 
 // P1 triangular FEM for lossless, isotropic, piecewise-constant materials.
-// The bounded dense generalized eigensolver currently limits the free space
-// to 512 DOFs. Light-line candidates with cladding_index < n_eff < max(n_material)
-// are returned with a core-confinement diagnostic; finite-window continuum modes
-// may also appear. This is a scalar reference solver, not full-vector Maxwell FEM.
+// Sparse generalized Krylov/Rayleigh-Ritz solves the full sparse pencil; only
+// its projected subspace is dense and is limited to 512 dimensions. Light-line
+// candidates may include finite-window continuum modes. This is a scalar
+// reference solver, not full-vector Maxwell FEM.
 [[nodiscard]] WaveguideModesResult2D solve_waveguide_modes_2d(
     const WaveguideModeProblem2D& problem,
     std::size_t max_modes = 6,
-    const linalg::SymmetricEigenOptions& eigen_options = {});
+    const linalg::SparseSymmetricEigenOptions& eigen_options = {});
 
 } // namespace nova::physics
