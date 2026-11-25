@@ -70,10 +70,32 @@ void add_scaled(std::vector<double>& y, const double scale,
 
 double mass_norm(const std::vector<double>& x, const std::vector<double>& mx) {
     const double squared = dot(x, mx);
-    if (squared < 0.0) {
-        throw std::runtime_error("Maxwell cavity M norm became negative.");
+    if (squared >= 0.0) return std::sqrt(squared);
+
+    // A positive-semidefinite quadratic form can become slightly negative
+    // after cancellation when a Krylov residual is nearly dependent.
+    // Compare against the absolute dot-product scale before declaring a
+    // genuinely invalid mass norm.
+    double scale = 0.0;
+    double scaled_absolute_sum = 0.0;
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        const double term = std::abs(x[i]) * std::abs(mx[i]);
+        if (!std::isfinite(term)) {
+            throw std::overflow_error("Maxwell cavity M-norm error scale overflow.");
+        }
+        if (term > scale) {
+            scaled_absolute_sum = scaled_absolute_sum * (scale / term) + 1.0;
+            scale = term;
+        } else if (term > 0.0) {
+            scaled_absolute_sum += term / scale;
+        }
     }
-    return std::sqrt(squared);
+    if (scale > 0.0 &&
+        std::abs(squared) / scale <=
+            256.0 * std::numeric_limits<double>::epsilon() * scaled_absolute_sum) {
+        return 0.0;
+    }
+    throw std::runtime_error("Maxwell cavity M norm is genuinely negative.");
 }
 
 double frobenius_norm(const CsrMatrix& matrix) {
