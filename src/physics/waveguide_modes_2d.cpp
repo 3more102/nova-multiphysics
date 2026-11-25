@@ -87,7 +87,10 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
         }
         maximum_material_index = std::max(maximum_material_index, index);
     }
-    if (problem.cladding_index > maximum_material_index) {
+    const double index_scale = std::max({1.0, problem.cladding_index, maximum_material_index});
+    const double index_tolerance =
+        64.0 * std::numeric_limits<double>::epsilon() * index_scale;
+    if (problem.cladding_index > maximum_material_index + index_tolerance) {
         throw std::invalid_argument("Cladding index cannot exceed the maximum material index.");
     }
 
@@ -127,7 +130,7 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
     }
 
     // No material contrast above the declared cladding means no bound modes.
-    if (maximum_material_index == problem.cladding_index) {
+    if (maximum_material_index <= problem.cladding_index + index_tolerance) {
         result.converged = true;
         return result;
     }
@@ -175,12 +178,17 @@ WaveguideModesResult2D solve_waveguide_modes_2d(
             mass_coefficient = 1.0 / material.relative_permittivity;
         }
 
+        if (!positive_finite(gradient_coefficient) ||
+            !positive_finite(potential_coefficient) ||
+            !positive_finite(mass_coefficient)) {
+            throw std::overflow_error("Waveguide material weighting exceeds the supported numeric range.");
+        }
         const double mass_scale = area / 12.0;
         const double potential_scale = k0_squared * potential_coefficient * mass_scale;
         const double gradient_scale = area * gradient_coefficient;
         const double weighted_mass_scale = mass_coefficient * mass_scale;
-        if (!std::isfinite(potential_scale) || !std::isfinite(gradient_scale) ||
-            !std::isfinite(weighted_mass_scale)) {
+        if (!positive_finite(mass_scale) || !positive_finite(potential_scale) ||
+            !positive_finite(gradient_scale) || !positive_finite(weighted_mass_scale)) {
             throw std::overflow_error("Waveguide element coefficient overflow.");
         }
 
