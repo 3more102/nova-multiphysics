@@ -83,12 +83,49 @@ std::vector<double> CsrMatrix::multiply(const std::span<const double> vector) co
         const std::size_t begin = row_offsets_[row];
         const std::size_t end = row_offsets_[row + 1U];
         double sum = 0.0;
+        // Track the absolute dot-product scale without forming sum(|a_i*x_i),
+        // which could overflow even when the exact signed result is finite.
+        // This lets the fallback detect severe cancellation that leaves a
+        // nonzero *normal* binary64 result, not only zero/subnormal/Inf rows.
+        double absolute_scale = 0.0;
+        double scaled_absolute_sum = 0.0;
         for (std::size_t index = begin; index < end; ++index) {
-            sum += values_[index] * vector[column_indices_[index]];
+            const double product = values_[index] * vector[column_indices_[index]];
+            sum += product;
+
+            const double magnitude = std::abs(product);
+            if (std::isfinite(magnitude) && magnitude > 0.0) {
+                if (magnitude > absolute_scale) {
+                    scaled_absolute_sum =
+                        scaled_absolute_sum * (absolute_scale / magnitude) + 1.0;
+                    absolute_scale = magnitude;
+                } else {
+                    scaled_absolute_sum += magnitude / absolute_scale;
+                }
+            }
+        }
+
+        bool cancellation_risk = false;
+        const std::size_t term_count = end - begin;
+        if (term_count > 1U && std::isfinite(sum) && absolute_scale > 0.0) {
+            const double n_epsilon =
+                static_cast<double>(term_count) * std::numeric_limits<double>::epsilon();
+            const double gamma = n_epsilon < 0.5
+                ? n_epsilon / (1.0 - n_epsilon)
+                : 1.0;
+            // Bound the trigger to a 1e-8 dot-product condition ratio. The
+            // gamma_n term is a conservative accumulation-error indicator;
+            // exact accumulation is reserved for rows where cancellation
+            // makes the normal fast-path result numerically suspect.
+            const double cancellation_fraction = std::min(1.0e-8, 8.0 * gamma);
+            const double normalized_error_bound =
+                cancellation_fraction * scaled_absolute_sum;
+            cancellation_risk =
+                std::abs(sum) / absolute_scale <= normalized_error_bound;
         }
 
         bool risky = !std::isfinite(sum) ||
-            (sum != 0.0 && std::abs(sum) < min_normal);
+            (sum != 0.0 && std::abs(sum) < min_normal) || cancellation_risk;
         if (sum == 0.0 && begin != end) risky = true;
         if (risky) {
             bool finite_inputs = true;
