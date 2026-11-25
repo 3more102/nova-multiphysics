@@ -25,3 +25,10 @@ The result returns the final one-way coupled solve, the optical materials used f
 ## Scope and limitations
 
 This is a stationary, one-way frequency-domain Maxwell / steady thermal fixed-point model with cellwise linear temperature-dependent isotropic permittivity. It preserves the existing thermal material and source models and does not mutate the input problem. It is not a transient thermo-optic solver, a temperature-dependent permeability/conductivity model, a Kerr/nonlinear-optical solver, or a port/PML implementation. No experimental validation or general convergence guarantee is implied; choose relaxation and tolerances for the specific material and geometry.
+
+
+## Manufactured nonzero-temperature reference
+
+A second regression isolates the temperature-dependent material update from the free-temperature fixed-point test. On a unit cube, all P1 thermal vertices are prescribed at 320 K, with $T_{\mathrm{ref}}=300$ K, $\varepsilon_r^{(0)}=2+0.6i$, and $d\varepsilon_r/dT=10^{-3}+2\times10^{-4}i$ K$^{-1}$. The expected uniform optical permittivity is therefore $2.02+0.604i$.
+
+The cell source is manufactured as $F=-k_0^2\varepsilon_r(320)E_0$ for $E_0=(100,0,0)$, making the exact Maxwell field constant. The independent absorbed-power density is $q=\tfrac12 k_0c\varepsilon_0\operatorname{Im}(\varepsilon_r)|E_0|^2=18.4375924846$ W/m$^3$; the unit cube therefore absorbs 18.4375924846 W. The regression checks the updated permittivity in every cell, each integrated cell power, the global thermal reaction and zero energy defect. This complements the separate free-temperature nonzero-slope convergence test.
