@@ -110,6 +110,9 @@ NOVA_TEST(waveguide_te_tm_fundamental_modes_match_independent_slab_reference) {
 
         NOVA_REQUIRE(coarse.converged);
         NOVA_REQUIRE(fine.converged);
+        NOVA_REQUIRE(coarse.subspace_dimension == coarse.free_nodes);
+        NOVA_REQUIRE(fine.subspace_dimension == fine.free_nodes);
+        NOVA_REQUIRE(fine.mass_solve_iterations > 0U);
         NOVA_REQUIRE(!coarse.modes.empty());
         NOVA_REQUIRE(!fine.modes.empty());
 
