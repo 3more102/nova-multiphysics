@@ -180,3 +180,67 @@ NOVA_TEST(maxwell_sparse_shift_invert_handles_more_than_512_edge_unknowns) {
         }
     }
 }
+
+
+NOVA_TEST(maxwell_sparse_shift_invert_projects_enclosed_pec_surface_gradient) {
+    // Remove the central unit cube from a 3x3x3 structured box. All nodes
+    // lie on the outer PEC surface or the disconnected inner PEC surface.
+    auto mesh = nova::fem::make_box_mesh_3d(0, 3, 0, 3, 0, 3, 3, 3, 3).mesh;
+    const auto inner = [&](std::size_t node) {
+        const auto& p = mesh.nodes[node];
+        return p.x >= 1.0 && p.x <= 2.0 &&
+               p.y >= 1.0 && p.y <= 2.0 &&
+               p.z >= 1.0 && p.z <= 2.0;
+    };
+    mesh.elements.erase(std::remove_if(mesh.elements.begin(), mesh.elements.end(),
+        [&](const auto& cell) {
+            return std::all_of(cell.begin(), cell.end(), inner);
+        }), mesh.elements.end());
+    mesh.validate();
+    NOVA_REQUIRE(mesh.elements.size() == 156U);
+    const std::vector<MaxwellCellMaterial3D> materials(mesh.elements.size());
+    const auto matrices = assemble_maxwell_cavity_3d(mesh, materials);
+    const auto dense = solve_maxwell_cavity_3d(matrices, 3);
+
+    // Independently construct the exact static field grad(phi), with phi=1
+    // on the inner surface and phi=0 on the outer surface.
+    std::vector<double> static_field(matrices.free_edges.size(), 0.0);
+    for (std::size_t i = 0; i < matrices.free_edges.size(); ++i) {
+        const auto& edge = matrices.edges[matrices.free_edges[i]];
+        static_field[i] = static_cast<double>(inner(edge[1])) -
+                          static_cast<double>(inner(edge[0]));
+    }
+    const auto ks = matrices.stiffness.multiply(static_field);
+    const auto ms = matrices.mass.multiply(static_field);
+    double kernel_norm = 0.0, energy = 0.0;
+    for (std::size_t i = 0; i < ks.size(); ++i) {
+        kernel_norm = std::hypot(kernel_norm, ks[i]);
+        energy += static_field[i] * ms[i];
+    }
+    NOVA_REQUIRE(kernel_norm < 1.0e-10);
+    NOVA_REQUIRE(energy > 0.0);
+    NOVA_REQUIRE(dense.converged);
+    NOVA_REQUIRE(dense.nullspace_dimension == 1U);
+
+    MaxwellCavitySparseOptions3D options;
+    options.max_modes = 3;
+    options.max_subspace = 160;
+    options.relative_tolerance = 2.0e-7;
+    const auto sparse = solve_maxwell_cavity_shift_invert_3d(mesh, matrices, options);
+    NOVA_REQUIRE(sparse.converged);
+    NOVA_REQUIRE(sparse.gradient_nullspace_dimension == 1U);
+    NOVA_REQUIRE(sparse.boundary_component_gradient_dimension == 1U);
+    NOVA_REQUIRE(sparse.additional_zero_modes_detected == 0U);
+    NOVA_REQUIRE(sparse.nullspace_dimension == 1U);
+    NOVA_REQUIRE(sparse.modes.size() == 3U);
+    for (std::size_t mode = 0; mode < sparse.modes.size(); ++mode) {
+        NOVA_REQUIRE_NEAR(sparse.modes[mode].vacuum_wavenumber_squared,
+                          dense.modes[mode].vacuum_wavenumber_squared, 3.0e-6);
+        double inner_product = 0.0;
+        for (std::size_t i = 0; i < matrices.free_edges.size(); ++i) {
+            inner_product += sparse.modes[mode].edge_field[matrices.free_edges[i]] * ms[i];
+        }
+        NOVA_REQUIRE(std::abs(inner_product) / std::sqrt(energy) < 2.0e-8);
+        NOVA_REQUIRE(sparse.modes[mode].relative_residual < options.relative_tolerance);
+    }
+}
