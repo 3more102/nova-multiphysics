@@ -21,6 +21,56 @@ double norm(const std::vector<double>& x) {
     for (double value:x) out=std::hypot(out,value);
     return out;
 }
+// Nonnegative magnitudes represented as mantissa * 2^exponent. Keep
+// residual normalization outside the double exponent range until the
+// final ratio, including when the Frobenius norm itself is too large.
+struct Magnitude {
+    double mantissa{};
+    int exponent{};
+};
+Magnitude magnitude(double value) {
+    int exponent=0;
+    const double mantissa=std::frexp(value,&exponent);
+    return {mantissa,exponent};
+}
+Magnitude multiply(Magnitude a,Magnitude b) {
+    if (a.mantissa==0.0 || b.mantissa==0.0) return {};
+    auto result=magnitude(a.mantissa*b.mantissa);
+    result.exponent+=a.exponent+b.exponent;
+    return result;
+}
+Magnitude add(Magnitude a,Magnitude b) {
+    if (a.mantissa==0.0) return b;
+    if (b.mantissa==0.0) return a;
+    if (a.exponent<b.exponent) std::swap(a,b);
+    auto result=magnitude(a.mantissa+std::scalbn(b.mantissa,b.exponent-a.exponent));
+    result.exponent+=a.exponent;
+    return result;
+}
+Magnitude scaled_norm(const std::vector<double>& values) {
+    double scale=0.0;
+    for (double value:values) {
+        if (!std::isfinite(value)) throw std::overflow_error("Eigen residual norm overflow.");
+        scale=std::max(scale,std::abs(value));
+    }
+    if (scale==0.0) return {};
+    double sum=0.0;
+    for (double value:values) {
+        const double normalized=value/scale;
+        sum+=normalized*normalized;
+    }
+    return multiply(magnitude(scale),magnitude(std::sqrt(sum)));
+}
+double relative_residual(const std::vector<double>& r,const std::vector<double>& x,
+                         double lambda,Magnitude kn,Magnitude mn) {
+    const auto numerator=scaled_norm(r);
+    const auto denominator=multiply(add(kn,multiply(magnitude(std::abs(lambda)),mn)),
+                                    scaled_norm(x));
+    if (denominator.mantissa==0.0) return std::scalbn(numerator.mantissa,numerator.exponent);
+    if (numerator.mantissa==0.0) return 0.0;
+    return std::scalbn(numerator.mantissa/denominator.mantissa,
+                       numerator.exponent-denominator.exponent);
+}
 Dense dense_symmetric(const CsrMatrix& a) {
     Dense out(a.rows());
     a.for_each_nonzero([&](std::size_t i,std::size_t j,double v){out(i,j)=v;});
@@ -124,9 +174,7 @@ SymmetricEigenResult solve_symmetric_generalized_eigen(
             }
     }
     result.converged=off_norm(b)<=goal;
-    const double kn=norm(k.data),mn=norm(m.data);
-    if (!std::isfinite(kn)||!std::isfinite(mn))
-        throw std::overflow_error("Eigen matrix norm overflow.");
+    const auto kn=scaled_norm(k.data),mn=scaled_norm(m.data);
     for (std::size_t j=0;j<n;++j) {
         SymmetricEigenpair pair;
         pair.eigenvalue=b(j,j)*scale;
@@ -147,9 +195,7 @@ SymmetricEigenResult solve_symmetric_generalized_eigen(
         auto r=stiffness.multiply(x);
         const auto mx_normalized=mass.multiply(x);
         for (std::size_t i=0;i<n;++i) r[i]-=pair.eigenvalue*mx_normalized[i];
-        const double denom=(kn+std::abs(pair.eigenvalue)*mn)*norm(x);
-        if (!std::isfinite(denom)) throw std::overflow_error("Eigen residual scale overflow.");
-        pair.relative_residual=denom>0.0 ? norm(r)/denom : norm(r);
+        pair.relative_residual=relative_residual(r,x,pair.eigenvalue,kn,mn);
         if (!std::isfinite(pair.relative_residual))
             throw std::overflow_error("Eigen residual overflow.");
         if (pair.relative_residual>std::max(1e-10,10*options.relative_tolerance))

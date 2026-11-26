@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 
 #include "nova/linalg/csr_matrix.hpp"
+#include "nova/linalg/symmetric_eigen.hpp"
 
 #include <cmath>
 #include <limits>
@@ -254,4 +255,47 @@ NOVA_TEST(csr_matrix_vector_product_recovers_nonzero_normal_residual_after_cance
     });
     NOVA_REQUIRE(positive[0] == 1.5);
     NOVA_REQUIRE(negative[0] == -1.5);
+}
+
+NOVA_TEST(generalized_eigen_residual_is_safe_under_common_matrix_scaling) {
+    using namespace nova::linalg;
+    // Both matrices are finite; at the high scale their Frobenius norms
+    // (or the sum in the residual denominator) exceed double's range.
+    // The eigenvalues and the mass-normalized vectors remain representable.
+    for (double scale : {1.0, 1.0e-300, 1.0e308}) {
+        const auto k=CsrMatrix::from_triplets(2,2,{
+            {0,0,scale},{0,1,0.25*scale},{1,0,0.25*scale},{1,1,scale}});
+        const auto m=CsrMatrix::from_triplets(2,2,{
+            {0,0,scale},{1,1,scale}});
+        const auto result=solve_symmetric_generalized_eigen(k,m);
+        NOVA_REQUIRE(result.converged);
+        NOVA_REQUIRE(result.eigenpairs.size()==2);
+        NOVA_REQUIRE_NEAR(result.eigenpairs[0].eigenvalue,0.75,1e-12);
+        NOVA_REQUIRE_NEAR(result.eigenpairs[1].eigenvalue,1.25,1e-12);
+        for (const auto& pair:result.eigenpairs) {
+            NOVA_REQUIRE(std::isfinite(pair.relative_residual));
+            NOVA_REQUIRE(pair.relative_residual<1e-12);
+            const auto mx=m.multiply(pair.eigenvector);
+            double mass_norm=0.0;
+            for (std::size_t i=0;i<mx.size();++i)
+                mass_norm+=pair.eigenvector[i]*mx[i];
+            NOVA_REQUIRE_NEAR(mass_norm,1.0,1e-12);
+        }
+    }
+}
+
+NOVA_TEST(generalized_eigen_residual_handles_frobenius_norm_overflow) {
+    using namespace nova::linalg;
+    const auto k=CsrMatrix::from_triplets(4,4,{
+        {0,0,1e308},{1,1,1e308},{2,2,1e308},{3,3,1e308}});
+    const auto m=CsrMatrix::from_triplets(4,4,{
+        {0,0,1e308},{1,1,1e308},{2,2,1e308},{3,3,1e308}});
+    const auto result=solve_symmetric_generalized_eigen(k,m);
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.eigenpairs.size()==4);
+    for (const auto& pair:result.eigenpairs) {
+        NOVA_REQUIRE_NEAR(pair.eigenvalue,1.0,1e-12);
+        NOVA_REQUIRE(std::isfinite(pair.relative_residual));
+        NOVA_REQUIRE(pair.relative_residual<1e-12);
+    }
 }
