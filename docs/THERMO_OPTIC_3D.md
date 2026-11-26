@@ -32,3 +32,10 @@ This is a stationary, one-way frequency-domain Maxwell / steady thermal fixed-po
 A second regression isolates the temperature-dependent material update from the free-temperature fixed-point test. On a unit cube, all P1 thermal vertices are prescribed at 320 K, with $T_{\mathrm{ref}}=300$ K, $\varepsilon_r^{(0)}=2+0.6i$, and $d\varepsilon_r/dT=10^{-3}+2\times10^{-4}i$ K$^{-1}$. The expected uniform optical permittivity is therefore $2.02+0.604i$.
 
 The cell source is manufactured as $F=-k_0^2\varepsilon_r(320)E_0$ for $E_0=(100,0,0)$, making the exact Maxwell field constant. The independent absorbed-power density is $q=\tfrac12 k_0c\varepsilon_0\operatorname{Im}(\varepsilon_r)|E_0|^2=18.4375924846$ W/m$^3$; the unit cube therefore absorbs 18.4375924846 W. The regression checks the updated permittivity in every cell, each integrated cell power, the global thermal reaction and zero energy defect. This complements the separate free-temperature nonzero-slope convergence test.
+
+
+## Heterogeneous affine-temperature patch
+
+A complementary manufactured test prescribes T(x)=310+40x K on every vertex of a unit cube partitioned into six equal-volume tetrahedra. Each cell has a distinct complex reference permittivity and temperature coefficient. The exact cell temperature is the affine field evaluated at its centroid. A constant electric field E=(100,0,0) is manufactured with a cell-specific impressed source F=-k0^2 epsilon(T) E. The independent cell absorption is q=0.5 k0 c epsilon0 Im(epsilon(T)) |E|^2, and total absorbed power is the sum of q/6 over the six cells.
+
+This patch checks cell indexing, real and imaginary material updates, spatial temperature preservation, cellwise power density and integrated heat, global reaction and conservation. It isolates the transfer and material update under fully prescribed temperature; it is not a free-temperature nonlinear equilibrium validation.
