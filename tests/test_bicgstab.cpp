@@ -108,3 +108,27 @@ NOVA_TEST(bicgstab_rejects_dimension_mismatch) {
     }
     NOVA_REQUIRE(threw);
 }
+
+NOVA_TEST(bicgstab_extreme_rhs_scales_do_not_report_false_convergence) {
+    const auto matrix = nova::linalg::CsrMatrix::from_triplets(
+        2, 2, {{0, 0, 1.0}, {1, 1, 1.0}});
+    for (const double scale : {1.0e-200, 1.0e200}) {
+        const std::vector<double> rhs{scale, -scale};
+        nova::linalg::SolverOptions options;
+        options.relative_tolerance = 1.0e-12;
+        options.absolute_tolerance = 0.0;
+        const auto result = nova::linalg::solve_bicgstab(matrix, rhs, options);
+        NOVA_REQUIRE_NEAR(result.initial_residual_norm / scale, std::sqrt(2.0), 1.0e-12);
+        // BiCGSTAB still uses unscaled inner products. Breakdown is permitted,
+        // but convergence must never be reported for the untouched initial guess.
+        if (result.converged) {
+            const auto product = matrix.multiply(result.solution);
+            NOVA_REQUIRE(result.iterations > 0);
+            NOVA_REQUIRE(std::hypot((rhs[0] - product[0]) / scale,
+                                    (rhs[1] - product[1]) / scale)
+                         <= options.relative_tolerance * std::sqrt(2.0));
+        } else {
+            NOVA_REQUIRE(!result.message.empty());
+        }
+    }
+}
