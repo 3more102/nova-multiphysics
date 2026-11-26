@@ -85,11 +85,12 @@ constexpr std::array<GaussPoint1D, 5> gauss_legendre_5{{
     };
 }
 
+template<class Source>
 [[nodiscard]] long double integrate_source_square(
     const TetrahedralMesh3D& mesh,
     const Tetrahedron3D& cell,
     const double jacobian,
-    const std::function<double(double, double, double)>& source
+    const Source& source
 ) {
     long double integral = 0.0L;
     for (const auto& q_u : gauss_legendre_5) {
@@ -341,6 +342,113 @@ struct SelectedNaturalFace3D {
 }
 
 } // namespace
+
+DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
+    const TetrahedralMesh3D& mesh,
+    const std::span<const double> nodal_values,
+    const std::span<const P1TetrahedralFlux3D> cell_fields,
+    const std::function<double(double, double, double)>& source,
+    const std::span<const NeumannResidualFace3D> natural_boundary_faces,
+    const std::span<const RobinResidualFace3D> robin_boundary_faces,
+    const std::span<const double> cell_source
+) {
+    mesh.validate();
+    if (nodal_values.size() != mesh.nodes.size()) {
+        throw std::invalid_argument(
+            "3D residual estimator nodal field size must match the mesh node count.");
+    }
+    if (cell_fields.size() != mesh.elements.size()) {
+        throw std::invalid_argument(
+            "3D residual estimator flux count must match the element count.");
+    }
+    if (!source) {
+        throw std::invalid_argument(
+            "3D residual estimator requires a source function.");
+    }
+    if (!cell_source.empty() && cell_source.size() != mesh.elements.size()) {
+        throw std::invalid_argument(
+            "3D residual estimator cell-source count must match the element count.");
+    }
+    for (const double value : cell_source) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument(
+                "3D residual estimator cell sources must be finite.");
+        }
+    }
+    for (const double value : nodal_values) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument(
+                "3D residual estimator nodal field must be finite.");
+        }
+    }
+    for (const auto& field : cell_fields) {
+        if (!std::isfinite(field.gradient.x) || !std::isfinite(field.gradient.y) ||
+            !std::isfinite(field.gradient.z) || !std::isfinite(field.flux.x) ||
+            !std::isfinite(field.flux.y) || !std::isfinite(field.flux.z)) {
+            throw std::invalid_argument(
+                "3D residual estimator requires finite reconstructed cell fields.");
+        }
+    }
+
+    std::vector<long double> cell_residual_squared(mesh.elements.size(), 0.0L);
+    for (std::size_t element = 0; element < mesh.elements.size(); ++element) {
+        const auto& cell = mesh.elements[element];
+        const auto basis =
+            evaluate_tetrahedron_p1_physical_gradients_3d(mesh, element);
+        const double jacobian = std::abs(basis.signed_jacobian_determinant);
+        if (!std::isfinite(jacobian) || !(jacobian > 0.0)) {
+            throw std::invalid_argument(
+                "3D residual estimator encountered invalid element volume.");
+        }
+        const double diameter = tetrahedron_diameter(mesh, cell);
+        const double cell_source_value =
+            cell_source.empty() ? 0.0 : cell_source[element];
+        const auto combined_source =
+            [&source, cell_source_value](double x, double y, double z) {
+                return source(x, y, z) + cell_source_value;
+            };
+        const long double source_integral =
+            integrate_source_square(mesh, cell, jacobian, combined_source);
+        const long double h = diameter;
+        cell_residual_squared[element] = h * h * source_integral;
+        if (!(cell_residual_squared[element] >= 0.0L) ||
+            !std::isfinite(cell_residual_squared[element])) {
+            throw std::overflow_error(
+                "3D cell residual indicator is not representable.");
+        }
+    }
+
+    DiffusionResidualIndicators3D result;
+    result.flux_jumps = evaluate_interior_flux_jumps_3d(mesh, cell_fields);
+    const auto boundary_squared = integrate_natural_residuals_3d(
+        mesh, cell_fields, natural_boundary_faces, robin_boundary_faces,
+        nodal_values, result.boundary_residual_faces);
+    result.cell_residual_errors.resize(mesh.elements.size(), 0.0);
+    result.boundary_residual_errors.resize(mesh.elements.size(), 0.0);
+    result.element_errors.resize(mesh.elements.size(), 0.0);
+
+    long double total_squared = 0.0L;
+    for (std::size_t element = 0; element < mesh.elements.size(); ++element) {
+        const long double face_squared =
+            static_cast<long double>(result.flux_jumps.cell_indicators[element]) *
+            result.flux_jumps.cell_indicators[element];
+        const long double combined_squared =
+            cell_residual_squared[element] + face_squared + boundary_squared[element];
+        result.cell_residual_errors[element] = checked_norm(
+            cell_residual_squared[element],
+            "3D cell residual indicator exceeds the finite range.");
+        result.boundary_residual_errors[element] = checked_norm(
+            boundary_squared[element],
+            "3D boundary residual indicator exceeds the finite range.");
+        result.element_errors[element] = checked_norm(
+            combined_squared,
+            "3D element residual indicator exceeds the finite range.");
+        total_squared += combined_squared;
+    }
+    result.total_error = checked_norm(
+        total_squared, "3D total residual indicator exceeds the finite range.");
+    return result;
+}
 
 DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     const TetrahedralMesh3D& mesh,

@@ -39,7 +39,7 @@ struct DiffusionResidualIndicators3D {
     std::vector<double> cell_residual_errors;
     // Existing interior normal-flux jump report, shared equally by adjacent cells.
     InteriorFluxJumpReport3D flux_jumps;
-    // Nonnegative Neumann mismatch contribution per tetrahedron.
+    // Nonnegative natural-boundary mismatch contribution per tetrahedron.
     std::vector<double> boundary_residual_errors;
     // Only supplied exterior natural faces are included in this report.
     std::vector<BoundaryFluxResidualFace3D> boundary_residual_faces;
@@ -49,12 +49,23 @@ struct DiffusionResidualIndicators3D {
     double total_error{};
 };
 
-// P1 residual indicator for -div(k grad(u_h)) = f on tetrahedra.
-// Conductivity is positive and constant within each element. It combines the
-// cell-source residual with interior normal-flux jumps. Natural-boundary
-// residuals, within-cell coefficient gradients and tensor materials are
-// omitted by this four-argument overload; neither overload is a certified
-// error bound. No unlabeled or Dirichlet boundary face is automatically added.
+// Material-aware P1 residual indicator. The caller supplies one reconstructed
+// physical cell flux q=-K grad(u_h) per tetrahedron. This supports scalar or
+// symmetric tensor conductivity, including spatially varying material fields.
+// Selected Neumann and Robin residuals are integrated on exterior faces.
+// Omitted faces are not automatically classified as insulated.
+[[nodiscard]] DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
+    const TetrahedralMesh3D& mesh,
+    std::span<const double> nodal_values,
+    std::span<const P1TetrahedralFlux3D> cell_fields,
+    const std::function<double(double, double, double)>& source,
+    std::span<const NeumannResidualFace3D> natural_boundary_faces,
+    std::span<const RobinResidualFace3D> robin_boundary_faces,
+    std::span<const double> cell_source
+);
+
+// Convenience overloads for positive elementwise-constant scalar conductivity.
+// The four-argument form includes cell-source and interior-flux-jump terms only.
 [[nodiscard]] DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     const TetrahedralMesh3D& mesh,
     std::span<const double> nodal_values,
@@ -62,12 +73,10 @@ struct DiffusionResidualIndicators3D {
     const std::function<double(double, double, double)>& source
 );
 
-// As above, but also include h_F * ||q_h dot n - g_N||^2_L2(F) for
-// explicitly selected natural exterior faces, once per owning tetrahedron.
-// Face winding is irrelevant; duplicate, interior or invalid faces are
-// rejected. A positive six-point degree-four triangle quadrature integrates
-// the prescribed boundary mismatch. Unlisted faces contribute no boundary
-// residual; include insulated faces with a zero callback as needed.
+// Adds selected Neumann mismatch terms on exterior faces. Face winding is
+// irrelevant; duplicate, interior or invalid faces are rejected. A positive
+// six-point degree-four triangle quadrature integrates the prescribed mismatch.
+// Include insulated faces with a zero callback when their residual is wanted.
 [[nodiscard]] DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     const TetrahedralMesh3D& mesh,
     std::span<const double> nodal_values,
@@ -78,7 +87,7 @@ struct DiffusionResidualIndicators3D {
 
 // Includes disjoint explicit Neumann and Robin exterior faces; Robin flux is
 // evaluated from the P1 trace at each face quadrature point. Omitted exterior
-// faces are NOT automatically classified as insulated.
+// faces are not automatically classified as insulated.
 [[nodiscard]] DiffusionResidualIndicators3D estimate_diffusion_residual_error_3d(
     const TetrahedralMesh3D& mesh,
     std::span<const double> nodal_values,

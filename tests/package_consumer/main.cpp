@@ -300,6 +300,16 @@ int main() {
             adaptive.refined_problem.mesh.elements.size() ||
         !std::isfinite(adaptive.refined_indicators.total_error)) return 20;
 
+    AdaptiveDiffusionOptions3D diffusion_options;
+    diffusion_options.max_cycles = 1;
+    diffusion_options.absolute_tolerance = 0.0;
+    diffusion_options.relative_tolerance = 0.0;
+    const auto history = solve_adaptive_diffusion_3d(adaptive_problem, diffusion_options);
+    if (history.cycles.size() != 1U ||
+        history.stop_reason != AdaptiveDiffusionStopReason3D::MaximumCyclesReached ||
+        !history.final_solution.linear_solver.converged ||
+        history.final_problem.mesh.elements != adaptive.refined_problem.mesh.elements) return 31;
+
     // Exercise the installed experimental electrostatics API and exported symbol.
     nova::physics::Electrostatics3DProblem electrostatic;
     electrostatic.mesh = box.mesh;
