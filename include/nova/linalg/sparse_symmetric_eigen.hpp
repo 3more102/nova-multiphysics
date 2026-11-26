@@ -39,6 +39,9 @@ struct SparseSymmetricEigenResult {
 // matrices and eigenvectors are not converted to dense storage.
 //
 // A deterministic block of initial vectors helps resolve repeated eigenvalues.
+// Exhausted invariant subspaces are supplemented by orthogonal coordinate seeds
+// while projection capacity remains. Residual convergence alone cannot certify
+// global spectral ordering for a projection smaller than the full dimension.
 // If the requested Ritz pairs do not meet the true residual tolerance,
 // eigenpairs are still returned but result.converged is false.
 [[nodiscard]] SparseSymmetricEigenResult solve_sparse_symmetric_generalized_eigen(

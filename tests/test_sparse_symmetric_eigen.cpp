@@ -178,3 +178,27 @@ NOVA_TEST(sparse_generalized_eigen_rejects_invalid_dimensions_symmetry_and_optio
     } catch (const std::invalid_argument&) { rejected = true; }
     NOVA_REQUIRE(rejected);
 }
+
+
+NOVA_TEST(sparse_generalized_eigen_explores_complement_of_invariant_start) {
+    // The deterministic first starting vector is proportional to (1, 1).
+    // Its exact eigenvalue is 1, but (1, -1) has the largest eigenvalue 3.
+    // A zero residual for the first vector alone is not sufficient.
+    const auto stiffness = CsrMatrix::from_triplets(2, 2, {
+        {0,0,2.0}, {0,1,-1.0}, {1,0,-1.0}, {1,1,2.0}
+    });
+    const auto mass = identity(2);
+    nova::linalg::SparseSymmetricEigenOptions options;
+    options.max_modes = 1;
+    options.max_subspace = 2;
+    const auto result = nova::linalg::solve_sparse_symmetric_generalized_eigen(
+        stiffness, mass, options);
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.subspace_dimension == 2);
+    NOVA_REQUIRE(result.operator_applications == 2);
+    NOVA_REQUIRE(result.eigenpairs.size() == 1);
+    NOVA_REQUIRE_NEAR(result.eigenpairs[0].eigenvalue, 3.0, 1e-12);
+    NOVA_REQUIRE(result.eigenpairs[0].relative_residual < 1e-12);
+    NOVA_REQUIRE_NEAR(mass_inner(result.eigenpairs[0].eigenvector,
+        mass, result.eigenpairs[0].eigenvector), 1.0, 1e-12);
+}
