@@ -191,6 +191,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_thermo_optic_3d.cpp
         tests/test_maxwell_power_audit_3d.cpp
         tests/test_maxwell_cavity_3d.cpp
+        tests/test_optical_dispersion.cpp
         tests/test_diffusion_3d.cpp
         tests/test_cell_conduction_3d.cpp
         tests/test_p1_flux_3d.cpp
