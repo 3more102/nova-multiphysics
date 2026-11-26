@@ -212,3 +212,100 @@ NOVA_TEST(thermo_optic_manufactured_nonzero_temperature_shift_matches_exact_abso
                           expected_density * volume, 1e-7);
     }
 }
+
+
+NOVA_TEST(thermo_optic_affine_temperature_heterogeneous_cell_patch) {
+    const auto box = make_box_mesh_3d(0,1,0,1,0,1,2,2,2);
+    Photothermal3DProblem base;
+    base.thermal.mesh = box.mesh;
+    const auto n = box.mesh.elements.size();
+    base.thermal.cell_diffusivity.assign(n, 4.0);
+    constexpr double k0 = 2.3;
+    constexpr double amplitude = 100.0;
+    constexpr double c = 299792458.0;
+    constexpr double eps0 = 8.8541878128e-12;
+    base.vacuum_wavenumber = k0;
+    base.pec_on_exterior = false;
+    const auto temperature = [](double x, double y, double z) {
+        return 310.0 + 12.0*x - 4.0*y + 8.0*z;
+    };
+    for (std::size_t node = 0; node < box.mesh.nodes.size(); ++node) {
+        const auto& p = box.mesh.nodes[node];
+        base.thermal.dirichlet_constraints.push_back(
+            {node, temperature(p.x, p.y, p.z)});
+    }
+
+    ThermoOptic3DProblem problem;
+    std::vector<std::complex<double>> expected_materials;
+    std::vector<double> expected_density;
+    double expected_total = 0.0;
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        // Two alternating material laws make index/order errors observable.
+        const bool a = cell % 2 == 0;
+        const std::complex<double> reference = a ?
+            std::complex<double>(2.0, 0.35) : std::complex<double>(3.0, 0.65);
+        const std::complex<double> slope = a ?
+            std::complex<double>(0.002, 0.001) : std::complex<double>(-0.003, 0.002);
+        base.optical_materials.push_back({reference, 1.0});
+        problem.d_relative_permittivity_d_temperature.push_back(slope);
+        double x = 0.0, y = 0.0, z = 0.0;
+        for (const auto node : box.mesh.elements[cell]) {
+            const auto& p = box.mesh.nodes[node];
+            x += 0.25*p.x;
+            y += 0.25*p.y;
+            z += 0.25*p.z;
+        }
+        const auto epsilon = reference + slope*(temperature(x,y,z) - 300.0);
+        expected_materials.push_back(epsilon);
+        ComplexVector3D source{};
+        source[0] = -k0*k0*epsilon*amplitude;
+        base.optical_cell_sources.push_back(source);
+        const double q = 0.5*k0*c*eps0*epsilon.imag()*amplitude*amplitude;
+        expected_density.push_back(q);
+        // Independent determinant of the three vertex differences.
+        const auto& ids = box.mesh.elements[cell];
+        const auto& p0 = box.mesh.nodes[ids[0]];
+        const auto& p1 = box.mesh.nodes[ids[1]];
+        const auto& p2 = box.mesh.nodes[ids[2]];
+        const auto& p3 = box.mesh.nodes[ids[3]];
+        const double ax=p1.x-p0.x, ay=p1.y-p0.y, az=p1.z-p0.z;
+        const double bx=p2.x-p0.x, by=p2.y-p0.y, bz=p2.z-p0.z;
+        const double cx=p3.x-p0.x, cy=p3.y-p0.y, cz=p3.z-p0.z;
+        const double volume = std::abs(ax*(by*cz-bz*cy) -
+            ay*(bx*cz-bz*cx) + az*(bx*cy-by*cx))/6.0;
+        expected_total += q*volume;
+    }
+    problem.photothermal = base;
+    problem.reference_temperature_kelvin = 300.0;
+    problem.relaxation_factor = 1.0;
+    problem.temperature_tolerance_kelvin = 1e-10;
+    problem.relative_absorbed_power_tolerance = 1e-10;
+    problem.max_iterations = 4;
+    const auto result = solve_thermo_optic_3d(problem, accurate_optical_options());
+
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.history.size() == 2);
+    NOVA_REQUIRE(result.optical_materials.size() == n);
+    NOVA_REQUIRE(result.photothermal.absorbed_power_density.size() == n);
+    NOVA_REQUIRE_NEAR(result.photothermal.total_absorbed_power_watts, expected_total, 1e-7);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.generated_heat, expected_total, 1e-7);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.constraint_outward_heat,
+                      expected_total, 1e-6);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.signed_balance_defect, 0.0, 1e-6);
+    NOVA_REQUIRE(result.photothermal.thermal_solution.values.size() == box.mesh.nodes.size());
+    for (std::size_t node = 0; node < box.mesh.nodes.size(); ++node) {
+        const auto& p = box.mesh.nodes[node];
+        NOVA_REQUIRE_NEAR(result.photothermal.thermal_solution.values[node],
+                          temperature(p.x,p.y,p.z), 1e-12);
+    }
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        NOVA_REQUIRE_NEAR(result.optical_materials[cell].relative_permittivity.real(),
+                          expected_materials[cell].real(), 1e-12);
+        NOVA_REQUIRE_NEAR(result.optical_materials[cell].relative_permittivity.imag(),
+                          expected_materials[cell].imag(), 1e-12);
+        NOVA_REQUIRE_NEAR(result.photothermal.absorbed_power_density[cell],
+                          expected_density[cell], 1e-7);
+        NOVA_REQUIRE(problem.photothermal.optical_materials[cell].relative_permittivity ==
+                     base.optical_materials[cell].relative_permittivity);
+    }
+}
