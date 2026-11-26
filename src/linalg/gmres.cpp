@@ -22,7 +22,28 @@ namespace {
 }
 
 [[nodiscard]] double norm(const std::vector<double>& vector) {
-    return std::sqrt(dot(vector, vector));
+    // Scaled sum of squares: avoid squaring values outside the normal range.
+    // Preserve non-finite input so callers cannot mistake it for convergence.
+    double scale = 0.0;
+    double sum_squares = 1.0;
+    for (const double value : vector) {
+        const double magnitude = std::abs(value);
+        if (!std::isfinite(magnitude)) {
+            return magnitude;
+        }
+        if (magnitude == 0.0) {
+            continue;
+        }
+        if (magnitude > scale) {
+            const double ratio = scale / magnitude;
+            sum_squares = 1.0 + sum_squares * ratio * ratio;
+            scale = magnitude;
+        } else {
+            const double ratio = magnitude / scale;
+            sum_squares += ratio * ratio;
+        }
+    }
+    return scale * std::sqrt(sum_squares);
 }
 
 [[nodiscard]] bool all_finite(const std::span<const double> values) {
@@ -161,10 +182,13 @@ SolverResult solve_gmres(
         return result;
     }
 
-    const std::size_t cycle_length = std::min(
+    // An n-dimensional system cannot benefit from more than n basis vectors.
+    // Bound storage by the problem dimension even for oversized restart requests.
+    const std::size_t cycle_length = std::min({
         options.restart,
-        solver_options.max_iterations
-    );
+        solver_options.max_iterations,
+        matrix.columns()
+    });
 
     while (result.iterations < solver_options.max_iterations) {
         const double beta = norm(residual);
