@@ -136,3 +136,34 @@ NOVA_TEST(gmres_reports_iteration_limit_without_claiming_convergence) {
     NOVA_REQUIRE(result.iterations == 1);
     NOVA_REQUIRE(result.message.find("maximum") != std::string::npos);
 }
+
+NOVA_TEST(gmres_residual_norm_handles_extreme_rhs_scales) {
+    const auto matrix = make_nonsymmetric_matrix();
+    for (const double scale : {1.0e-200, 1.0e200}) {
+        const std::vector<double> rhs{6.0 * scale, 3.0 * scale, 0.0};
+        for (const auto preconditioner : {nova::linalg::PreconditionerType::None,
+                                         nova::linalg::PreconditionerType::Jacobi}) {
+            nova::linalg::GmresOptions options;
+            options.restart = 3;
+            options.solver.relative_tolerance = 1.0e-12;
+            options.solver.absolute_tolerance = 0.0;
+            options.solver.preconditioner = preconditioner;
+            const auto result = nova::linalg::solve_gmres(matrix, rhs, options);
+            NOVA_REQUIRE(result.converged);
+            NOVA_REQUIRE(result.iterations > 0);
+            NOVA_REQUIRE_NEAR(result.initial_residual_norm / scale,
+                              std::hypot(6.0, 3.0), 1.0e-12);
+            NOVA_REQUIRE_NEAR(result.solution[0] / scale, 1.0, 1.0e-10);
+            NOVA_REQUIRE_NEAR(result.solution[1] / scale, 2.0, 1.0e-10);
+            NOVA_REQUIRE_NEAR(result.solution[2] / scale, -1.0, 1.0e-10);
+            const auto product = matrix.multiply(result.solution);
+            const double relative_residual = std::hypot(
+                (rhs[0] - product[0]) / scale,
+                (rhs[1] - product[1]) / scale,
+                (rhs[2] - product[2]) / scale);
+            NOVA_REQUIRE(relative_residual <=
+                         options.solver.relative_tolerance * std::hypot(6.0, 3.0));
+            NOVA_REQUIRE_NEAR(result.residual_norm / scale, relative_residual, 1.0e-14);
+        }
+    }
+}
