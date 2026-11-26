@@ -1,4 +1,5 @@
 #include "nova/linalg/gmres.hpp"
+#include "krylov_norm.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -19,10 +20,6 @@ namespace {
         result += left[index] * right[index];
     }
     return result;
-}
-
-[[nodiscard]] double norm(const std::vector<double>& vector) {
-    return std::sqrt(dot(vector, vector));
 }
 
 [[nodiscard]] bool all_finite(const std::span<const double> values) {
@@ -139,7 +136,7 @@ SolverResult solve_gmres(
     }
 
     SolverResult result;
-    result.initial_residual_norm = norm(residual);
+    result.initial_residual_norm = detail::euclidean_norm(residual);
     result.residual_norm = result.initial_residual_norm;
 
     if (!std::isfinite(result.initial_residual_norm)) {
@@ -167,12 +164,24 @@ SolverResult solve_gmres(
     );
 
     while (result.iterations < solver_options.max_iterations) {
-        const double beta = norm(residual);
+        double beta = result.residual_norm;
         if (!std::isfinite(beta) || beta == 0.0) {
             result.solution = std::move(solution);
             result.message = "GMRES breakdown: restart residual norm is zero or non-finite.";
             return result;
         }
+
+        // Below the normal range even a correctly rounded physical norm may
+        // lack the significant bits needed to form a unit Arnoldi vector.
+        // Lift by an exact power of two, leaving headroom for projected residuals.
+        const bool subnormal_cycle = std::fpclassify(beta) == FP_SUBNORMAL;
+        const double lift = subnormal_cycle
+            ? std::ldexp(1.0, 2 * std::numeric_limits<double>::digits) : 1.0;
+        if (subnormal_cycle) {
+            for (double& value : residual) value *= lift;
+            beta = detail::euclidean_norm(residual);
+        }
+        const double projected_threshold = convergence_threshold * lift;
 
         std::vector<std::vector<double>> basis(
             cycle_length + 1,
@@ -228,8 +237,8 @@ SolverResult solve_gmres(
                 }
             }
 
-            const double next_basis_norm = norm(work);
-            const double product_norm = norm(matrix_product);
+            const double next_basis_norm = detail::euclidean_norm(work);
+            const double product_norm = detail::euclidean_norm(matrix_product);
 
             if (!std::isfinite(next_basis_norm) || !std::isfinite(product_norm)) {
                 result.message = "GMRES breakdown: Arnoldi norm became non-finite.";
@@ -281,7 +290,7 @@ SolverResult solve_gmres(
             ++result.iterations;
             used_iterations = column + 1;
 
-            if (std::abs(transformed_rhs[column + 1]) <= convergence_threshold ||
+            if (std::abs(transformed_rhs[column + 1]) <= projected_threshold ||
                 happy_breakdown) {
                 break;
             }
@@ -326,10 +335,19 @@ SolverResult solve_gmres(
             }
         }
 
+        // Accumulate a lifted correction before rounding back to physical units.
+        // The ordinary path adds directly to the iterate in its original order.
+        std::vector<double> lifted_correction;
+        if (subnormal_cycle) lifted_correction.resize(solution.size());
+        auto& update = subnormal_cycle ? lifted_correction : solution;
         for (std::size_t column = 0; column < used_iterations; ++column) {
             for (std::size_t index = 0; index < solution.size(); ++index) {
-                solution[index] +=
-                    coefficients[column] * preconditioned_basis[column][index];
+                update[index] += coefficients[column] * preconditioned_basis[column][index];
+            }
+        }
+        if (subnormal_cycle) {
+            for (std::size_t i = 0; i < solution.size(); ++i) {
+                solution[i] += lifted_correction[i] / lift;
             }
         }
 
@@ -346,7 +364,7 @@ SolverResult solve_gmres(
             return result;
         }
 
-        result.residual_norm = norm(residual);
+        result.residual_norm = detail::euclidean_norm(residual);
         if (!std::isfinite(result.residual_norm)) {
             result.solution = std::move(solution);
             result.message = "GMRES breakdown: true residual norm became non-finite.";

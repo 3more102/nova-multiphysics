@@ -1,5 +1,7 @@
 #include "nova/nonlinear/newton_solver.hpp"
 
+#include "../linalg/krylov_norm.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -9,14 +11,6 @@
 
 namespace nova::nonlinear {
 namespace {
-
-[[nodiscard]] double vector_norm(const std::vector<double>& values) {
-    double squared_norm = 0.0;
-    for (const double value : values) {
-        squared_norm += value * value;
-    }
-    return std::sqrt(squared_norm);
-}
 
 [[nodiscard]] bool all_finite(const std::span<const double> values) {
     return std::all_of(values.begin(), values.end(), [](const double value) {
@@ -89,7 +83,7 @@ NewtonResult solve_newton(
 
     NewtonResult result;
     result.solution = solution;
-    result.initial_residual_norm = vector_norm(residual);
+    result.initial_residual_norm = linalg::detail::euclidean_norm(residual);
     result.residual_norm = result.initial_residual_norm;
 
     if (!std::isfinite(result.initial_residual_norm)) {
@@ -145,7 +139,7 @@ NewtonResult solve_newton(
             return result;
         }
 
-        const double update_norm = vector_norm(update);
+        const double update_norm = linalg::detail::euclidean_norm(update);
         if (!std::isfinite(update_norm)) {
             result.solution = std::move(solution);
             result.message = "Newton update norm became non-finite.";
@@ -172,7 +166,7 @@ NewtonResult solve_newton(
                 validate_residual_shape(candidate_residual, solution.size());
 
                 if (all_finite(candidate_residual)) {
-                    candidate_residual_norm = vector_norm(candidate_residual);
+                    candidate_residual_norm = linalg::detail::euclidean_norm(candidate_residual);
 
                     if (std::isfinite(candidate_residual_norm) &&
                         candidate_residual_norm <=
@@ -209,7 +203,7 @@ NewtonResult solve_newton(
             return result;
         }
 
-        const double solution_scale = 1.0 + vector_norm(solution);
+        const double solution_scale = 1.0 + linalg::detail::euclidean_norm(solution);
         if (result.last_step_norm <= options.step_tolerance * solution_scale) {
             result.message =
                 "Newton stagnated: step tolerance reached before residual convergence.";
