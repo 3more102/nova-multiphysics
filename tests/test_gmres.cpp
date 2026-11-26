@@ -179,7 +179,7 @@ NOVA_TEST(gmres_bounds_oversized_restart_by_matrix_dimension) {
     const std::vector<double> rhs{6.0, 3.0, 0.0};
     nova::linalg::GmresOptions options;
     options.restart = std::numeric_limits<std::size_t>::max();
-    options.solver.max_iterations = 1000000000;
+    options.solver.max_iterations = std::numeric_limits<std::size_t>::max();
     options.solver.relative_tolerance = 1.0e-12;
     options.solver.absolute_tolerance = 1.0e-14;
     const auto result = nova::linalg::solve_gmres(matrix, rhs, options);
