@@ -212,3 +212,45 @@ NOVA_TEST(thermo_optic_manufactured_nonzero_temperature_shift_matches_exact_abso
                           expected_density * volume, 1e-7);
     }
 }
+
+// The optical field remains of ordinary magnitude; only dielectric loss
+// is tiny. This isolates the outer convergence criterion from Krylov scaling.
+NOVA_TEST(thermo_optic_weak_absorption_requires_relative_power_convergence) {
+    const auto base = plate(1e-45, 100.0);
+    auto problem = thermo_optic_problem(base);
+    problem.max_iterations = 1;
+    const auto incomplete = solve_thermo_optic_3d(problem, accurate_optical_options());
+
+    const double power = incomplete.photothermal.total_absorbed_power_watts;
+    NOVA_REQUIRE(power > 0.0);
+    NOVA_REQUIRE(power < 1e-38);
+    NOVA_REQUIRE(incomplete.history.size() == 1);
+    NOVA_REQUIRE(incomplete.history.front().max_temperature_residual_kelvin <=
+                 problem.temperature_tolerance_kelvin);
+    NOVA_REQUIRE_NEAR(incomplete.history.front().relative_absorbed_power_change,
+                      1.0, 1e-14);
+    NOVA_REQUIRE(!incomplete.converged);
+
+    problem.max_iterations = 2;
+    const auto complete = solve_thermo_optic_3d(problem, accurate_optical_options());
+    NOVA_REQUIRE(complete.converged);
+    NOVA_REQUIRE(complete.history.size() == 2);
+    NOVA_REQUIRE_NEAR(complete.history.back().relative_absorbed_power_change,
+                      0.0, 1e-14);
+    constexpr double c = 299792458.0;
+    constexpr double eps0 = 8.8541878128e-12;
+    const double expected = 0.5 * base.vacuum_wavenumber * c * eps0 *
+        1e-45 * 100.0 * 100.0;
+    NOVA_REQUIRE_NEAR(complete.photothermal.total_absorbed_power_watts / expected,
+                      1.0, 1e-8);
+}
+
+NOVA_TEST(thermo_optic_exact_zero_absorption_has_zero_relative_change) {
+    auto problem = thermo_optic_problem(plate(0.0, 100.0));
+    problem.max_iterations = 1;
+    const auto result = solve_thermo_optic_3d(problem, accurate_optical_options());
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.history.size() == 1);
+    NOVA_REQUIRE(result.photothermal.total_absorbed_power_watts == 0.0);
+    NOVA_REQUIRE(result.history.front().relative_absorbed_power_change == 0.0);
+}
