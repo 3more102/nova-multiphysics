@@ -38,6 +38,7 @@ add_library(nova_core
     src/physics/photothermal_3d.cpp
     src/physics/thermo_optic_3d.cpp
     src/physics/maxwell_cavity_3d.cpp
+    src/physics/maxwell_cavity_energy_3d.cpp
     src/linalg/symmetric_eigen.cpp
     src/fem/h1_space_3d.cpp
     src/fem/conductivity_3d.cpp
@@ -191,6 +192,7 @@ if(NOVA_BUILD_TESTS)
         tests/test_thermo_optic_3d.cpp
         tests/test_maxwell_power_audit_3d.cpp
         tests/test_maxwell_cavity_3d.cpp
+        tests/test_maxwell_cavity_energy_3d.cpp
         tests/test_diffusion_3d.cpp
         tests/test_cell_conduction_3d.cpp
         tests/test_p1_flux_3d.cpp
