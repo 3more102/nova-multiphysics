@@ -18,9 +18,15 @@ where $\alpha_c=d\varepsilon_{r,c}/dT$ is a complex, constant per-kelvin coeffic
 3. Assemble and solve the complex 3D Maxwell system.
 4. Integrate dielectric absorption per tetrahedron and transfer the cell power conservatively into the thermal source.
 5. Solve the stationary P1 heat problem and under-relax the temperature iterate.
-6. Stop only when both the maximum nodal temperature residual and relative change in total absorbed optical power satisfy their tolerances.
+6. Stop only when the maximum nodal temperature residual, relative change in total absorbed optical power, and maximum cellwise constitutive defect satisfy their tolerances, and the returned thermal field implies passive optical materials.
 
 The result returns the final one-way coupled solve, the optical materials used for its Maxwell solve, and per-iteration residual/power history. Reaching the iteration limit returns the last finite result with `converged=false`; invalid inputs or failed inner linear solves throw.
+
+## Constitutive closure diagnostic
+
+The Maxwell solution uses the input temperature iterate, whereas the returned P1 thermal solution is the output of the coupled solve. The new dimensionless absolute residual is the maximum over cells of the complex magnitude of the difference between permittivity evaluated at the output cell-average temperature and the permittivity used in the Maxwell assembly. It is reported as `max_permittivity_residual` in each iteration; the positive finite `permittivity_tolerance` defaults to 1e-8. This is an additional gate, not a replacement for temperature and absorbed-power tolerances. A nonfinite material defect throws; an active output material cannot satisfy convergence, even if all residual tolerances pass.
+
+The regression deliberately loosens the original two gates, verifies that a single iteration is not accepted, and independently recomputes the material defect from the returned thermal solution after convergence. This check does not establish mesh independence or physical validation.
 
 ## Scope and limitations
 
