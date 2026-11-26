@@ -123,6 +123,86 @@ NOVA_TEST(floating_electrodes_rejects_invalid_inputs) {
 }
 
 
+NOVA_TEST(affine_floating_electrodes_nonzero_offset_and_source_free_equivalence) {
+    const CapacitanceMatrix3D c{{10, 20}, {2.0, -2.0, -2.0, 2.0}};
+    const std::vector<FixedElectrodePotential3D> fixed{{10, 0.0}};
+    const std::vector<FloatingElectrodeCharge3D> loaded{{20, 23.0}};
+    const auto result = nova::physics::solve_affine_floating_electrode_potentials_3d(
+        c, std::vector<double>{-1.0, 3.0}, fixed, loaded);
+    // Q_high=2*V_high + 3 C, so Q_high=23 C implies V_high=10 V.
+    NOVA_REQUIRE(result.electrode_ids == c.electrode_ids);
+    NOVA_REQUIRE_NEAR(result.potential_volts[0], 0.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(result.potential_volts[1], 10.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(result.estimated_charge_coulombs[0], -21.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(result.estimated_charge_coulombs[1], 23.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(result.max_floating_charge_residual_coulombs, 0.0, 1.0e-12);
+
+    const auto source_free = solve_floating_electrode_potentials_3d(
+        c, fixed, std::vector<FloatingElectrodeCharge3D>{{20, 20.0}});
+    const auto zero_offset = nova::physics::solve_affine_floating_electrode_potentials_3d(
+        c, std::vector<double>{0.0, 0.0}, fixed,
+        std::vector<FloatingElectrodeCharge3D>{{20, 20.0}});
+    NOVA_REQUIRE(zero_offset.potential_volts == source_free.potential_volts);
+    NOVA_REQUIRE(zero_offset.estimated_charge_coulombs ==
+                 source_free.estimated_charge_coulombs);
+}
+
+NOVA_TEST(affine_floating_electrodes_coupled_three_terminal_and_all_fixed) {
+    const CapacitanceMatrix3D c{
+        {10, 20, 30},
+        {3.0, -1.0, -2.0, -1.0, 2.0, -1.0, -2.0, -1.0, 3.0}
+    };
+    // V=(3,4,2) gives C*V=(1,3,-4), Q_zero=(2,-1,3),
+    // and Q_total=(3,2,-1). Floating requests are in reverse ID order.
+    const auto coupled = nova::physics::solve_affine_floating_electrode_potentials_3d(
+        c, std::vector<double>{2.0, -1.0, 3.0},
+        std::vector<FixedElectrodePotential3D>{{10, 3.0}},
+        std::vector<FloatingElectrodeCharge3D>{{30, -1.0}, {20, 2.0}});
+    NOVA_REQUIRE_NEAR(coupled.potential_volts[0], 3.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(coupled.potential_volts[1], 4.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(coupled.potential_volts[2], 2.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(coupled.estimated_charge_coulombs[0], 3.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(coupled.estimated_charge_coulombs[1], 2.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(coupled.estimated_charge_coulombs[2], -1.0, 1.0e-12);
+
+    const auto all_fixed = nova::physics::solve_affine_floating_electrode_potentials_3d(
+        CapacitanceMatrix3D{{1, 2}, {3.0, -1.0, -1.0, 2.0}},
+        std::vector<double>{-1.0, 3.0},
+        std::vector<FixedElectrodePotential3D>{{2, 3.0}, {1, 2.0}},
+        std::vector<FloatingElectrodeCharge3D>{});
+    NOVA_REQUIRE_NEAR(all_fixed.estimated_charge_coulombs[0], 2.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(all_fixed.estimated_charge_coulombs[1], 7.0, 1.0e-12);
+    NOVA_REQUIRE_NEAR(all_fixed.max_floating_charge_residual_coulombs, 0.0, 1.0e-12);
+}
+
+NOVA_TEST(affine_floating_electrodes_rejects_invalid_offsets_and_constraints) {
+    const CapacitanceMatrix3D c{{10, 20}, {2.0, -2.0, -2.0, 2.0}};
+    const std::vector<FixedElectrodePotential3D> fixed{{10, 0.0}};
+    const std::vector<FloatingElectrodeCharge3D> floating{{20, 20.0}};
+    const auto solve = [&](const CapacitanceMatrix3D& matrix,
+                           const std::vector<double>& offsets,
+                           const std::vector<FixedElectrodePotential3D>& f,
+                           const std::vector<FloatingElectrodeCharge3D>& q) {
+        (void)nova::physics::solve_affine_floating_electrode_potentials_3d(
+            matrix, offsets, f, q);
+    };
+    require_invalid([&] { solve(c, {0.0}, fixed, floating); });
+    require_invalid([&] { solve(c, {0.0, 0.0, 0.0}, fixed, floating); });
+    require_invalid([&] {
+        solve(c, {std::numeric_limits<double>::quiet_NaN(), 0.0}, fixed, floating);
+    });
+    require_invalid([&] {
+        solve(c, {0.0, std::numeric_limits<double>::infinity()}, fixed, floating);
+    });
+    require_invalid([&] { solve(c, {0.0, 0.0}, fixed, {{99, 1.0}}); });
+    require_invalid([&] {
+        solve(c, {0.0, 0.0}, fixed, {{20, 1.0}, {20, 1.0}});
+    });
+    require_invalid([&] {
+        solve(c, {0.0, 0.0}, {}, {{10, -20.0}, {20, 20.0}});
+    });
+}
+
 NOVA_TEST(floating_electrodes_reconstructs_3d_field_from_charge) {
     using nova::physics::Electrostatics3DProblem;
     using nova::physics::ElectrodeBoundaryGroup3D;
