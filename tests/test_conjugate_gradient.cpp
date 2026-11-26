@@ -171,3 +171,22 @@ NOVA_TEST(conjugate_gradient_reports_accurate_norm_for_subnormal_squared_residua
     NOVA_REQUIRE(result.converged && result.iterations == 1);
     NOVA_REQUIRE_NEAR(result.initial_residual_norm / std::hypot(rhs[0], rhs[1]), 1.0, 1e-14);
 }
+
+NOVA_TEST(conjugate_gradient_jacobi_accepts_subnormal_positive_diagonal) {
+    using namespace nova::linalg;
+    // The reciprocal of this finite diagonal overflows, but r/d is exactly 2.
+    const double diagonal = 1e-310;
+    const auto matrix = CsrMatrix::from_triplets(1, 1, {{0, 0, diagonal}});
+    const std::array rhs{2.0 * diagonal};
+    SolverOptions options;
+    options.preconditioner = PreconditionerType::Jacobi;
+    options.absolute_tolerance = 0.0;
+    options.relative_tolerance = 1e-10;
+    const auto result = solve_conjugate_gradient(matrix, rhs, options);
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.iterations == 1);
+    NOVA_REQUIRE_NEAR(result.solution[0], 2.0, 1e-12);
+    const auto product = matrix.multiply(result.solution);
+    NOVA_REQUIRE(product[0] == rhs[0]);
+    NOVA_REQUIRE(result.residual_norm == 0.0);
+}
