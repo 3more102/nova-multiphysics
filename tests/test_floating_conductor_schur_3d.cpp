@@ -2,6 +2,7 @@
 
 #include "nova/physics/floating_conductor_schur_3d.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -178,6 +179,144 @@ NOVA_TEST(floating_schur_all_fixed_terminal_voltages) {
                       20.0, 1.0e-8);
     NOVA_REQUIRE_NEAR(result.max_floating_reaction_mismatch_coulombs, 0.0,
                       1.0e-12);
+}
+
+
+NOVA_TEST(floating_schur_reference_voltage_shift_and_electrode_permutation) {
+    // With only two electrodes and insulated sidewalls, a common potential
+    // shift is a gauge transformation: V -> V + constant, but E, D, Q, U
+    // and the discrete terminal capacitance are unchanged.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double x, double y, double) {
+        return 1.0 + 0.5 * x + 0.125 * y;
+    };
+    auto groups = plates(problem, box.boundary_faces);
+    const auto baseline = solve_floating_conductor_schur_3d(
+        problem, groups, std::vector<FixedElectrodePotential3D>{{10, 0.0}},
+        std::vector<FloatingElectrodeCharge3D>{{20, 5.0}});
+    std::reverse(groups.begin(), groups.end());
+    const auto shifted = solve_floating_conductor_schur_3d(
+        problem, groups, std::vector<FixedElectrodePotential3D>{{10, 4.0}},
+        std::vector<FloatingElectrodeCharge3D>{{20, 5.0}});
+
+    NOVA_REQUIRE(baseline.field.linear_solver.converged);
+    NOVA_REQUIRE(shifted.field.linear_solver.converged);
+    NOVA_REQUIRE(baseline.terminals.electrode_ids ==
+                 std::vector<int>({10, 20}));
+    NOVA_REQUIRE(shifted.terminals.electrode_ids ==
+                 baseline.terminals.electrode_ids);
+    NOVA_REQUIRE(baseline.discrete_capacitance.matrix_farads.size() ==
+                 shifted.discrete_capacitance.matrix_farads.size());
+    for (std::size_t i = 0;
+         i < baseline.discrete_capacitance.matrix_farads.size(); ++i) {
+        NOVA_REQUIRE_NEAR(baseline.discrete_capacitance.matrix_farads[i],
+                          shifted.discrete_capacitance.matrix_farads[i], 1.0e-8);
+    }
+    NOVA_REQUIRE_NEAR(shifted.terminals.potential_volts[0], 4.0, 1.0e-7);
+    NOVA_REQUIRE_NEAR(
+        shifted.terminals.potential_volts[1] -
+        baseline.terminals.potential_volts[1], 4.0, 2.0e-6);
+    NOVA_REQUIRE_NEAR(shifted.field.stored_energy_joules,
+                      baseline.field.stored_energy_joules, 2.0e-6);
+    NOVA_REQUIRE(baseline.discrete_reactions.size() == 2U);
+    NOVA_REQUIRE(shifted.discrete_reactions.size() == 2U);
+    for (std::size_t i = 0; i < 2U; ++i) {
+        NOVA_REQUIRE_NEAR(
+            baseline.discrete_reactions[i].reaction_charge_coulombs,
+            shifted.discrete_reactions[i].reaction_charge_coulombs, 2.0e-6);
+    }
+    NOVA_REQUIRE_NEAR(
+        baseline.discrete_reactions[0].reaction_charge_coulombs,
+        -5.0, 2.0e-6);
+    NOVA_REQUIRE_NEAR(
+        shifted.discrete_reactions[1].reaction_charge_coulombs,
+        5.0, 2.0e-6);
+
+    NOVA_REQUIRE(baseline.field.potential.size() ==
+                 shifted.field.potential.size());
+    for (std::size_t i = 0; i < baseline.field.potential.size(); ++i) {
+        NOVA_REQUIRE_NEAR(shifted.field.potential[i] -
+                          baseline.field.potential[i], 4.0, 2.0e-6);
+    }
+    NOVA_REQUIRE(baseline.field.electric_field.size() ==
+                 shifted.field.electric_field.size());
+    NOVA_REQUIRE(baseline.field.displacement.size() ==
+                 shifted.field.displacement.size());
+    for (std::size_t i = 0; i < baseline.field.electric_field.size(); ++i) {
+        const auto& a = baseline.field.electric_field[i];
+        const auto& b = shifted.field.electric_field[i];
+        const auto& da = baseline.field.displacement[i];
+        const auto& db = shifted.field.displacement[i];
+        NOVA_REQUIRE_NEAR(a.x, b.x, 2.0e-6);
+        NOVA_REQUIRE_NEAR(a.y, b.y, 2.0e-6);
+        NOVA_REQUIRE_NEAR(a.z, b.z, 2.0e-6);
+        NOVA_REQUIRE_NEAR(da.x, db.x, 2.0e-6);
+        NOVA_REQUIRE_NEAR(da.y, db.y, 2.0e-6);
+        NOVA_REQUIRE_NEAR(da.z, db.z, 2.0e-6);
+    }
+}
+
+NOVA_TEST(floating_schur_charge_sign_reverses_fields_not_energy) {
+    // Linear source-free electrostatics is odd in applied terminal charge.
+    // The quadratic stored field energy must remain unchanged under Q -> -Q.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double x, double y, double) {
+        return 1.0 + 0.5 * x + 0.125 * y;
+    };
+    const auto groups = plates(problem, box.boundary_faces);
+    const auto positive = solve_floating_conductor_schur_3d(
+        problem, groups, std::vector<FixedElectrodePotential3D>{{10, 0.0}},
+        std::vector<FloatingElectrodeCharge3D>{{20, 3.0}});
+    const auto negative = solve_floating_conductor_schur_3d(
+        problem, groups, std::vector<FixedElectrodePotential3D>{{10, 0.0}},
+        std::vector<FloatingElectrodeCharge3D>{{20, -3.0}});
+    const auto zero = solve_floating_conductor_schur_3d(
+        problem, groups, std::vector<FixedElectrodePotential3D>{{10, 0.0}},
+        std::vector<FloatingElectrodeCharge3D>{{20, 0.0}});
+
+    NOVA_REQUIRE(positive.field.linear_solver.converged);
+    NOVA_REQUIRE(negative.field.linear_solver.converged);
+    NOVA_REQUIRE(zero.field.linear_solver.converged);
+    NOVA_REQUIRE(positive.field.stored_energy_joules > 0.0);
+    NOVA_REQUIRE_NEAR(positive.field.stored_energy_joules,
+                      negative.field.stored_energy_joules, 2.0e-6);
+    NOVA_REQUIRE_NEAR(zero.field.stored_energy_joules, 0.0, 1.0e-8);
+    NOVA_REQUIRE_NEAR(positive.terminals.potential_volts[1],
+                      -negative.terminals.potential_volts[1], 2.0e-6);
+    NOVA_REQUIRE_NEAR(zero.terminals.potential_volts[1], 0.0, 1.0e-8);
+    NOVA_REQUIRE(positive.discrete_reactions.size() == 2U);
+    NOVA_REQUIRE(negative.discrete_reactions.size() == 2U);
+    for (std::size_t i = 0; i < 2U; ++i) {
+        NOVA_REQUIRE_NEAR(
+            positive.discrete_reactions[i].reaction_charge_coulombs,
+            -negative.discrete_reactions[i].reaction_charge_coulombs, 2.0e-6);
+        NOVA_REQUIRE_NEAR(
+            zero.discrete_reactions[i].reaction_charge_coulombs,
+            0.0, 1.0e-8);
+    }
+    for (std::size_t i = 0; i < problem.mesh.nodes.size(); ++i) {
+        NOVA_REQUIRE_NEAR(positive.field.potential[i],
+                          -negative.field.potential[i], 2.0e-6);
+        NOVA_REQUIRE_NEAR(zero.field.potential[i], 0.0, 1.0e-8);
+    }
+    for (std::size_t i = 0; i < problem.mesh.elements.size(); ++i) {
+        const auto& ep = positive.field.electric_field[i];
+        const auto& en = negative.field.electric_field[i];
+        const auto& dp = positive.field.displacement[i];
+        const auto& dn = negative.field.displacement[i];
+        NOVA_REQUIRE_NEAR(ep.x, -en.x, 2.0e-6);
+        NOVA_REQUIRE_NEAR(ep.y, -en.y, 2.0e-6);
+        NOVA_REQUIRE_NEAR(ep.z, -en.z, 2.0e-6);
+        NOVA_REQUIRE_NEAR(dp.x, -dn.x, 2.0e-6);
+        NOVA_REQUIRE_NEAR(dp.y, -dn.y, 2.0e-6);
+        NOVA_REQUIRE_NEAR(dp.z, -dn.z, 2.0e-6);
+    }
 }
 
 NOVA_TEST(floating_schur_rejects_invalid_loads_gauge_and_ids) {
