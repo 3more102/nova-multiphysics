@@ -5,6 +5,7 @@
 #include <cmath>
 #include <complex>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 using namespace nova::fem;
@@ -211,4 +212,125 @@ NOVA_TEST(thermo_optic_manufactured_nonzero_temperature_shift_matches_exact_abso
         NOVA_REQUIRE_NEAR(result.photothermal.absorbed_power_per_cell[cell],
                           expected_density * volume, 1e-7);
     }
+}
+
+
+NOVA_TEST(thermo_optic_affine_temperature_matches_cellwise_manufactured_absorption) {
+    const auto box = make_box_mesh_3d(0,1,0,1,0,1,2,2,2);
+    Photothermal3DProblem base;
+    base.thermal.mesh = box.mesh;
+    base.thermal.cell_diffusivity.assign(box.mesh.elements.size(), 4.0);
+    const auto exact_temperature = [](double x, double y, double z) {
+        return 300.0 + 10.0*x + 20.0*y + 30.0*z;
+    };
+    for (std::size_t node = 0; node < box.mesh.nodes.size(); ++node) {
+        const auto& p = box.mesh.nodes[node];
+        base.thermal.dirichlet_constraints.push_back(
+            {node, exact_temperature(p.x, p.y, p.z)});
+    }
+
+    constexpr double k0 = 2.3;
+    constexpr double amplitude = 100.0;
+    constexpr double c = 299792458.0;
+    constexpr double eps0 = 8.8541878128e-12;
+    const std::complex<double> epsilon_reference(2.0, 0.6);
+    const std::complex<double> slope(1e-3, 2e-4);
+    const double power_factor = 0.5*k0*c*eps0*amplitude*amplitude;
+    base.vacuum_wavenumber = k0;
+    base.pec_on_exterior = false;
+    base.optical_materials.assign(box.mesh.elements.size(), {epsilon_reference, 1.0});
+
+    // Independently manufacture the source from the affine temperature at
+    // each geometric centroid: curl(curl(E)) = 0 for constant E.
+    std::vector<std::complex<double>> expected_epsilon;
+    for (const auto& element : box.mesh.elements) {
+        double x = 0.0, y = 0.0, z = 0.0;
+        for (const auto node : element) {
+            const auto& p = box.mesh.nodes[node];
+            x += 0.25*p.x;
+            y += 0.25*p.y;
+            z += 0.25*p.z;
+        }
+        const auto epsilon = epsilon_reference +
+            slope*(exact_temperature(x,y,z) - 300.0);
+        expected_epsilon.push_back(epsilon);
+        ComplexVector3D source{};
+        source[0] = -k0*k0*epsilon*amplitude;
+        base.optical_cell_sources.push_back(source);
+    }
+
+    auto problem = thermo_optic_problem(base);
+    problem.d_relative_permittivity_d_temperature.assign(
+        box.mesh.elements.size(), slope);
+    problem.temperature_tolerance_kelvin = 1e-10;
+    problem.relative_absorbed_power_tolerance = 1e-10;
+    problem.max_iterations = 4;
+
+    const auto result = solve_thermo_optic_3d(problem, accurate_optical_options());
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.history.size() == 2);
+    NOVA_REQUIRE(result.photothermal.optical_solution.diagnostics.converged);
+    NOVA_REQUIRE(result.photothermal.thermal_solution.linear_solver.converged);
+    NOVA_REQUIRE(result.optical_materials.size() == expected_epsilon.size());
+    NOVA_REQUIRE(result.photothermal.absorbed_power_density.size() == expected_epsilon.size());
+    NOVA_REQUIRE(result.photothermal.absorbed_power_per_cell.size() == expected_epsilon.size());
+    NOVA_REQUIRE(result.photothermal.thermal_solution.values.size() == box.mesh.nodes.size());
+
+    double minimum_density = power_factor;
+    double maximum_density = 0.0;
+    for (std::size_t cell = 0; cell < expected_epsilon.size(); ++cell) {
+        const auto epsilon = expected_epsilon[cell];
+        const double density = power_factor*epsilon.imag();
+        const double volume = make_nedelec_tetrahedron_3d(box.mesh, cell).volume;
+        NOVA_REQUIRE_NEAR(result.optical_materials[cell].relative_permittivity.real(),
+                          epsilon.real(), 1e-12);
+        NOVA_REQUIRE_NEAR(result.optical_materials[cell].relative_permittivity.imag(),
+                          epsilon.imag(), 1e-12);
+        NOVA_REQUIRE_NEAR(result.photothermal.absorbed_power_density[cell], density, 1e-7);
+        NOVA_REQUIRE_NEAR(result.photothermal.absorbed_power_per_cell[cell],
+                          density*volume, 1e-7);
+        minimum_density = std::min(minimum_density, result.photothermal.absorbed_power_density[cell]);
+        maximum_density = std::max(maximum_density, result.photothermal.absorbed_power_density[cell]);
+    }
+    // Reject accidental uniform material/source averaging.
+    NOVA_REQUIRE(maximum_density - minimum_density > 0.1);
+
+    for (std::size_t node = 0; node < box.mesh.nodes.size(); ++node) {
+        const auto& p = box.mesh.nodes[node];
+        NOVA_REQUIRE_NEAR(result.photothermal.thermal_solution.values[node],
+                          exact_temperature(p.x,p.y,p.z), 1e-12);
+    }
+
+    // Independent continuum integral: mean(T) = 330 K, volume = 1 m^3.
+    const double total = power_factor*(epsilon_reference + slope*30.0).imag();
+    NOVA_REQUIRE_NEAR(result.photothermal.total_absorbed_power_watts, total, 1e-7);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.generated_heat, total, 1e-7);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.constraint_outward_heat, total, 1e-6);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.signed_balance_defect, 0.0, 1e-6);
+}
+
+NOVA_TEST(thermo_optic_rejects_temperature_induced_active_permittivity) {
+    const auto box = make_box_mesh_3d(0,1,0,1,0,1,2,2,2);
+    Photothermal3DProblem base;
+    base.thermal.mesh = box.mesh;
+    base.thermal.cell_diffusivity.assign(box.mesh.elements.size(), 4.0);
+    for (std::size_t node = 0; node < box.mesh.nodes.size(); ++node) {
+        base.thermal.dirichlet_constraints.push_back({node, 320.0});
+    }
+    base.vacuum_wavenumber = 2.3;
+    base.pec_on_exterior = false;
+    base.optical_materials.assign(box.mesh.elements.size(), {{2.0, 0.6}, 1.0});
+    base.optical_cell_sources.assign(box.mesh.elements.size(), ComplexVector3D{});
+
+    auto problem = thermo_optic_problem(base);
+    // The reference is passive but the 20 K increase gives Im(epsilon)=-1.4.
+    problem.d_relative_permittivity_d_temperature.assign(
+        box.mesh.elements.size(), {0.0, -0.1});
+    bool rejected = false;
+    try {
+        (void)solve_thermo_optic_3d(problem, accurate_optical_options());
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    NOVA_REQUIRE(rejected);
 }
