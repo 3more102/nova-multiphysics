@@ -52,8 +52,8 @@ original problem and solution without a redundant second linear solve.
   quadrature coordinates.
 
 Cellwise source vectors, spatial conductivity, anisotropic tensors,
-Robin faces, higher-order bases, curved boundary geometry, and automatic
-multicycle stopping are not implemented by this wrapper. They are rejected
+Robin faces, higher-order bases, curved boundary geometry, and certified automatic
+error-tolerance stopping are not implemented by this wrapper. They are rejected
 rather than silently omitted. The caller may feed `refined_problem`
 into a later cycle if the model remains in this supported subset.
 
@@ -117,3 +117,24 @@ finite data, unit-cube volume conservation, retained Dirichlet values and
 the increase in resolution. The demo fails if the independently measured
 manufactured energy error does not decrease. This is a representative
 verification case, not a guarantee for arbitrary adaptive refinements.
+
+## Bounded multicycle execution
+
+The convenience runner repeats the existing complete step on the refined
+problem and stops early if Dörfler marking finds no elements:
+
+```cpp
+const auto history =
+    nova::fem::run_adaptive_diffusion_cycles_3d(problem, 0.5, 3);
+const auto& final_mesh = history.steps.back().refined_problem.mesh;
+const auto& final_field = history.steps.back().refined_solution.values;
+```
+
+`max_cycles` must be at least one. A zero-error indicator stops after a
+single non-refining step; otherwise the runner performs at most the specified
+number of steps. `stopped_without_marking` reports that early-stop reason.
+Every step retains its coarse/refined solutions and indicators so numerical
+changes can be inspected. Each coarse system is currently solved again, even
+when its PDE is identical to the preceding refined system; solver-state reuse
+is future work. The runner has no automatic error-tolerance, cell-budget,
+or convergence guarantee: choose a small cycle cap for large 3D meshes.
