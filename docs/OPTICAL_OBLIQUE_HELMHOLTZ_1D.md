@@ -26,3 +26,23 @@ An independent Python/SciPy banded FEM calculation compared with homogeneous-lay
 | 400 | 9.67596e-6 | 7.96974e-6 |
 
 Across the eight polarization/geometry cases at 400 elements per layer, the maximum amplitude or power fraction discrepancy was 9.676e-6 and the maximum absolute power balance residual was 3.360e-12. These are independent numerical checks, not a claim that the repository C++ CI has passed.
+
+## Frustrated total internal reflection
+
+A finite lossless low-index barrier between identical high-index propagating ports supports evanescent tunneling. Set exterior index n=1.5, barrier index m=1, angle theta=0.95 rad, b=n*sin(theta), q=sqrt(n^2-b^2), and kappa=sqrt(b^2-m^2). Define g=q and v=kappa for TE, or g=q/n^2 and v=kappa/m^2 for TM. Exact interface matching gives
+
+    T = 1 / (1 + ((g^2+v^2)/(2*g*v))^2 * sinh(2*pi*kappa*d/lambda)^2)
+    R = 1 - T, A = 0.
+
+This reference does not call the analytical multilayer implementation. Regression cases cover both polarizations at four normalized thicknesses, positive and decreasing transmitted power, lossless energy conservation, and mesh convergence between 100 and 400 elements.
+
+Independent SciPy banded P1 calculation (not the repository C++ executable):
+
+| d/lambda | Exact TE T | Exact TM T |
+|---|---:|---:|
+| 0.05 | 0.9510579034 | 0.9362439687 |
+| 0.25 | 0.3491434231 | 0.2884484956 |
+| 0.75 | 0.0052291142 | 0.0039566412 |
+| 1.5 | 0.00000721304 | 0.00000545083 |
+
+The largest absolute transmission error across the eight cases at 400 elements was 2.453e-7; all independently computed power balance residuals were below 1e-10. This benchmark distinguishes lossless evanescent decay from actual absorption and from an evanescent exterior with zero normal transmitted power.
