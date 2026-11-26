@@ -46,3 +46,11 @@ and rejects nonsymmetric or indefinite-mass inputs.
 Reproduce using the existing CMake/CTest workflow or
 python verification/verify_maxwell_cavity_reference.py (NumPy/SciPy).
 No new C++ dependency; optional Python verification only.
+
+## Cell participation and resonance sensitivity
+
+The new `maxwell_cavity_participation_3d` API returns normalized cell contributions to the electric mass and curl stiffness quadratic forms. The electric integral uses a positive degree-two tetrahedral rule, exact for the squared affine edge field. The curl is constant on each tetrahedron and integrated exactly. The totals are proportional to, but are not themselves, SI electromagnetic energies. For an exact mode their ratio is the discrete eigenvalue; normalization is independent of field amplitude.
+
+For a simple positive eigenvalue of the lossless nondispersive PEC problem on a fixed mesh, first-order differentiation of Kx=lambda Mx yields d(log f) = -1/2 sum_c [p_e,c d(log epsilon_r,c) + p_m,c d(log mu_r,c)]. This is a local material derivative, not a geometry derivative or a substitute for a new eigenmode solution. Degenerate eigenvalues require subspace perturbation. The caller must provide materials and mesh consistent with the mode assembly; the API checks edge topology and PEC coefficients but does not authenticate matrix contents or eigenpair residuals. Loss, dispersion, open boundaries and nonlinear constitutive laws are outside scope.
+
+Registered tests check nonnegative normalized fractions, mass normalization, Rayleigh quotient, amplitude invariance, local dielectric and magnetic perturbations using centered finite differences, and invalid zero/PEC fields. Build and CI results are required before treating these tests as passed.

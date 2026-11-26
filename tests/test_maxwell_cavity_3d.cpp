@@ -82,3 +82,67 @@ NOVA_TEST(maxwell_cavity_dielectric_frequency_scaling_and_loss_rejection) {
     catch(const std::invalid_argument&){rejected=true;}
     NOVA_REQUIRE(rejected);
 }
+
+
+NOVA_TEST(maxwell_cavity_participation_energy_and_local_material_derivatives) {
+    const auto mesh=nova::fem::make_box_mesh_3d(0,1,0,1,0,1,2,2,2).mesh;
+    std::vector<MaxwellCellMaterial3D> materials(mesh.elements.size());
+    const auto a=assemble_maxwell_cavity_3d(mesh,materials);
+    const auto modes=solve_maxwell_cavity_3d(a,2);
+    NOVA_REQUIRE(modes.converged && modes.modes.size()==2);
+    const auto& mode=modes.modes[0];
+    NOVA_REQUIRE(modes.modes[1].vacuum_wavenumber_squared >
+                 mode.vacuum_wavenumber_squared*1.01);
+    const auto p=maxwell_cavity_participation_3d(mesh,materials,a,mode.edge_field);
+    NOVA_REQUIRE(p.electric_fraction.size()==mesh.elements.size());
+    NOVA_REQUIRE(p.magnetic_fraction.size()==mesh.elements.size());
+    double se=0,sm=0;
+    for (std::size_t c=0;c<mesh.elements.size();++c) {
+        NOVA_REQUIRE(p.electric_fraction[c]>=0.0 && p.magnetic_fraction[c]>=0.0);
+        se+=p.electric_fraction[c]; sm+=p.magnetic_fraction[c];
+    }
+    NOVA_REQUIRE_NEAR(se,1.0,1e-12);
+    NOVA_REQUIRE_NEAR(sm,1.0,1e-12);
+    NOVA_REQUIRE_NEAR(p.mass_norm_squared,1.0,1e-11);
+    NOVA_REQUIRE_NEAR(p.curl_energy/p.mass_norm_squared,
+                      mode.vacuum_wavenumber_squared,1e-9);
+    auto scaled=mode.edge_field;
+    for (auto& v:scaled) v*=3;
+    const auto q=maxwell_cavity_participation_3d(mesh,materials,a,scaled);
+    for (std::size_t c=0;c<mesh.elements.size();++c) {
+        NOVA_REQUIRE_NEAR(q.electric_fraction[c],p.electric_fraction[c],1e-12);
+        NOVA_REQUIRE_NEAR(q.magnetic_fraction[c],p.magnetic_fraction[c],1e-12);
+    }
+    constexpr double h=1e-4;
+    for (bool electric:{true,false}) {
+        const auto& fractions=electric?p.electric_fraction:p.magnetic_fraction;
+        const auto c=static_cast<std::size_t>(
+            std::max_element(fractions.begin(),fractions.end())-fractions.begin());
+        auto frequency=[&](double delta) {
+            auto modified=materials;
+            if (electric) modified[c].relative_permittivity=std::exp(delta);
+            else modified[c].relative_permeability=std::exp(delta);
+            const auto result=solve_maxwell_cavity_3d(
+                assemble_maxwell_cavity_3d(mesh,modified),1);
+            NOVA_REQUIRE(result.converged && result.modes.size()==1);
+            return result.modes[0].frequency_hz;
+        };
+        const double derivative=std::log(frequency(h)/frequency(-h))/(2*h);
+        NOVA_REQUIRE_NEAR(derivative,-0.5*fractions[c],1e-7);
+    }
+    bool rejected=false;
+    try {
+        (void)maxwell_cavity_participation_3d(
+            mesh,materials,a,std::vector<double>(a.edges.size()));
+    } catch(const std::invalid_argument&) {rejected=true;}
+    NOVA_REQUIRE(rejected);
+    rejected=false;
+    auto invalid=mode.edge_field;
+    for (std::size_t e=0;e<a.edges.size();++e)
+        if (!std::binary_search(a.free_edges.begin(),a.free_edges.end(),e)) {
+            invalid[e]=1.0; break;
+        }
+    try {(void)maxwell_cavity_participation_3d(mesh,materials,a,invalid);}
+    catch(const std::invalid_argument&) {rejected=true;}
+    NOVA_REQUIRE(rejected);
+}
