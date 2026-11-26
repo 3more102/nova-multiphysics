@@ -315,3 +315,66 @@ NOVA_TEST(maxwell_selective_pec_rejects_invalid_faces) {
     reject(degenerate);
     reject(duplicate);
 }
+
+
+NOVA_TEST(maxwell_exterior_flux_exact_sign_and_permutation) {
+    using C=std::complex<double>;
+    auto mesh=unit_cell();
+    constexpr double k=2.0, c=299792458.0, eps0=8.8541878128e-12;
+    constexpr double mu0=1.0/(eps0*c*c);
+    const double expected=0.5/(k*c*mu0);
+    const std::array<MaxwellCellMaterial3D,1> materials{{{{2.0,0.0},1.0}}};
+    for (bool permuted : {false,true}) {
+        if (permuted) mesh.elements[0]={2,0,3,1};
+        const auto sys=assemble_maxwell_3d(mesh,materials,k,false);
+        std::vector<C> field;
+        for (const auto& edge : sys.edges) {
+            const auto a=mesh.nodes[edge[0]], b=mesh.nodes[edge[1]];
+            field.push_back(C(1,-(a.y+b.y)/2.0)*(b.x-a.x)
+                          +C(0,(a.x+b.x)/2.0)*(b.y-a.y));
+        }
+        // E=(1-i*y,i*x,0); H=(0,0,2/(omega*mu0)).
+        // S=(0,-1/(omega*mu0),0) is constant; the y=0 face
+        // receives positive outward power and the slanted face negative.
+        const auto flux=integrate_maxwell_boundary_flux_3d(mesh,materials,k,sys,field);
+        NOVA_REQUIRE(flux.size()==4);
+        double sum=0.0;
+        for (const auto& f : flux) {
+            NOVA_REQUIRE(f.owner_cell==0);
+            double ref=0.0;
+            if (f.face==BoundaryFace3D{0,1,3}) ref=expected;
+            if (f.face==BoundaryFace3D{1,2,3}) ref=-expected;
+            NOVA_REQUIRE_NEAR(f.outward_power,ref,1e-14);
+            sum+=f.outward_power;
+        }
+        NOVA_REQUIRE_NEAR(sum,0.0,1e-14);
+    }
+}
+
+NOVA_TEST(maxwell_boundary_flux_excludes_shared_faces_and_rejects_bad_data) {
+    const TetrahedralMesh3D mesh{
+        {{0,0,0},{1,0,0},{0,1,0},{0,0,1},{0,0,-1}},
+        {{0,1,2,3},{0,2,1,4}}};
+    const std::vector<MaxwellCellMaterial3D> materials(mesh.elements.size(),{{2.0,0.4},1.0});
+    const auto sys=assemble_maxwell_3d(mesh,materials,2.0,false);
+    std::vector<std::complex<double>> field(sys.edges.size());
+    const auto flux=integrate_maxwell_boundary_flux_3d(mesh,materials,2.0,sys,field);
+    NOVA_REQUIRE(flux.size()==6);
+    for (const auto& f : flux) {
+        NOVA_REQUIRE((f.face!=BoundaryFace3D{0,1,2}));
+        NOVA_REQUIRE_NEAR(f.outward_power,0.0,0.0);
+    }
+    field[0]={std::numeric_limits<double>::quiet_NaN(),0.0};
+    bool rejected=false;
+    try { (void)integrate_maxwell_boundary_flux_3d(mesh,materials,2.0,sys,field); }
+    catch (const std::invalid_argument&) { rejected=true; }
+    NOVA_REQUIRE(rejected);
+    field[0]={};
+    auto bad=sys;
+    std::swap(bad.edges[0],bad.edges[1]);
+    rejected=false;
+    try { (void)integrate_maxwell_boundary_flux_3d(mesh,materials,2.0,bad,field); }
+    catch (const std::invalid_argument&) { rejected=true; }
+    NOVA_REQUIRE(rejected);
+}
+

@@ -81,4 +81,25 @@ struct MaxwellFieldSample3D {
     const MaxwellSystem3D& system,
     std::span<const std::complex<double>> edge_field);
 
+
+// Signed time-averaged power (W) through each exterior triangle, positive
+// outward. Faces are sorted by ascending node IDs; owner is the mesh cell
+// index. Uses the one-sided reconstructed FEM field, not equilibrated flux.
+struct MaxwellBoundaryFlux3D {
+    fem::BoundaryFace3D face{};
+    std::size_t owner_cell{};
+    double outward_power{};
+};
+
+// Exact centroid integration of the affine Poynting vector on each exterior
+// triangle for lowest-order affine tetrahedral H(curl) fields. This is a
+// diagnostic, not a radiation boundary, port normalization or discrete
+// conservation guarantee.
+[[nodiscard]] std::vector<MaxwellBoundaryFlux3D> integrate_maxwell_boundary_flux_3d(
+    const fem::TetrahedralMesh3D& mesh,
+    std::span<const MaxwellCellMaterial3D> materials,
+    double vacuum_wavenumber,
+    const MaxwellSystem3D& system,
+    std::span<const std::complex<double>> edge_field);
+
 } // namespace nova::physics
