@@ -65,22 +65,13 @@ SolverResult solve_conjugate_gradient_impl(
     }
 
     std::optional<IncompleteCholesky0> incomplete_factor;
-    std::vector<double> inverse_diagonal;
+    std::vector<double> jacobi_diagonal;
     if (options.preconditioner == PreconditionerType::Jacobi) {
-        const std::vector<double> diagonal = matrix.diagonal();
-        inverse_diagonal.resize(diagonal.size(), 0.0);
-
-        for (std::size_t index = 0; index < diagonal.size(); ++index) {
-            if (!std::isfinite(diagonal[index]) || diagonal[index] <= 0.0) {
+        jacobi_diagonal = matrix.diagonal();
+        for (const double diagonal : jacobi_diagonal) {
+            if (!std::isfinite(diagonal) || diagonal <= 0.0) {
                 throw std::invalid_argument(
                     "Jacobi preconditioning requires a finite, strictly positive diagonal."
-                );
-            }
-
-            inverse_diagonal[index] = 1.0 / diagonal[index];
-            if (!std::isfinite(inverse_diagonal[index])) {
-                throw std::invalid_argument(
-                    "Jacobi inverse diagonal is outside the supported numeric range."
                 );
             }
         }
@@ -106,7 +97,8 @@ SolverResult solve_conjugate_gradient_impl(
 
         std::vector<double> result(residual.size(), 0.0);
         for (std::size_t index = 0; index < residual.size(); ++index) {
-            result[index] = inverse_diagonal[index] * residual[index];
+            // Divide directly: 1/d can overflow even when r/d is representable.
+            result[index] = residual[index] / jacobi_diagonal[index];
         }
         return result;
     };
