@@ -227,3 +227,61 @@ NOVA_TEST(floating_schur_rejects_invalid_loads_gauge_and_ids) {
             std::vector<FloatingElectrodeCharge3D>{{20, 20.0}});
     });
 }
+
+
+NOVA_TEST(floating_schur_common_mode_shift_and_charge_polarity) {
+    // The grounded-free, insulated two-plate capacitor has a gauge shift
+    // symmetry once one electrode's absolute potential is prescribed.
+    // Independently: C = epsilon*A/d = 2 F and V_high = V_low + Q_high/C.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 2.0; };
+    const auto groups = plates(problem, box.boundary_faces);
+
+    const auto verify = [&](const double fixed_voltage,
+                            const double floating_charge) {
+        const auto result = solve_floating_conductor_schur_3d(
+            problem, groups,
+            std::vector<FixedElectrodePotential3D>{{10, fixed_voltage}},
+            std::vector<FloatingElectrodeCharge3D>{{20, floating_charge}});
+        const double voltage_difference = floating_charge / 2.0;
+        NOVA_REQUIRE(result.field.linear_solver.converged);
+        NOVA_REQUIRE(result.terminals.electrode_ids ==
+                     std::vector<int>({10, 20}));
+        NOVA_REQUIRE_NEAR(result.terminals.potential_volts[0],
+                          fixed_voltage, 1.0e-8);
+        NOVA_REQUIRE_NEAR(result.terminals.potential_volts[1],
+                          fixed_voltage + voltage_difference, 1.0e-8);
+        NOVA_REQUIRE(result.discrete_reactions.size() == 2U);
+        NOVA_REQUIRE_NEAR(result.discrete_reactions[0].reaction_charge_coulombs,
+                          -floating_charge, 1.0e-7);
+        NOVA_REQUIRE_NEAR(result.discrete_reactions[1].reaction_charge_coulombs,
+                          floating_charge, 1.0e-7);
+        NOVA_REQUIRE(result.max_floating_reaction_mismatch_coulombs < 1.0e-7);
+        for (std::size_t i = 0; i < problem.mesh.nodes.size(); ++i) {
+            NOVA_REQUIRE_NEAR(
+                result.field.potential[i],
+                fixed_voltage + voltage_difference * problem.mesh.nodes[i].x,
+                1.0e-8);
+        }
+        for (const auto& field : result.field.electric_field) {
+            NOVA_REQUIRE_NEAR(field.x, -voltage_difference, 1.0e-8);
+            NOVA_REQUIRE_NEAR(field.y, 0.0, 1.0e-8);
+            NOVA_REQUIRE_NEAR(field.z, 0.0, 1.0e-8);
+        }
+        for (const auto& displacement : result.field.displacement) {
+            NOVA_REQUIRE_NEAR(displacement.x, -floating_charge, 1.0e-8);
+            NOVA_REQUIRE_NEAR(displacement.y, 0.0, 1.0e-8);
+            NOVA_REQUIRE_NEAR(displacement.z, 0.0, 1.0e-8);
+        }
+        // U = Q^2 / (2*C) = Q^2/4 is gauge-independent and even in Q.
+        NOVA_REQUIRE_NEAR(result.field.stored_energy_joules,
+                          floating_charge * floating_charge / 4.0, 1.0e-7);
+    };
+
+    verify(7.0, 20.0);    // Floating V = 17 V, U = 100 J.
+    verify(7.0, -20.0);   // Floating V = -3 V; E and Q reverse.
+    verify(-13.0, 0.0);   // Both plates at -13 V; E = D = U = 0.
+}
