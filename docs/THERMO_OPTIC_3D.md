@@ -32,3 +32,12 @@ This is a stationary, one-way frequency-domain Maxwell / steady thermal fixed-po
 A second regression isolates the temperature-dependent material update from the free-temperature fixed-point test. On a unit cube, all P1 thermal vertices are prescribed at 320 K, with $T_{\mathrm{ref}}=300$ K, $\varepsilon_r^{(0)}=2+0.6i$, and $d\varepsilon_r/dT=10^{-3}+2\times10^{-4}i$ K$^{-1}$. The expected uniform optical permittivity is therefore $2.02+0.604i$.
 
 The cell source is manufactured as $F=-k_0^2\varepsilon_r(320)E_0$ for $E_0=(100,0,0)$, making the exact Maxwell field constant. The independent absorbed-power density is $q=\tfrac12 k_0c\varepsilon_0\operatorname{Im}(\varepsilon_r)|E_0|^2=18.4375924846$ W/m$^3$; the unit cube therefore absorbs 18.4375924846 W. The regression checks the updated permittivity in every cell, each integrated cell power, the global thermal reaction and zero energy defect. This complements the separate free-temperature nonzero-slope convergence test.
+
+
+## Spatially varying manufactured reference
+
+The affine-temperature regression prescribes all thermal vertices on the unit cube with $T(x,y,z)=300+10x+20y+30z$ K (coordinates in metres). For a P1 tetrahedron, its exact volume-average temperature is the affine field evaluated at the geometric centroid. With the same reference permittivity, slope and optical amplitude as the uniform reference above, the manufactured cell source is $F_c=-k_0^2\varepsilon_{r,c}E_0$. This supports the exact spatially constant optical field even though cell permittivities differ.
+
+The local target is $q_c=\tfrac12 k_0c\varepsilon_0\operatorname{Im}(\varepsilon_{r,c})|E_0|^2$. Because the cube-average temperature is 330 K and the constitutive law is affine, the total absorbed power is **18.4986441154 W**. The test checks individual permittivities, integrated cell absorption, a nonuniform density, prescribed nodal temperatures and the global reaction balance. It detects unintended uniform material averaging or incorrect cell-to-cell loss transfer. This is a manufactured discrete consistency reference, not a free-temperature or experimentally validated optical model.
+
+A separate negative regression starts with passive reference permittivity $2+0.6i$ and an imaginary slope of $-0.1$ K$^{-1}$ at 320 K. The updated imaginary part is $-1.4$; the passive-only solver must reject this update with an invalid-argument exception before the optical solve.
