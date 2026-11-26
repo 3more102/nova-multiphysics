@@ -22,7 +22,17 @@ namespace {
 }
 
 [[nodiscard]] double norm(const std::vector<double>& vector) {
-    return std::sqrt(dot(vector, vector));
+    const double squared = dot(vector, vector);
+    if (std::isnormal(squared)) {
+        return std::sqrt(squared);
+    }
+    // Squaring finite components can underflow or overflow even when the
+    // Euclidean norm itself is representable. Use a scaled fallback.
+    double result = 0.0;
+    for (const double value : vector) {
+        result = std::hypot(result, value);
+    }
+    return result;
 }
 
 [[nodiscard]] bool all_finite(const std::span<const double> values) {
