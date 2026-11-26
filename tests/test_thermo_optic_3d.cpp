@@ -5,6 +5,7 @@
 #include <cmath>
 #include <complex>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 using namespace nova::fem;
@@ -210,5 +211,79 @@ NOVA_TEST(thermo_optic_manufactured_nonzero_temperature_shift_matches_exact_abso
                           expected_density, 1e-7);
         NOVA_REQUIRE_NEAR(result.photothermal.absorbed_power_per_cell[cell],
                           expected_density * volume, 1e-7);
+    }
+}
+
+NOVA_TEST(thermo_optic_heterogeneous_affine_temperature_patch) {
+    const auto box = make_box_mesh_3d(0,1,0,1,0,1,1,1,1);
+    Photothermal3DProblem base;
+    base.thermal.mesh = box.mesh;
+    const auto cells = box.mesh.elements.size();
+    NOVA_REQUIRE(cells == 6);
+    base.thermal.cell_diffusivity.assign(cells, 4.0);
+    for (std::size_t node = 0; node < box.mesh.nodes.size(); ++node) {
+        const auto& p = box.mesh.nodes[node];
+        base.thermal.dirichlet_constraints.push_back({node, 310.0 + 40.0*p.x});
+    }
+
+    constexpr double k0 = 2.3;
+    constexpr double amplitude = 100.0;
+    constexpr double c = 299792458.0;
+    constexpr double eps0 = 8.8541878128e-12;
+    constexpr double cell_volume = 1.0/6.0;
+    base.vacuum_wavenumber = k0;
+    base.pec_on_exterior = false;
+    std::vector<std::complex<double>> slopes, targets;
+    double exact_power = 0.0;
+
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        const double index = static_cast<double>(cell);
+        const std::complex<double> reference(2.0 + 0.1*index, 0.5 + 0.02*index);
+        const std::complex<double> slope(0.001*(index+1), 0.0002*(index+1));
+        // For the affine prescribed temperature, the volume mean is its
+        // value at the tetrahedron centroid, i.e. the mean of vertex x.
+        double x_sum = 0.0;
+        for (const auto node : box.mesh.elements[cell]) {
+            x_sum += box.mesh.nodes[node].x;
+        }
+        const auto target = reference + slope*(10.0 + 10.0*x_sum);
+        slopes.push_back(slope);
+        targets.push_back(target);
+        base.optical_materials.push_back({reference, 1.0});
+        ComplexVector3D source{};
+        source[0] = -k0*k0*target*amplitude;
+        base.optical_cell_sources.push_back(source);
+        exact_power += 0.5*k0*c*eps0*target.imag()*amplitude*amplitude*cell_volume;
+    }
+
+    auto problem = thermo_optic_problem(base);
+    problem.d_relative_permittivity_d_temperature = slopes;
+    problem.max_iterations = 4;
+    const auto result = solve_thermo_optic_3d(problem, accurate_optical_options());
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.history.size() == 2);
+    NOVA_REQUIRE(result.optical_materials.size() == cells);
+    NOVA_REQUIRE(result.photothermal.absorbed_power_per_cell.size() == cells);
+    NOVA_REQUIRE(result.photothermal.absorbed_power_density.size() == cells);
+
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        const double density = 0.5*k0*c*eps0*targets[cell].imag()*amplitude*amplitude;
+        NOVA_REQUIRE_NEAR(result.optical_materials[cell].relative_permittivity.real(),
+                          targets[cell].real(), 1e-12);
+        NOVA_REQUIRE_NEAR(result.optical_materials[cell].relative_permittivity.imag(),
+                          targets[cell].imag(), 1e-12);
+        NOVA_REQUIRE_NEAR(result.photothermal.absorbed_power_density[cell], density, 1e-7);
+        NOVA_REQUIRE_NEAR(result.photothermal.absorbed_power_per_cell[cell],
+                          density*cell_volume, 1e-7);
+    }
+    NOVA_REQUIRE_NEAR(result.photothermal.total_absorbed_power_watts, exact_power, 1e-7);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.generated_heat, exact_power, 1e-7);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.constraint_outward_heat,
+                      exact_power, 1e-6);
+    NOVA_REQUIRE_NEAR(result.photothermal.thermal_balance.signed_balance_defect, 0.0, 1e-6);
+    NOVA_REQUIRE(result.photothermal.thermal_solution.values.size() == box.mesh.nodes.size());
+    for (std::size_t node = 0; node < box.mesh.nodes.size(); ++node) {
+        NOVA_REQUIRE_NEAR(result.photothermal.thermal_solution.values[node],
+                          310.0 + 40.0*box.mesh.nodes[node].x, 1e-12);
     }
 }
