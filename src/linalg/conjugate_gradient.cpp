@@ -1,5 +1,7 @@
 #include "nova/linalg/conjugate_gradient.hpp"
 #include "nova/linalg/incomplete_cholesky.hpp"
+#include "krylov_dot.hpp"
+#include "krylov_norm.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,60 +12,10 @@
 namespace nova::linalg {
 namespace {
 
-// A mantissa/exponent inner product prevents tiny Krylov products from
-// underflowing when their ratio (alpha or beta) is representable.
-struct ScaledDot { double mantissa{}; int exponent{}; };
-
-[[nodiscard]] ScaledDot dot(const std::vector<double>& left, const std::vector<double>& right) {
-    double direct = 0.0;
-    for (std::size_t i = 0; i < left.size(); ++i) direct += left[i] * right[i];
-    if (std::isnormal(direct)) {
-        int exponent = 0;
-        return {std::frexp(direct, &exponent), exponent};
-    }
-    double left_scale = 0.0, right_scale = 0.0;
-    for (std::size_t i = 0; i < left.size(); ++i) {
-        left_scale = std::max(left_scale, std::abs(left[i]));
-        right_scale = std::max(right_scale, std::abs(right[i]));
-    }
-    if (left_scale == 0.0 || right_scale == 0.0) return {};
-    double normalized = 0.0;
-    for (std::size_t i = 0; i < left.size(); ++i) {
-        normalized += (left[i] / left_scale) * (right[i] / right_scale);
-    }
-    if (normalized == 0.0 || !std::isfinite(normalized)) return {normalized, 0};
-    int left_exp = 0, right_exp = 0, sum_exp = 0;
-    const double lm = std::frexp(left_scale, &left_exp);
-    const double rm = std::frexp(right_scale, &right_exp);
-    const double sm = std::frexp(normalized, &sum_exp);
-    return {lm * rm * sm, left_exp + right_exp + sum_exp};
-}
-
-[[nodiscard]] double dot_ratio(const ScaledDot& numerator, const ScaledDot& denominator) {
-    return std::scalbn(numerator.mantissa / denominator.mantissa,
-                       numerator.exponent - denominator.exponent);
-}
-
-[[nodiscard]] double norm(const std::vector<double>& vector) {
-    double squared = 0.0;
-    for (double value : vector) squared += value * value;
-    if (std::isnormal(squared)) return std::sqrt(squared);
-    // Scaled sum of squares (Blue): avoids both squaring underflow and overflow.
-    double scale = 0.0, sum = 1.0;
-    for (double value : vector) {
-        const double magnitude = std::abs(value);
-        if (magnitude == 0.0) continue;
-        if (magnitude > scale) {
-            const double ratio = scale / magnitude;
-            sum = 1.0 + sum * ratio * ratio;
-            scale = magnitude;
-        } else {
-            const double ratio = magnitude / scale;
-            sum += ratio * ratio;
-        }
-    }
-    return scale * std::sqrt(sum);
-}
+using detail::ScaledDot;
+using detail::dot;
+using detail::dot_ratio;
+using detail::euclidean_norm;
 
 [[nodiscard]] bool all_finite(const std::span<const double> values) {
     return std::all_of(values.begin(), values.end(), [](const double value) {
@@ -176,7 +128,7 @@ SolverResult solve_conjugate_gradient_impl(
     }
 
     SolverResult result;
-    result.initial_residual_norm = norm(residual);
+    result.initial_residual_norm = euclidean_norm(residual);
     result.residual_norm = result.initial_residual_norm;
 
     if (!std::isfinite(result.initial_residual_norm)) {
@@ -242,7 +194,7 @@ SolverResult solve_conjugate_gradient_impl(
         }
 
         result.iterations = iteration + 1;
-        result.residual_norm = norm(residual);
+        result.residual_norm = euclidean_norm(residual);
 
         if (!std::isfinite(result.residual_norm)) {
             result.solution = std::move(solution);
@@ -268,7 +220,7 @@ SolverResult solve_conjugate_gradient_impl(
                 return result;
             }
 
-            result.residual_norm = norm(true_residual);
+            result.residual_norm = euclidean_norm(true_residual);
             if (!std::isfinite(result.residual_norm)) {
                 result.solution = std::move(solution);
                 result.message = "CG breakdown: true residual norm became non-finite.";

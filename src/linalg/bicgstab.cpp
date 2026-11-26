@@ -1,4 +1,6 @@
 #include "nova/linalg/bicgstab.hpp"
+#include "krylov_dot.hpp"
+#include "krylov_norm.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -9,36 +11,23 @@
 namespace nova::linalg {
 namespace {
 
-[[nodiscard]] double dot(
-    const std::vector<double>& left,
-    const std::vector<double>& right
-) {
-    double result = 0.0;
-    for (std::size_t index = 0; index < left.size(); ++index) {
-        result += left[index] * right[index];
-    }
-    return result;
-}
-
-[[nodiscard]] double norm(const std::vector<double>& vector) {
-    return std::sqrt(dot(vector, vector));
-}
-
 [[nodiscard]] bool all_finite(const std::span<const double> values) {
     return std::all_of(values.begin(), values.end(), [](const double value) {
         return std::isfinite(value);
     });
 }
 
-[[nodiscard]] bool near_zero(
-    const double value,
-    const double scale
+// Test orthogonality independently of the units of either vector.
+[[nodiscard]] bool near_orthogonal(
+    const detail::ScaledDot& product, double left_norm, double right_norm
 ) {
-    if (!std::isfinite(value) || !std::isfinite(scale) || scale < 0.0) {
+    if (!(left_norm > 0.0) || !(right_norm > 0.0) ||
+        !std::isfinite(left_norm) || !std::isfinite(right_norm)) {
         return true;
     }
-    return std::abs(value) <=
-        16.0 * std::numeric_limits<double>::epsilon() * scale;
+    const double cosine = detail::dot_ratio(product, detail::norm_product(left_norm, right_norm));
+    return !std::isfinite(cosine) ||
+           std::abs(cosine) <= 16.0 * std::numeric_limits<double>::epsilon();
 }
 
 } // namespace
@@ -135,7 +124,7 @@ SolverResult solve_bicgstab(
     }
 
     SolverResult result;
-    result.initial_residual_norm = norm(residual);
+    result.initial_residual_norm = detail::euclidean_norm(residual);
     result.residual_norm = result.initial_residual_norm;
 
     if (!std::isfinite(result.initial_residual_norm)) {
@@ -157,36 +146,41 @@ SolverResult solve_bicgstab(
         return result;
     }
 
-    std::vector<double> shadow_residual = residual;
+    std::vector<double> shadow_residual;
     std::vector<double> direction(residual.size(), 0.0);
     std::vector<double> previous_product(residual.size(), 0.0);
 
-    double previous_rho = 1.0;
+    detail::ScaledDot previous_rho{};
     double alpha = 1.0;
     double omega = 1.0;
+    double residual_unit = 1.0;
+    double shadow_norm = 0.0;
+    double residual_norm = 0.0;
+    bool restart = true;
 
     for (std::size_t iteration = 0; iteration < options.max_iterations; ++iteration) {
-        const double rho = dot(shadow_residual, residual);
-        const double rho_scale = norm(shadow_residual) * norm(residual);
+        if (restart) {
+            // Solve for corrections in units of the physical residual. A common
+            // rescaling of A and b would otherwise square that scale in A*p.
+            residual_unit = std::scalbn(1.0, std::ilogb(result.residual_norm));
+            for (double& value : residual) value /= residual_unit;
+            shadow_residual = residual;
+            residual_norm = shadow_norm = detail::euclidean_norm(residual);
+        }
+        const auto rho = detail::dot(shadow_residual, residual);
 
-        if (near_zero(rho, rho_scale)) {
+        if (near_orthogonal(rho, shadow_norm, residual_norm)) {
             result.solution = std::move(solution);
             result.iterations = iteration;
             result.message = "BiCGSTAB breakdown: rho became zero or numerically singular.";
             return result;
         }
 
-        if (iteration == 0) {
+        if (restart) {
             direction = residual;
+            restart = false;
         } else {
-            if (near_zero(omega, 1.0)) {
-                result.solution = std::move(solution);
-                result.iterations = iteration;
-                result.message = "BiCGSTAB breakdown: omega became zero or numerically singular.";
-                return result;
-            }
-
-            const double beta = (rho / previous_rho) * (alpha / omega);
+            const double beta = detail::dot_ratio(rho, previous_rho) * (alpha / omega);
             if (!std::isfinite(beta)) {
                 result.solution = std::move(solution);
                 result.iterations = iteration;
@@ -205,17 +199,16 @@ SolverResult solve_bicgstab(
         const std::vector<double> product =
             matrix.multiply(std::span<const double>(preconditioned_direction));
 
-        const double denominator = dot(shadow_residual, product);
-        const double denominator_scale = norm(shadow_residual) * norm(product);
+        const auto denominator = detail::dot(shadow_residual, product);
 
-        if (near_zero(denominator, denominator_scale)) {
+        if (near_orthogonal(denominator, shadow_norm, detail::euclidean_norm(product))) {
             result.solution = std::move(solution);
             result.iterations = iteration;
             result.message = "BiCGSTAB breakdown: alpha denominator became zero or numerically singular.";
             return result;
         }
 
-        alpha = rho / denominator;
+        alpha = detail::dot_ratio(rho, denominator);
         if (!std::isfinite(alpha)) {
             result.solution = std::move(solution);
             result.iterations = iteration;
@@ -235,7 +228,7 @@ SolverResult solve_bicgstab(
             return result;
         }
 
-        const double intermediate_norm = norm(intermediate_residual);
+        const double intermediate_norm = detail::euclidean_norm(intermediate_residual);
         if (!std::isfinite(intermediate_norm)) {
             result.solution = std::move(solution);
             result.iterations = iteration + 1;
@@ -243,9 +236,9 @@ SolverResult solve_bicgstab(
             return result;
         }
 
-        if (intermediate_norm <= convergence_threshold) {
+        if (residual_unit * intermediate_norm <= convergence_threshold) {
             for (std::size_t index = 0; index < solution.size(); ++index) {
-                solution[index] += alpha * preconditioned_direction[index];
+                solution[index] += residual_unit * (alpha * preconditioned_direction[index]);
             }
 
             std::vector<double> true_residual = compute_true_residual(solution);
@@ -256,7 +249,7 @@ SolverResult solve_bicgstab(
                 return result;
             }
 
-            result.residual_norm = norm(true_residual);
+            result.residual_norm = detail::euclidean_norm(true_residual);
             result.iterations = iteration + 1;
 
             if (std::isfinite(result.residual_norm) &&
@@ -276,12 +269,7 @@ SolverResult solve_bicgstab(
             }
 
             residual = std::move(true_residual);
-            shadow_residual = residual;
-            std::fill(direction.begin(), direction.end(), 0.0);
-            std::fill(previous_product.begin(), previous_product.end(), 0.0);
-            previous_rho = 1.0;
-            alpha = 1.0;
-            omega = 1.0;
+            restart = true;
             continue;
         }
 
@@ -290,16 +278,17 @@ SolverResult solve_bicgstab(
         const std::vector<double> second_product =
             matrix.multiply(std::span<const double>(preconditioned_intermediate));
 
-        const double second_product_squared = dot(second_product, second_product);
-        if (!std::isfinite(second_product_squared) || second_product_squared <= 0.0) {
+        const double second_norm = detail::euclidean_norm(second_product);
+        const auto stabilization_product = detail::dot(second_product, intermediate_residual);
+        if (near_orthogonal(stabilization_product, second_norm, intermediate_norm)) {
             result.solution = std::move(solution);
             result.iterations = iteration + 1;
-            result.message = "BiCGSTAB breakdown: second search product has zero or invalid norm.";
+            result.message = "BiCGSTAB breakdown: stabilization product is zero or numerically orthogonal.";
             return result;
         }
 
-        omega = dot(second_product, intermediate_residual) / second_product_squared;
-        if (!std::isfinite(omega) || near_zero(omega, 1.0)) {
+        omega = detail::dot_ratio(stabilization_product, detail::norm_product(second_norm, second_norm));
+        if (!std::isfinite(omega) || omega == 0.0) {
             result.solution = std::move(solution);
             result.iterations = iteration + 1;
             result.message = "BiCGSTAB breakdown: omega became zero or non-finite.";
@@ -307,9 +296,10 @@ SolverResult solve_bicgstab(
         }
 
         for (std::size_t index = 0; index < solution.size(); ++index) {
-            solution[index] +=
+            solution[index] += residual_unit * (
                 alpha * preconditioned_direction[index] +
-                omega * preconditioned_intermediate[index];
+                omega * preconditioned_intermediate[index]
+            );
 
             residual[index] =
                 intermediate_residual[index] - omega * second_product[index];
@@ -323,7 +313,8 @@ SolverResult solve_bicgstab(
         }
 
         result.iterations = iteration + 1;
-        result.residual_norm = norm(residual);
+        residual_norm = detail::euclidean_norm(residual);
+        result.residual_norm = residual_unit * residual_norm;
 
         if (!std::isfinite(result.residual_norm)) {
             result.solution = std::move(solution);
@@ -339,7 +330,7 @@ SolverResult solve_bicgstab(
                 return result;
             }
 
-            result.residual_norm = norm(true_residual);
+            result.residual_norm = detail::euclidean_norm(true_residual);
             if (!std::isfinite(result.residual_norm)) {
                 result.solution = std::move(solution);
                 result.message = "BiCGSTAB breakdown: true residual norm became non-finite.";
@@ -356,12 +347,7 @@ SolverResult solve_bicgstab(
             }
 
             residual = std::move(true_residual);
-            shadow_residual = residual;
-            std::fill(direction.begin(), direction.end(), 0.0);
-            std::fill(previous_product.begin(), previous_product.end(), 0.0);
-            previous_rho = 1.0;
-            alpha = 1.0;
-            omega = 1.0;
+            restart = true;
             continue;
         }
 

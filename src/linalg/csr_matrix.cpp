@@ -1,7 +1,9 @@
 #include "nova/linalg/csr_matrix.hpp"
+#include "csr_exact_dot.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <stdexcept>
 
@@ -76,12 +78,81 @@ std::vector<double> CsrMatrix::multiply(const std::span<const double> vector) co
     }
 
     std::vector<double> result(rows_, 0.0);
+    constexpr double min_normal = std::numeric_limits<double>::min();
     for (std::size_t row = 0; row < rows_; ++row) {
+        const std::size_t begin = row_offsets_[row];
+        const std::size_t end = row_offsets_[row + 1U];
         double sum = 0.0;
-        for (std::size_t index = row_offsets_[row]; index < row_offsets_[row + 1]; ++index) {
-            sum += values_[index] * vector[column_indices_[index]];
+        // Track the absolute dot-product scale without forming sum(|a_i*x_i),
+        // which could overflow even when the exact signed result is finite.
+        // This lets the fallback detect severe cancellation that leaves a
+        // nonzero *normal* binary64 result, not only zero/subnormal/Inf rows.
+        double absolute_scale = 0.0;
+        double scaled_absolute_sum = 0.0;
+        for (std::size_t index = begin; index < end; ++index) {
+            const double product = values_[index] * vector[column_indices_[index]];
+            sum += product;
+
+            const double magnitude = std::abs(product);
+            if (std::isfinite(magnitude) && magnitude > 0.0) {
+                if (magnitude > absolute_scale) {
+                    scaled_absolute_sum =
+                        scaled_absolute_sum * (absolute_scale / magnitude) + 1.0;
+                    absolute_scale = magnitude;
+                } else {
+                    scaled_absolute_sum += magnitude / absolute_scale;
+                }
+            }
         }
-        result[row] = sum;
+
+        bool cancellation_risk = false;
+        const std::size_t term_count = end - begin;
+        if (term_count > 1U && std::isfinite(sum) && absolute_scale > 0.0) {
+            const double operation_count = 2.0 * static_cast<double>(term_count);
+            const double n_epsilon =
+                operation_count * std::numeric_limits<double>::epsilon();
+            const double gamma = n_epsilon < 0.5
+                ? n_epsilon / (1.0 - n_epsilon)
+                : 1.0;
+            // Bound the trigger to a 1e-8 dot-product condition ratio. The
+            // gamma_n term is a conservative accumulation-error indicator;
+            // exact accumulation is reserved for rows where cancellation
+            // makes the normal fast-path result numerically suspect.
+            const double cancellation_fraction = std::min(1.0e-8, 8.0 * gamma);
+            const double normalized_error_bound =
+                cancellation_fraction * scaled_absolute_sum;
+            cancellation_risk =
+                std::abs(sum) / absolute_scale <= normalized_error_bound;
+        }
+
+        bool risky = !std::isfinite(sum) ||
+            (sum != 0.0 && std::abs(sum) < min_normal) || cancellation_risk;
+        if (sum == 0.0 && begin != end) risky = true;
+        if (risky) {
+            bool finite_inputs = true;
+            bool has_nonzero_factors = false;
+            for (std::size_t index = begin; index < end; ++index) {
+                const double entry = vector[column_indices_[index]];
+                finite_inputs = finite_inputs && std::isfinite(entry);
+                has_nonzero_factors =
+                    has_nonzero_factors || (values_[index] != 0.0 && entry != 0.0);
+            }
+            if (!finite_inputs) {
+                // Preserve ordinary IEEE propagation for NaN and infinity inputs.
+                result[row] = sum;
+                continue;
+            }
+            if (sum == 0.0 && !has_nonzero_factors) {
+                result[row] = sum;
+                continue;
+            }
+            result[row] = detail::exact_finite_row_dot(
+                std::span<const double>(values_).subspan(begin, end - begin),
+                std::span<const std::size_t>(column_indices_).subspan(begin, end - begin),
+                vector);
+        } else {
+            result[row] = sum;
+        }
     }
     return result;
 }

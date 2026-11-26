@@ -139,7 +139,8 @@ The L2 and H1 error calculator uses a 5×5 Gauss-Legendre product rule mapped to
 - Initial sparse storage is compressed sparse row (CSR).
 - Column indices within each row are stored in ascending order.
 - Duplicate assembly entries are summed.
-- Non-finite matrix and vector values are rejected.
+- Non-finite matrix coefficients are rejected during assembly. Non-finite vector entries propagate IEEE results through CSR multiplication.
+- Finite-input row products use a binary64 fast path while tracking the absolute product scale with a scaled positive sum. A non-finite or subnormal result, a zero result with nonzero factors, or a normal result whose magnitude is within a conservative cancellation-error bound triggers an exact fixed-width integer accumulator. The cancellation trigger uses \(\min(10^{-8},8\gamma_{2n})\sum_i|a_i x_i|\), where \(\gamma_{2n}=2n\epsilon/(1-2n\epsilon)\) when \(2n\epsilon<0.5\) and is bounded to one otherwise, accounting conservatively for product and summation rounding. Exact accumulation is rounded once to binary64 using round-to-nearest, ties-to-even. This recovers severe normal-result cancellation without using extended-precision `long double` or an external numerical library. A mathematically out-of-range final row value remains signed infinity.
 - Matrix dimensions and vector lengths are checked at API boundaries.
 
 ## Solver convention
@@ -153,6 +154,53 @@ Supported preconditioners:
 GMRES uses right Jacobi preconditioning, modified Gram-Schmidt Arnoldi orthogonalization with a second reorthogonalization pass, and Givens rotations. Its restart length limits the Krylov subspace memory.
 
 Before returning success, the iterative linear solvers recompute the true residual \(b-Ax\). A recursive or projected residual that meets tolerance is not sufficient if the recomputed residual does not.
+
+### Residual scaling for nonsymmetric solves
+
+The acceptance threshold is
+\(\max(\mathrm{atol},\mathrm{rtol}\,\|b-Ax_0\|_2)\), in the units
+of the physical load. Purely relative tests use an explicit zero absolute
+tolerance. CG, GMRES, BiCGSTAB, and the outer Newton solver share a Euclidean
+norm with a scaled sum-of-squares fallback when the ordinary sum of squares
+falls outside the normal floating-point range. GMRES lifts a subnormal restart
+residual by an exact power of two before building its basis and returns the
+resulting correction to the original units.
+
+BiCGSTAB chooses a binary scale \(s=2^{\lfloor\log_2\|r\|_2\rfloor}\)
+at the initial iterate and after a true-residual restart. Its recurrence
+solves for a correction in units of \(s\), then applies that correction to the
+physical iterate. Dot products used in ratios can retain a separate exponent.
+Breakdown checks compare \(|u^T v|/(\|u\|_2\|v\|_2)\) with machine
+precision, including the stabilization step
+\(\omega=(t^T s_k)/(t^T t)\). An absolute bound on \(\omega\) would change
+when the operator units change. Safe norms alone would leave that defect and
+the unscaled BiCGSTAB products in place. CSR row products use a binary64 fast
+path and the exact integer fallback described above when range or exact
+cancellation failure is detected. Krylov updates, coefficients and physical
+fields remain constrained by binary64 representation.
+
+The automated checks include exact nonsymmetric systems, a damped Newton solve
+with known root, and a layered, driven Maxwell problem. Its constant field is
+in the lowest-order Nédélec space. Edge-circulation error therefore measures
+algebraic and rounding error. Dielectric loss is checked after normalizing the
+field to unit drive, since physical power is quadratic in the amplitude.
+
+To compare two Release builds on the same machine, compile the same driver
+against each static library. Set the two paths to their CMake build directories.
+
+```sh
+for build in "$baseline_build" "$candidate_build"; do
+    c++ -std=c++20 -O3 -DNDEBUG -Iinclude verification/benchmark_krylov_scale.cpp \
+        "$build/libnova_core.a" -o "$build/benchmark_krylov_scale"
+    "$build/benchmark_krylov_scale"
+done
+```
+
+The driver times unpreconditioned solves of a 1,024-row tridiagonal system and
+independently checks the stencil residual and forward error at three source
+amplitudes. An inaccurate result gives a nonzero exit status. Numerical
+background is available in the [reference BLAS norm documentation](https://netlib.org/lapack/explore-html/d1/d2a/group__nrm2_gab5393665c8f0e7d5de9bd1dd2ff0d9d0.html)
+and [Templates for the Solution of Linear Systems](https://netlib.org/templates/templates.html).
 
 ## Nonlinear Newton convention
 
