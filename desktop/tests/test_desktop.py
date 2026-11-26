@@ -120,6 +120,54 @@ class DesktopWorkflow(unittest.TestCase):
         self.assertEqual(self.win.editor.fields["k"].text(), "-1")
         self.assertEqual(self.win.path, path)
 
+    def test_schema_two_anisotropic_editor_round_trip_and_solve(self):
+        editor = self.win.editor
+        editor.fields["project"].setText("anisotropic-wall")
+        editor.fields["geometry"].setText("wall")
+        editor.fields["lx"].setText("0.5")
+        editor.fields["ly"].setText("0.25")
+        editor.fields["lz"].setText("0.125")
+        editor.fields["mesh"].setText("tets")
+        editor.fields["nx"].setText("6")
+        editor.fields["ny"].setText("2")
+        editor.fields["nz"].setText("1")
+        editor.fields["material"].setText("benchmark-solid")
+        editor.fields["study"].setText("steady")
+        editor.fields["source"].setText("0")
+        editor.material_mode.setCurrentIndex(editor.material_mode.findData("anisotropic"))
+        for key, value in {"kxx": "2", "kyy": "3", "kzz": "4",
+                           "kxy": "0.25", "kxz": "-0.15", "kyz": "0.10"}.items():
+            editor.fields[key].setText(value)
+        editor.set_boundary("xmin", "temperature", "400")
+        editor.set_boundary("xmax", "convection", "12", "300")
+        editor.set_boundary("ymin", "outward_flux", "-37.5")
+        editor.set_boundary("ymax", "outward_flux", "37.5")
+        editor.set_boundary("zmin", "outward_flux", "22.5")
+        editor.set_boundary("zmax", "outward_flux", "-22.5")
+
+        project = self.directory / "anisotropic.nova"
+        self.assertTrue(self.win.save_to(project), self.win.console.toPlainText())
+        saved = project.read_text(encoding="ascii")
+        self.assertTrue(saved.startswith("NOVA_PROJECT 2\n"))
+        material = next(line.split() for line in saved.splitlines()
+                        if line.startswith("material "))
+        self.assertEqual(material[:3], ["material", "benchmark-solid", "anisotropic"])
+        self.assertEqual(len(material), 9)
+
+        self.win.new_project()
+        self.assertTrue(self.win.open_path(project), self.win.console.toPlainText())
+        self.assertEqual(editor.material_mode.currentData(), "anisotropic")
+        for key, value in {"kxx": 2.0, "kyy": 3.0, "kzz": 4.0,
+                           "kxy": 0.25, "kxz": -0.15, "kyz": 0.10}.items():
+            self.assertAlmostEqual(float(editor.fields[key].text()), value, delta=1e-14)
+
+        self.assertTrue(self.wait_for_study(self.win.start_solve), self.win.console.toPlainText())
+        self.assertIn("Convective power 9.375 W", self.win.summary.text())
+        field = self.win.view.canvas.field
+        self.assertEqual(len(field.values), 42)
+        self.assertAlmostEqual(min(field.values), 325.0, delta=2e-8)
+        self.assertAlmostEqual(max(field.values), 400.0, delta=2e-8)
+
     def test_cancel_then_solve_a_new_snapshot(self):
         for key in ("nx", "ny", "nz"):
             self.win.editor.fields[key].setText("32")

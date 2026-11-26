@@ -244,6 +244,9 @@ if(NOVA_BUILD_TESTS)
         add_test(NAME nova_thermal_project_cube
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_thermal_project.py"
             cube "$<TARGET_FILE:nova-run>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/projects/internally_heated_cube.nova")
+        add_test(NAME nova_thermal_project_anisotropic
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/verification/verify_thermal_project.py"
+            anisotropic "$<TARGET_FILE:nova-run>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/projects/anisotropic_wall.nova")
     endif()
     add_executable(nova_optics_reference_tests tests/test_optics_reference.cpp)
     target_link_libraries(nova_optics_reference_tests PRIVATE NOVA::Core)
@@ -413,6 +416,7 @@ set(NOVA_INSTALL_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/NOVA")
 
 install(TARGETS nova-run EXPORT NOVATargets RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES examples/projects/convecting_wall.nova examples/projects/internally_heated_cube.nova
+    examples/projects/anisotropic_wall.nova
     DESTINATION "${CMAKE_INSTALL_DATADIR}/nova/projects")
 
 install(TARGETS nova_core EXPORT NOVATargets

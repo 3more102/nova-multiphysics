@@ -92,6 +92,54 @@ def wall(runner, fixture, work):
           f"max_error_K={error:.6g}, max_flux_error_W_m2={flux_error:.6g}, balance_W={metrics['balance_defect_W']:.6g}")
 
 
+def check_tensor_wall(runner, project, vtk, axis, flux, length, area):
+    metrics, (points, cells, temperature, fluxes) = solve(runner, project, vtk)
+    require(len(points) == 42 and len(cells) == 72, "Anisotropic wall mesh dimensions")
+    temperature_error = max(abs(value - (400 - 150 * point[axis]))
+                            for point, value in zip(points, temperature))
+    flux_error = max(math.dist(vector, flux) for vector in fluxes)
+    near(temperature_error, 0, 2e-8, "Anisotropic exact nodal temperature field [K]")
+    near(flux_error, 0, 2e-8, "Anisotropic full Fourier heat-flux vector [W/m^2]")
+    near(metrics["min_K"], 400 - 150 * length, 2e-8, "Minimum temperature [K]")
+    near(metrics["max_K"], 400, 2e-8, "Maximum temperature [K]")
+    rate = area * flux[axis]
+    near(metrics["generated_W"], 0, 2e-8, "Heat generation [W]")
+    near(metrics["neumann_out_W"], 0, 2e-8, "Net lateral power [W]")
+    near(metrics["convection_out_W"], rate, 2e-8, "Robin power [W]")
+    near(metrics["fixed_out_W"], -rate, 2e-8, "Fixed-temperature reaction [W]")
+    near(metrics["balance_defect_W"], 0, 2e-8, "Global heat balance [W]")
+    print(f"anisotropic axis={'xyz'[axis]} nodes={len(points)} tets={len(cells)} "
+          f"T_max_error_K={temperature_error:.6g} q_max_error_W_m2={flux_error:.6g} "
+          f"robin_W={metrics['convection_out_W']:.12g} balance_W={metrics['balance_defect_W']:.6g}")
+
+
+def anisotropic(runner, fixture, work):
+    # Each exact temperature gradient selects a different column of the same
+    # conductivity tensor. Reference fluxes were calculated independently.
+    lengths = (0.5, 0.25, 0.125)
+    flux_vectors = ((300.0, 37.5, -22.5), (37.5, 450.0, 15.0), (-22.5, 15.0, 600.0))
+    model, boundary, _ = fixture.read_text(encoding="ascii").partition("boundary ")
+    require(boundary, "Expected boundary records in the distributed wall project")
+    for axis, flux in enumerate(flux_vectors):
+        project = fixture
+        if axis != 0:
+            # Keep the distributed geometry, mesh, material and solver records.
+            # Replace the six face data for the y- or z-directed gradient.
+            faces = []
+            for index, name in enumerate("xyz"):
+                if index == axis:
+                    ambient = 400 - 150 * lengths[axis] - flux[axis] / 12
+                    lower, upper = "temperature 400", f"convection 12 {ambient}"
+                else:
+                    lower, upper = f"outward_flux {-flux[index]}", f"outward_flux {flux[index]}"
+                faces.extend((f"boundary steady wall {name}min {lower}",
+                              f"boundary steady wall {name}max {upper}"))
+            project = work / f"anisotropic-{'xyz'[axis]}.nova"
+            project.write_text(model + "\n".join([*faces, "end", ""]), encoding="ascii")
+        area = math.prod(length for i, length in enumerate(lengths) if i != axis)
+        check_tensor_wall(runner, project, work / "anisotropic.vtk", axis, flux, lengths[axis], area)
+
+
 def generated(runner, fixture, work):
     # -kT''=Q, T(0)=400 and -kT'(L)=g. The box has insulated lateral faces.
     length, k, source, g = 0.5, 2.0, 240.0, 40.0
@@ -327,7 +375,7 @@ def persistence(runner, fixture, work):
     require(invoke(runner, "solve", dst, "--vtk", vtk) == first and vtk.read_bytes() == output,
             "Save/reload changed numerical reconstruction")
     bad_records = [
-        ("NOVA_PROJECT 1", "NOVA_PROJECT 2"), ("project convecting-wall", "project wall"),
+        ("NOVA_PROJECT 1", "NOVA_PROJECT 3"), ("project convecting-wall", "project wall"),
         ("tets wall structured_tet", "tets missing structured_tet"),
         ("steady_heat tets homogeneous", "steady_heat tets missing"),
         ("source steady 0", "source other 0"), ("source steady 0", "source steady 0 extra"),
@@ -361,7 +409,7 @@ def persistence(runner, fixture, work):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("suite", choices=("wall", "generated", "cube", "persistence"))
+    parser.add_argument("suite", choices=("wall", "generated", "cube", "persistence", "anisotropic"))
     parser.add_argument("runner", type=Path)
     parser.add_argument("fixture", type=Path)
     parser.add_argument("--scipy", action="store_true", help="Also solve the cube with SciPy finite differences")
@@ -373,4 +421,4 @@ if __name__ == "__main__":
         if args.suite == "cube":
             cube(*inputs, check_scipy=args.scipy)
         else:
-            {"wall": wall, "generated": generated, "persistence": persistence}[args.suite](*inputs)
+            {"wall": wall, "generated": generated, "persistence": persistence, "anisotropic": anisotropic}[args.suite](*inputs)
