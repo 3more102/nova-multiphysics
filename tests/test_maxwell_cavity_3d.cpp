@@ -82,3 +82,47 @@ NOVA_TEST(maxwell_cavity_dielectric_frequency_scaling_and_loss_rejection) {
     catch(const std::invalid_argument&){rejected=true;}
     NOVA_REQUIRE(rejected);
 }
+
+NOVA_TEST(maxwell_cavity_geometric_and_magnetic_similarity) {
+    // For geometrically similar PEC cavities, K scales as 1/L and M as L.
+    // With uniform relative permeability mu_r, K also scales as 1/mu_r.
+    // Thus lambda scales as 1/(L^2 mu_r), and f as 1/(L sqrt(mu_r)).
+    const auto unit_mesh=nova::fem::make_box_mesh_3d(0,1,0,1,0,1,2,2,2).mesh;
+    const auto large_mesh=nova::fem::make_box_mesh_3d(0,2,0,2,0,2,2,2,2).mesh;
+    std::vector<MaxwellCellMaterial3D> materials(unit_mesh.elements.size());
+    const auto baseline=solve_maxwell_cavity_3d(
+        assemble_maxwell_cavity_3d(unit_mesh,materials),3);
+    NOVA_REQUIRE(baseline.converged);
+    NOVA_REQUIRE(baseline.modes.size()==3);
+    const auto geometric=solve_maxwell_cavity_3d(
+        assemble_maxwell_cavity_3d(large_mesh,materials),3);
+    for (auto& material:materials) material.relative_permeability=4.0;
+    const auto magnetic=solve_maxwell_cavity_3d(
+        assemble_maxwell_cavity_3d(unit_mesh,materials),3);
+    const auto combined=solve_maxwell_cavity_3d(
+        assemble_maxwell_cavity_3d(large_mesh,materials),3);
+    for (const auto* result:{&geometric,&magnetic,&combined}) {
+        NOVA_REQUIRE(result->converged);
+        NOVA_REQUIRE(result->modes.size()==baseline.modes.size());
+        NOVA_REQUIRE(result->nullspace_dimension==baseline.nullspace_dimension);
+        for (const auto& mode:result->modes)
+            NOVA_REQUIRE(mode.relative_residual<1e-10);
+    }
+    for (std::size_t i=0;i<baseline.modes.size();++i) {
+        const auto& ref=baseline.modes[i];
+        NOVA_REQUIRE(ref.vacuum_wavenumber_squared>0.0);
+        NOVA_REQUIRE(ref.frequency_hz>0.0);
+        NOVA_REQUIRE_NEAR(geometric.modes[i].vacuum_wavenumber_squared/
+            ref.vacuum_wavenumber_squared,0.25,1e-9);
+        NOVA_REQUIRE_NEAR(magnetic.modes[i].vacuum_wavenumber_squared/
+            ref.vacuum_wavenumber_squared,0.25,1e-9);
+        NOVA_REQUIRE_NEAR(combined.modes[i].vacuum_wavenumber_squared/
+            ref.vacuum_wavenumber_squared,0.0625,1e-9);
+        NOVA_REQUIRE_NEAR(geometric.modes[i].frequency_hz/ref.frequency_hz,0.5,1e-9);
+        NOVA_REQUIRE_NEAR(magnetic.modes[i].frequency_hz/ref.frequency_hz,0.5,1e-9);
+        NOVA_REQUIRE_NEAR(combined.modes[i].frequency_hz/ref.frequency_hz,0.25,1e-9);
+        NOVA_REQUIRE_NEAR(ref.frequency_hz/
+            std::sqrt(ref.vacuum_wavenumber_squared),
+            299792458.0/(2.0*std::numbers::pi),1e-7);
+    }
+}
