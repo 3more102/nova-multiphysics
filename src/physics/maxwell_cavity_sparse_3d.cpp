@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <limits>
 #include <numbers>
+#include <numeric>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -22,7 +23,27 @@ using linalg::Triplet;
 struct GradientData {
     CsrMatrix incidence;
     CsrMatrix gram;
-    std::size_t interior_nodes{};
+    std::size_t potential_count{};
+    std::size_t boundary_component_count{};
+};
+
+// Disjoint sets for mesh connectivity and connected PEC boundary surfaces.
+struct Components {
+    std::vector<std::size_t> parent;
+    explicit Components(std::size_t n) : parent(n) {
+        std::iota(parent.begin(), parent.end(), std::size_t{0});
+    }
+    std::size_t root(std::size_t i) {
+        while (parent[i] != i) {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        return i;
+    }
+    void join(std::size_t a, std::size_t b) {
+        a = root(a); b = root(b);
+        if (a != b) parent[std::max(a, b)] = std::min(a, b);
+    }
 };
 
 double dot(const std::vector<double>& a, const std::vector<double>& b) {
@@ -164,15 +185,43 @@ GradientData build_gradient(
     const fem::TetrahedralMesh3D& mesh,
     const MaxwellCavityMatrices3D& matrices) {
     const std::size_t invalid = std::numeric_limits<std::size_t>::max();
-    std::vector<unsigned char> boundary(mesh.nodes.size(), 0U);
+    const auto node_count = mesh.nodes.size();
+    std::vector<unsigned char> boundary(node_count, 0U);
+    Components volume(node_count), surface(node_count);
+    for (const auto& edge : matrices.edges) volume.join(edge[0], edge[1]);
     for (const auto& face : fem::extract_boundary_faces_3d(mesh)) {
         for (const auto node : face) boundary[node] = 1U;
+        surface.join(face[0], face[1]);
+        surface.join(face[0], face[2]);
     }
 
-    std::vector<std::size_t> interior_index(mesh.nodes.size(), invalid);
-    std::size_t interior_count = 0U;
-    for (std::size_t node = 0; node < mesh.nodes.size(); ++node) {
-        if (boundary[node] == 0U) interior_index[node] = interior_count++;
+    // A scalar potential must be constant on every connected PEC surface,
+    // not necessarily the same constant on all surfaces. Fix one surface
+    // per connected volume to zero to remove the constant gauge.
+    std::vector<std::size_t> potential_index(node_count, invalid);
+    std::vector<std::size_t> surface_index(node_count, invalid);
+    std::vector<unsigned char> anchored(node_count, 0U);
+    std::size_t potential_count = 0U;
+    for (std::size_t node = 0; node < node_count; ++node) {
+        if (boundary[node] == 0U) potential_index[node] = potential_count++;
+    }
+    const auto interior_count = potential_count;
+    for (std::size_t node = 0; node < node_count; ++node) {
+        if (boundary[node] == 0U || surface.root(node) != node) continue;
+        const auto component = volume.root(node);
+        if (anchored[component] == 0U) {
+            anchored[component] = 1U;
+        } else {
+            surface_index[node] = potential_count++;
+        }
+    }
+    for (std::size_t node = 0; node < node_count; ++node) {
+        if (anchored[volume.root(node)] == 0U) {
+            throw std::invalid_argument("PEC mesh component has no boundary surface.");
+        }
+        if (boundary[node] != 0U) {
+            potential_index[node] = surface_index[surface.root(node)];
+        }
     }
 
     std::vector<Triplet> entries;
@@ -182,17 +231,15 @@ GradientData build_gradient(
     entries.reserve(2U * matrices.free_edges.size());
     for (std::size_t row = 0; row < matrices.free_edges.size(); ++row) {
         const auto& edge = matrices.edges[matrices.free_edges[row]];
-        if (interior_index[edge[0]] != invalid) {
-            entries.push_back({row, interior_index[edge[0]], -1.0});
-        }
-        if (interior_index[edge[1]] != invalid) {
-            entries.push_back({row, interior_index[edge[1]], 1.0});
-        }
+        const auto left = potential_index[edge[0]], right = potential_index[edge[1]];
+        if (left == right) continue;
+        if (left != invalid) entries.push_back({row, left, -1.0});
+        if (right != invalid) entries.push_back({row, right, 1.0});
     }
     CsrMatrix incidence = CsrMatrix::from_triplets(
-        matrices.free_edges.size(), interior_count, entries);
-    if (interior_count == 0U) {
-        return {std::move(incidence), CsrMatrix{}, 0U};
+        matrices.free_edges.size(), potential_count, entries);
+    if (potential_count == 0U) {
+        return {std::move(incidence), CsrMatrix{}, 0U, 0U};
     }
 
     struct NodeSign { std::size_t node{}; double sign{}; };
@@ -222,13 +269,14 @@ GradientData build_gradient(
         }
     });
     CsrMatrix gram = CsrMatrix::from_triplets(
-        interior_count, interior_count, gram_entries);
+        potential_count, potential_count, gram_entries);
     for (const double value : gram.diagonal()) {
         if (!(value > 0.0) || !std::isfinite(value)) {
-            throw std::invalid_argument("Discrete H1_0 gradient Gram matrix is not positive definite.");
+            throw std::invalid_argument("Discrete PEC gradient Gram matrix is not positive definite.");
         }
     }
-    return {std::move(incidence), std::move(gram), interior_count};
+    return {std::move(incidence), std::move(gram), potential_count,
+            potential_count - interior_count};
 }
 
 std::uint64_t splitmix64(std::uint64_t& state) {
@@ -244,10 +292,10 @@ void project_gradient(
     const CsrMatrix& mass,
     const linalg::SolverOptions& options,
     MaxwellCavitySparseResult3D& result) {
-    if (gradient.interior_nodes == 0U) return;
+    if (gradient.potential_count == 0U) return;
 
     const auto mv = mass.multiply(vector);
-    std::vector<double> rhs(gradient.interior_nodes, 0.0);
+    std::vector<double> rhs(gradient.potential_count, 0.0);
     gradient.incidence.for_each_nonzero(
         [&](const std::size_t edge, const std::size_t node, const double sign) {
             rhs[node] += sign * mv[edge];
@@ -324,12 +372,13 @@ MaxwellCavitySparseResult3D solve_maxwell_cavity_shift_invert_3d(
 
     MaxwellCavitySparseResult3D result;
     const GradientData gradient = build_gradient(mesh, matrices);
-    result.gradient_nullspace_dimension = gradient.interior_nodes;
+    result.gradient_nullspace_dimension = gradient.potential_count;
+    result.boundary_component_gradient_dimension = gradient.boundary_component_count;
     const std::size_t n = matrices.stiffness.rows();
-    if (gradient.interior_nodes >= n || n - gradient.interior_nodes < options.max_modes) {
+    if (gradient.potential_count >= n || n - gradient.potential_count < options.max_modes) {
         throw std::invalid_argument("Too few non-gradient Maxwell edge degrees of freedom.");
     }
-    const std::size_t complement_dimension = n - gradient.interior_nodes;
+    const std::size_t complement_dimension = n - gradient.potential_count;
     const std::size_t subspace_limit = std::min(options.max_subspace, complement_dimension);
     if (subspace_limit < options.max_modes) {
         throw std::invalid_argument("Krylov subspace is smaller than the requested mode count.");
