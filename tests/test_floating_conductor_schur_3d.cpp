@@ -3,6 +3,7 @@
 #include "nova/physics/floating_conductor_schur_3d.hpp"
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -180,7 +181,7 @@ NOVA_TEST(floating_schur_all_fixed_terminal_voltages) {
                       1.0e-12);
 }
 
-NOVA_TEST(floating_schur_rejects_invalid_loads_gauge_and_ids) {
+NOVA_TEST(floating_schur_rejects_invalid_gauge_and_ids) {
     const auto box = nova::fem::make_box_mesh_3d(
         0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1U, 1U, 1U);
     Electrostatics3DProblem problem;
@@ -203,27 +204,92 @@ NOVA_TEST(floating_schur_rejects_invalid_loads_gauge_and_ids) {
     });
 
     auto loaded = problem;
-    loaded.free_charge_density = [](double, double, double) { return 1.0; };
+    loaded.free_charge_density = [](double, double, double) {
+        return std::numeric_limits<double>::quiet_NaN();
+    };
     expect_invalid([&] {
         (void)solve_floating_conductor_schur_3d(
             loaded, groups, std::vector<FixedElectrodePotential3D>{{10, 0.0}},
-            std::vector<FloatingElectrodeCharge3D>{{20, 20.0}});
+            std::vector<FloatingElectrodeCharge3D>{{20, 0.0}});
     });
     loaded.free_charge_density = {};
-    loaded.cell_free_charge_density.assign(problem.mesh.elements.size(), 1.0);
+    loaded.cell_free_charge_density = {1.0}; // Not one value per tetrahedron.
     expect_invalid([&] {
         (void)solve_floating_conductor_schur_3d(
             loaded, groups, std::vector<FixedElectrodePotential3D>{{10, 0.0}},
-            std::vector<FloatingElectrodeCharge3D>{{20, 20.0}});
+            std::vector<FloatingElectrodeCharge3D>{{20, 0.0}});
     });
     loaded.cell_free_charge_density.clear();
     loaded.displacement_flux_faces.push_back({
-        box.boundary_faces.front(),
+        groups[0].faces.front(),
         [](double, double, double) { return 1.0; }
     });
     expect_invalid([&] {
         (void)solve_floating_conductor_schur_3d(
             loaded, groups, std::vector<FixedElectrodePotential3D>{{10, 0.0}},
-            std::vector<FloatingElectrodeCharge3D>{{20, 20.0}});
+            std::vector<FloatingElectrodeCharge3D>{{20, 0.0}});
     });
+}
+
+NOVA_TEST(floating_schur_affine_volume_charge_exact_terminal_balance) {
+    // Unit capacitor, epsilon=1 F/m, rho=2 C/m^3, V(0)=0,
+    // Q_floating(1)=0. The continuum field is V(x)=2*x-x*x,
+    // so V_floating=1 V and Q_ground=-2 C. Spatial and cell charges add.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 3U, 3U, 3U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 1.0; };
+    problem.free_charge_density = [](double, double, double) { return 1.0; };
+    problem.cell_free_charge_density.assign(problem.mesh.elements.size(), 1.0);
+    const auto result = solve_floating_conductor_schur_3d(
+        problem, plates(problem, box.boundary_faces),
+        std::vector<FixedElectrodePotential3D>{{10, 0.0}},
+        std::vector<FloatingElectrodeCharge3D>{{20, 0.0}});
+    NOVA_REQUIRE(result.field.linear_solver.converged);
+    NOVA_REQUIRE(result.load_offset_charge_coulombs.size() == 2U);
+    NOVA_REQUIRE_NEAR(result.discrete_capacitance.matrix_farads[3], 1.0, 1.0e-7);
+    NOVA_REQUIRE_NEAR(result.load_offset_charge_coulombs[1], -1.0, 0.06);
+    NOVA_REQUIRE_NEAR(result.terminals.potential_volts[1], 1.0, 0.06);
+    NOVA_REQUIRE_NEAR(result.terminals.estimated_charge_coulombs[1],
+                      0.0, 1.0e-7);
+    NOVA_REQUIRE_NEAR(result.discrete_reactions[1].reaction_charge_coulombs,
+                      0.0, 1.0e-7);
+    NOVA_REQUIRE_NEAR(result.discrete_reactions[0].reaction_charge_coulombs,
+                      -2.0, 1.0e-7);
+    NOVA_REQUIRE(result.max_floating_reaction_mismatch_coulombs < 1.0e-7);
+    NOVA_REQUIRE(result.terminals.max_floating_charge_residual_coulombs < 1.0e-7);
+    NOVA_REQUIRE(result.field.stored_energy_joules > 0.0);
+}
+
+NOVA_TEST(floating_schur_affine_neumann_boundary_load_charge_balance) {
+    // Nonzero outward D.n on y=0 injects a +2 C Neumann weak-load
+    // correction at the Dirichlet electrode boundary corners. The physical
+    // electrode reactions must sum to +2 C when rho_free=0.
+    const auto box = nova::fem::make_box_mesh_3d(
+        0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 2U, 2U, 2U);
+    Electrostatics3DProblem problem;
+    problem.mesh = box.mesh;
+    problem.permittivity = [](double, double, double) { return 1.0; };
+    for (const auto& face : box.boundary_faces) {
+        if (problem.mesh.nodes[face[0]].y == 0.0 &&
+            problem.mesh.nodes[face[1]].y == 0.0 &&
+            problem.mesh.nodes[face[2]].y == 0.0) {
+            problem.displacement_flux_faces.push_back({
+                face, [](double, double, double) { return 2.0; }});
+        }
+    }
+    NOVA_REQUIRE(!problem.displacement_flux_faces.empty());
+    const auto result = solve_floating_conductor_schur_3d(
+        problem, plates(problem, box.boundary_faces),
+        std::vector<FixedElectrodePotential3D>{{10, 0.0}},
+        std::vector<FloatingElectrodeCharge3D>{{20, 0.0}});
+    NOVA_REQUIRE(result.field.linear_solver.converged);
+    NOVA_REQUIRE(result.load_offset_charge_coulombs.size() == 2U);
+    NOVA_REQUIRE(std::abs(result.load_offset_charge_coulombs[1]) > 0.01);
+    NOVA_REQUIRE_NEAR(result.discrete_reactions[1].reaction_charge_coulombs,
+                      0.0, 1.0e-7);
+    NOVA_REQUIRE_NEAR(result.discrete_reactions[0].reaction_charge_coulombs,
+                      2.0, 1.0e-7);
+    NOVA_REQUIRE(result.max_floating_reaction_mismatch_coulombs < 1.0e-7);
 }
