@@ -3,7 +3,7 @@
 The C++20 API `nova/physics/optics.hpp` provides analytical and semi-analytical reference models. It is not a Maxwell FEM or nonlinear wave solver.
 
 ## Conventions and scope
-SI units, vacuum wavelength, nonmagnetic isotropic media, time dependence exp(-i omega t). Passive indices have nonnegative imaginary part. Exterior half spaces for multilayer propagation must be lossless and have positive real index. Layers may have complex passive refractive index, including purely imaginary index. Zero thickness is allowed.
+SI units, vacuum wavelength, nonmagnetic isotropic media, time dependence exp(-i omega t). Passive indices have nonnegative imaginary part. Exterior half spaces for multilayer propagation must be lossless and have positive real index. Layers may have complex passive refractive index, including purely imaginary index. Zero thickness is allowed; validated zero-thickness layers are omitted from both normal and oblique scattering cascades before interface arithmetic. This preserves exact removal invariance even at extreme index contrast.
 
 ## Linear optics and multilayer photonics
 At normal incidence r_ab=(n_a-n_b)/(n_a+n_b), t_ab=1+r_ab. Cascade a downstream reflection r and transmission t using denominator 1+r_ab*r, then propagate through each finite layer with p=exp(i k0 n d). The recursive reflection accumulates p^2 and transmission p. This avoids exponentially growing transfer matrix entries for thick absorbing layers. R=|r|^2, T=(n_exit/n_incident)|t|^2, A=1-R-T (small negative rounding residuals may occur). Extremely ill-conditioned cases are not guaranteed. See the separate polarized oblique API below. No anisotropy, diffraction, guided modes or field reconstruction.

@@ -39,6 +39,25 @@ int main() {
         near(loss.reflectance,std::norm((1.0-lossy[0].index)/(1.0+lossy[0].index)),1e-12,"thick absorbing layer");
         near(loss.transmittance,0,1e-12,"thick layer T");
         require(loss.absorptance>0,"passive absorption");
+        // Zero-width layers must be exactly equivalent to their removal, even
+        // when their interface reflection rounds to +/-1 at extreme contrast.
+        const std::array<Layer,2> empty_stack{{{1e30,0.0},{1e-30,0.0}}};
+        const auto empty_result = normal_incidence_stack(lambda,1.0,1.5,empty_stack);
+        require(empty_result.reflection == f.reflection &&
+                empty_result.transmission == f.transmission,"zero-width interface identity");
+        const std::array<Layer,1> finite_film{{{Complex{2.0,0.1},lambda/7}}};
+        const std::array<Layer,3> padded_film{{{1e30,0.0},finite_film[0],{1e-30,0.0}}};
+        const auto unpadded = normal_incidence_stack(lambda,1.0,1.5,finite_film);
+        const auto padded = normal_incidence_stack(lambda,1.0,1.5,padded_film);
+        require(padded.reflection == unpadded.reflection &&
+                padded.transmission == unpadded.transmission &&
+                padded.absorptance == unpadded.absorptance,"zero-width lossy-film identity");
+        bool invalid_zero_layer = false;
+        try {
+            const std::array<Layer,1> bad{{{Complex{1.0,-0.1},0.0}}};
+            (void)normal_incidence_stack(lambda,1.0,1.5,bad);
+        } catch (const std::invalid_argument&) { invalid_zero_layer = true; }
+        require(invalid_zero_layer,"zero-width layers retain material validation");
         const auto eps = drude_permittivity(2.0,1.0,6.0,0.0);
         near(eps.real(),-8.0,1e-14,"lossless Drude");
         require(drude_permittivity(2,1,6,0.1).imag()>0,"passive Drude");
