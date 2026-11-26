@@ -35,6 +35,8 @@ void validate_problem(const ThermoOptic3DProblem& problem) {
         problem.temperature_tolerance_kelvin <= 0.0 ||
         !std::isfinite(problem.relative_absorbed_power_tolerance) ||
         problem.relative_absorbed_power_tolerance <= 0.0 ||
+        !std::isfinite(problem.permittivity_tolerance) ||
+        problem.permittivity_tolerance <= 0.0 ||
         problem.max_iterations == 0) {
         throw std::invalid_argument("Invalid thermo-optic 3D iteration controls.");
     }
@@ -111,6 +113,28 @@ ThermoOptic3DResult solve_thermo_optic_3d(
                 std::abs(next_temperature[node] - current_temperature[node]));
         }
 
+        // The returned thermal field is not the input iterate used to
+        // assemble Maxwell. Check constitutive closure explicitly: a small
+        // temperature error alone need not imply a small permittivity error.
+        double max_permittivity_residual = 0.0;
+        bool output_materials_passive = true;
+        for (std::size_t cell = 0; cell < mesh.elements.size(); ++cell) {
+            double output_cell_temperature = 0.0;
+            for (const auto node : mesh.elements[cell]) {
+                output_cell_temperature += 0.25 * next_temperature[node];
+            }
+            const auto output_epsilon = base.optical_materials[cell].relative_permittivity +
+                problem.d_relative_permittivity_d_temperature[cell] *
+                (output_cell_temperature - problem.reference_temperature_kelvin);
+            const double defect = std::abs(
+                output_epsilon - materials[cell].relative_permittivity);
+            if (!finite(output_epsilon) || !std::isfinite(defect)) {
+                throw std::runtime_error("Thermo-optic 3D material closure is nonfinite.");
+            }
+            output_materials_passive = output_materials_passive && output_epsilon.imag() >= 0.0;
+            max_permittivity_residual = std::max(max_permittivity_residual, defect);
+        }
+
         const double absorbed_power = coupled.total_absorbed_power_watts;
         const double power_scale = std::max({
             std::abs(absorbed_power), std::abs(previous_absorbed_power), 1e-30});
@@ -121,11 +145,14 @@ ThermoOptic3DResult solve_thermo_optic_3d(
             iteration + 1,
             max_temperature_residual,
             relative_power_change,
-            absorbed_power
+            absorbed_power,
+            max_permittivity_residual
         });
 
         if (max_temperature_residual <= problem.temperature_tolerance_kelvin &&
-            relative_power_change <= problem.relative_absorbed_power_tolerance) {
+            relative_power_change <= problem.relative_absorbed_power_tolerance &&
+            max_permittivity_residual <= problem.permittivity_tolerance &&
+            output_materials_passive) {
             result.photothermal = std::move(coupled);
             result.optical_materials = std::move(materials);
             result.converged = true;
