@@ -212,3 +212,61 @@ NOVA_TEST(thermo_optic_manufactured_nonzero_temperature_shift_matches_exact_abso
                           expected_density * volume, 1e-7);
     }
 }
+
+
+NOVA_TEST(thermo_optic_material_closure_prevents_premature_convergence) {
+    const auto base = plate(0.6, 100.0);
+    auto problem = thermo_optic_problem(base);
+    problem.d_relative_permittivity_d_temperature.assign(
+        base.thermal.mesh.elements.size(), {1e-3, 2e-4});
+    // Deliberately loose legacy convergence controls isolate the new gate.
+    problem.temperature_tolerance_kelvin = 1e6;
+    problem.relative_absorbed_power_tolerance = 1.0;
+    problem.permittivity_tolerance = 1e-10;
+    problem.max_iterations = 1;
+
+    const auto incomplete = solve_thermo_optic_3d(problem, accurate_optical_options());
+    NOVA_REQUIRE(!incomplete.converged);
+    NOVA_REQUIRE(incomplete.history.size() == 1);
+    NOVA_REQUIRE(incomplete.history.back().max_temperature_residual_kelvin <=
+                 problem.temperature_tolerance_kelvin);
+    NOVA_REQUIRE(incomplete.history.back().relative_absorbed_power_change <=
+                 problem.relative_absorbed_power_tolerance);
+    NOVA_REQUIRE(incomplete.history.back().max_permittivity_residual >
+                 problem.permittivity_tolerance);
+
+    problem.relaxation_factor = 0.5;
+    problem.max_iterations = 100;
+    const auto result = solve_thermo_optic_3d(problem, accurate_optical_options());
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.history.size() > 1);
+    NOVA_REQUIRE(result.history.back().max_permittivity_residual <=
+                 problem.permittivity_tolerance);
+    double independent_defect = 0.0;
+    for (std::size_t cell = 0; cell < base.thermal.mesh.elements.size(); ++cell) {
+        double cell_temperature = 0.0;
+        for (const auto node : base.thermal.mesh.elements[cell]) {
+            cell_temperature += 0.25 * result.photothermal.thermal_solution.values[node];
+        }
+        const auto expected = base.optical_materials[cell].relative_permittivity +
+            problem.d_relative_permittivity_d_temperature[cell] *
+                (cell_temperature - problem.reference_temperature_kelvin);
+        independent_defect = std::max(independent_defect,
+            std::abs(expected - result.optical_materials[cell].relative_permittivity));
+    }
+    NOVA_REQUIRE(independent_defect <= problem.permittivity_tolerance);
+    NOVA_REQUIRE_NEAR(independent_defect,
+                      result.history.back().max_permittivity_residual, 1e-14);
+}
+
+NOVA_TEST(thermo_optic_rejects_nonpositive_material_closure_tolerance) {
+    auto problem = thermo_optic_problem(plate(0.6, 100.0));
+    problem.permittivity_tolerance = 0.0;
+    bool rejected = false;
+    try {
+        (void)solve_thermo_optic_3d(problem, accurate_optical_options());
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    NOVA_REQUIRE(rejected);
+}
