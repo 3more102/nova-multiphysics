@@ -112,9 +112,12 @@ ThermoOptic3DResult solve_thermo_optic_3d(
         }
 
         const double absorbed_power = coupled.total_absorbed_power_watts;
-        const double power_scale = std::max({
-            std::abs(absorbed_power), std::abs(previous_absorbed_power), 1e-30});
-        const double relative_power_change =
+        // Both powers are finite and nonnegative (photothermal contract).
+        // A fixed absolute denominator floor would hide relative changes
+        // in weak but representable absorption. Only two exact zeros have
+        // a zero scale; define their relative change to be zero.
+        const double power_scale = std::max(absorbed_power, previous_absorbed_power);
+        const double relative_power_change = power_scale == 0.0 ? 0.0 :
             std::abs(absorbed_power - previous_absorbed_power) / power_scale;
 
         result.history.push_back({

@@ -24,6 +24,8 @@ struct ThermoOptic3DProblem {
 struct ThermoOptic3DIteration {
     std::size_t iteration{};
     double max_temperature_residual_kelvin{};
+    // |P_current - P_previous| / max(P_current, P_previous); zero if both
+    // powers are zero. The initial previous power is zero.
     double relative_absorbed_power_change{};
     double total_absorbed_power_watts{};
 };
