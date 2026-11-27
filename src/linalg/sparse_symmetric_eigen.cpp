@@ -246,6 +246,8 @@ SparseSymmetricEigenResult solve_sparse_symmetric_generalized_eigen(
     mass_options.absolute_tolerance = 0.0;
     mass_options.preconditioner = PreconditionerType::Jacobi;
 
+    std::size_t next_coordinate = 0U;
+
     // Generalized Arnoldi expansion in the M inner product. For a symmetric
     // pencil this is a fully reorthogonalized Lanczos/Rayleigh-Ritz process.
     for (std::size_t current = 0; current < basis.size() &&
@@ -308,6 +310,47 @@ SparseSymmetricEigenResult solve_sparse_symmetric_generalized_eigen(
             mass_candidate = mass.multiply(candidate);
             basis.push_back(std::move(candidate));
             mass_basis.push_back(std::move(mass_candidate));
+        }
+
+        // An invariant starting subspace can contain exact Ritz pairs while
+        // missing larger eigenvalues. If the Krylov queue is exhausted before
+        // the configured limit, explore its M-orthogonal complement.
+        if (current + 1U == basis.size() && basis.size() < subspace_limit) {
+            bool restarted = false;
+            while (next_coordinate < dimension) {
+                const std::size_t coordinate = next_coordinate++;
+                std::vector<double> restart(dimension, 0.0);
+                restart[coordinate] = 1.0;
+                auto mass_restart = mass.multiply(restart);
+                for (int pass = 0; pass < 2; ++pass) {
+                    for (std::size_t previous = 0; previous < basis.size(); ++previous) {
+                        const double coefficient = dot(basis[previous], mass_restart);
+                        axpy(restart, coefficient, basis[previous]);
+                        axpy(mass_restart, coefficient, mass_basis[previous]);
+                    }
+                }
+                mass_restart = mass.multiply(restart);
+                const double squared = mass_norm_squared(restart, mass_restart);
+                const long double tolerance = quadratic_form_roundoff_tolerance(mass, restart);
+                if (static_cast<long double>(squared) < -tolerance) {
+                    throw std::runtime_error("Restart vector has negative generalized mass norm.");
+                }
+                if (!(static_cast<long double>(squared) > tolerance) ||
+                    std::sqrt(squared) <= options.breakdown_tolerance *
+                        std::sqrt(mass_diagonal[coordinate])) {
+                    continue;
+                }
+                const double norm = std::sqrt(squared);
+                for (double& value : restart) value /= norm;
+                mass_restart = mass.multiply(restart);
+                basis.push_back(std::move(restart));
+                mass_basis.push_back(std::move(mass_restart));
+                restarted = true;
+                break;
+            }
+            if (!restarted) {
+                throw std::runtime_error("Unable to expand the exhausted generalized Krylov subspace.");
+            }
         }
     }
 

@@ -13,11 +13,12 @@ without converting the full matrices to dense storage. It is intended for bounde
 - Deterministic block starting vectors reduce the risk of missing repeated or clustered dominant eigenvalues.
 - The generalized operator action is evaluated as `M^{-1} K q`, with each mass system solved using the existing Jacobi-preconditioned conjugate-gradient implementation.
 - Two-pass modified Gram-Schmidt maintains orthogonality in the `M` inner product.
+- When the Krylov queue reaches an invariant subspace before the projection limit, deterministic coordinate seeds explore the remaining M-orthogonal complement.
 - A symmetric Rayleigh-Ritz projection is assembled on the generated subspace.
 - The projected dense eigensystem is solved with NOVA's existing symmetric generalized eigensolver.
 - Ritz vectors are reconstructed in the original sparse space, normalized with `x^T M x = 1`, and checked using the true sparse residual.
 
-The solver returns the requested largest algebraic eigenpairs in descending order. If the generated subspace is insufficient, it returns the best available Ritz pairs with `converged=false`; it does not silently promote an unconverged result.
+The solver returns the largest available algebraic Ritz pairs in descending order. A failed residual tolerance or insufficient returned pair count sets `converged=false`. A small residual certifies an approximate eigenpair, not its global spectral ordering: a bounded projection smaller than the full dimension can still miss an eigenvalue. The complement restart prevents premature termination when an invariant subspace exhausts the Krylov queue and unused projection capacity remains.
 
 ## Limits
 
@@ -32,6 +33,7 @@ The solver returns the requested largest algebraic eigenpairs in descending orde
 
 The regression suite covers:
 - A generalized diagonal pencil with a repeated dominant eigenvalue.
+- A two-dimensional pencil whose deterministic initial vector lies exactly in a nondominant invariant subspace.
 - Agreement with the dense generalized reference on a coupled SPD pencil.
 - Explicit reporting of unconverged Ritz pairs.
 - A 600-DOF sparse case, above the dense reference limit.

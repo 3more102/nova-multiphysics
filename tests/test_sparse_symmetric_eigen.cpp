@@ -178,3 +178,60 @@ NOVA_TEST(sparse_generalized_eigen_rejects_invalid_dimensions_symmetry_and_optio
     } catch (const std::invalid_argument&) { rejected = true; }
     NOVA_REQUIRE(rejected);
 }
+
+
+NOVA_TEST(sparse_generalized_eigen_explores_complement_of_invariant_start) {
+    // The deterministic first starting vector is proportional to (1, 1).
+    // Its exact eigenvalue is 1, but (1, -1) has the largest eigenvalue 3.
+    // A zero residual for the first vector alone is not sufficient.
+    const auto stiffness = CsrMatrix::from_triplets(2, 2, {
+        {0,0,2.0}, {0,1,-1.0}, {1,0,-1.0}, {1,1,2.0}
+    });
+    const auto mass = identity(2);
+    nova::linalg::SparseSymmetricEigenOptions options;
+    options.max_modes = 1;
+    options.max_subspace = 2;
+    const auto result = nova::linalg::solve_sparse_symmetric_generalized_eigen(
+        stiffness, mass, options);
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.subspace_dimension == 2);
+    NOVA_REQUIRE(result.operator_applications == 2);
+    NOVA_REQUIRE(result.eigenpairs.size() == 1);
+    NOVA_REQUIRE_NEAR(result.eigenpairs[0].eigenvalue, 3.0, 1e-12);
+    NOVA_REQUIRE(result.eigenpairs[0].relative_residual < 1e-12);
+    NOVA_REQUIRE_NEAR(mass_inner(result.eigenpairs[0].eigenvector,
+        mass, result.eigenpairs[0].eigenvector), 1.0, 1e-12);
+}
+
+NOVA_TEST(sparse_generalized_eigen_restarts_with_nondiagonal_mass_metric) {
+    // Both matrices share eigenvectors (1,1) and (1,-1).
+    // K(1,1)=4(1,1), M(1,1)=4(1,1): lambda=1.
+    // K(1,-1)=6(1,-1), M(1,-1)=2(1,-1): lambda=3.
+    // The recovered dominant M-normalized vector is +/- (0.5,-0.5).
+    const auto stiffness = CsrMatrix::from_triplets(2, 2, {
+        {0,0,5.0}, {0,1,-1.0}, {1,0,-1.0}, {1,1,5.0}
+    });
+    const auto mass = CsrMatrix::from_triplets(2, 2, {
+        {0,0,3.0}, {0,1,1.0}, {1,0,1.0}, {1,1,3.0}
+    });
+    nova::linalg::SparseSymmetricEigenOptions options;
+    options.max_modes = 1;
+    options.max_subspace = 2;
+    const auto result = nova::linalg::solve_sparse_symmetric_generalized_eigen(
+        stiffness, mass, options);
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.subspace_dimension == 2);
+    NOVA_REQUIRE(result.operator_applications == 2);
+    NOVA_REQUIRE(result.eigenpairs.size() == 1);
+    const auto& pair = result.eigenpairs.front();
+    NOVA_REQUIRE_NEAR(pair.eigenvalue, 3.0, 1e-12);
+    NOVA_REQUIRE(pair.relative_residual < 1e-12);
+    NOVA_REQUIRE(pair.eigenvector.size() == 2);
+    const double x = pair.eigenvector[0];
+    const double y = pair.eigenvector[1];
+    NOVA_REQUIRE_NEAR(std::abs(x), 0.5, 1e-12);
+    NOVA_REQUIRE_NEAR(x + y, 0.0, 1e-12);
+    NOVA_REQUIRE_NEAR(3.0*x*x + 2.0*x*y + 3.0*y*y, 1.0, 1e-12);
+    NOVA_REQUIRE_NEAR(5.0*x - y - pair.eigenvalue*(3.0*x + y), 0.0, 1e-12);
+    NOVA_REQUIRE_NEAR(5.0*y - x - pair.eigenvalue*(x + 3.0*y), 0.0, 1e-12);
+}
