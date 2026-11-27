@@ -46,3 +46,15 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
+
+### Residual scaling
+
+Sparse matrix and vector norms use a scaled sum of squares, and the
+normalizing product and sum are held in binary mantissa/exponent form.
+The final dimensionless residual is formed only after cancellation of
+the common exponent scale. This avoids rejecting representable
+eigenpairs solely because a Frobenius norm exceeds the double range.
+This does not extend the representable range of the Krylov basis,
+matrix-vector products, mass solves or residual-vector entries.
+A four-dimensional diagonal pencil with an analytical eigenvalue of
+10 and an overflowing stiffness Frobenius norm is a regression case.

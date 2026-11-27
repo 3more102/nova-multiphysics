@@ -33,15 +33,66 @@ namespace {
     return static_cast<double>(sum);
 }
 
-[[nodiscard]] double vector_norm(const std::vector<double>& values) {
-    double result = 0.0;
-    for (const double value : values) {
-        if (!std::isfinite(value)) {
-            throw std::overflow_error("Sparse eigen vector contains a nonfinite value.");
-        }
-        result = std::hypot(result, value);
-    }
+// Represent nonnegative magnitudes as mantissa * 2^exponent so that
+// intermediate matrix norms and residual scales need not fit in a double.
+struct Magnitude {
+    double mantissa{};
+    int exponent{};
+};
+
+[[nodiscard]] Magnitude magnitude(double value) {
+    int exponent = 0;
+    const double mantissa = std::frexp(value, &exponent);
+    return {mantissa, exponent};
+}
+
+[[nodiscard]] Magnitude multiply(Magnitude a, Magnitude b) {
+    if (a.mantissa == 0.0 || b.mantissa == 0.0) return {};
+    auto result = magnitude(a.mantissa * b.mantissa);
+    result.exponent += a.exponent + b.exponent;
     return result;
+}
+
+[[nodiscard]] Magnitude add(Magnitude a, Magnitude b) {
+    if (a.mantissa == 0.0) return b;
+    if (b.mantissa == 0.0) return a;
+    if (a.exponent < b.exponent) std::swap(a, b);
+    auto result = magnitude(a.mantissa +
+        std::scalbn(b.mantissa, b.exponent - a.exponent));
+    result.exponent += a.exponent;
+    return result;
+}
+
+class ScaledNorm {
+public:
+    void append(double value) {
+        if (!std::isfinite(value)) {
+            throw std::overflow_error("Sparse eigen norm contains a nonfinite value.");
+        }
+        const double absolute = std::abs(value);
+        if (absolute == 0.0) return;
+        if (absolute > scale_) {
+            const double ratio = scale_ / absolute;
+            sum_ = 1.0 + sum_ * ratio * ratio;
+            scale_ = absolute;
+        } else {
+            const double ratio = absolute / scale_;
+            sum_ += ratio * ratio;
+        }
+    }
+
+    [[nodiscard]] Magnitude value() const {
+        return multiply(magnitude(scale_), magnitude(std::sqrt(sum_)));
+    }
+private:
+    double scale_{};
+    double sum_{};
+};
+
+[[nodiscard]] Magnitude vector_norm(const std::vector<double>& values) {
+    ScaledNorm norm;
+    for (const double value : values) norm.append(value);
+    return norm.value();
 }
 
 void axpy(
@@ -79,12 +130,12 @@ void validate_symmetric(const CsrMatrix& matrix, const char* label) {
     }
 }
 
-[[nodiscard]] double frobenius_norm(const CsrMatrix& matrix) {
-    double result = 0.0;
+[[nodiscard]] Magnitude frobenius_norm(const CsrMatrix& matrix) {
+    ScaledNorm norm;
     matrix.for_each_nonzero([&](std::size_t, std::size_t, const double value) {
-        result = std::hypot(result, value);
+        norm.append(value);
     });
-    return result;
+    return norm.value();
 }
 
 
@@ -186,10 +237,9 @@ SparseSymmetricEigenResult solve_sparse_symmetric_generalized_eigen(
     }
 
     SparseSymmetricEigenResult result;
-    const double stiffness_norm = frobenius_norm(stiffness);
-    const double mass_norm = frobenius_norm(mass);
-    if (!std::isfinite(stiffness_norm) || !std::isfinite(mass_norm) ||
-        !(mass_norm > 0.0)) {
+    const auto stiffness_norm = frobenius_norm(stiffness);
+    const auto mass_norm = frobenius_norm(mass);
+    if (!(mass_norm.mantissa > 0.0)) {
         throw std::invalid_argument("Sparse generalized eigen matrices have invalid norms.");
     }
 
@@ -427,14 +477,19 @@ SparseSymmetricEigenResult solve_sparse_symmetric_generalized_eigen(
             residual[index] = applied_stiffness[index] -
                 pair.eigenvalue * normalized_mass_vector[index];
         }
-        const double denominator =
-            (stiffness_norm + std::abs(pair.eigenvalue) * mass_norm) *
-            vector_norm(pair.eigenvector);
-        const double numerator = vector_norm(residual);
-        if (!std::isfinite(denominator) || !std::isfinite(numerator)) {
-            throw std::overflow_error("Generalized Ritz residual scale overflow.");
+        const auto denominator = multiply(
+            add(stiffness_norm, multiply(magnitude(std::abs(pair.eigenvalue)), mass_norm)),
+            vector_norm(pair.eigenvector));
+        const auto numerator = vector_norm(residual);
+        if (denominator.mantissa == 0.0) {
+            pair.relative_residual = std::scalbn(numerator.mantissa, numerator.exponent);
+        } else if (numerator.mantissa == 0.0) {
+            pair.relative_residual = 0.0;
+        } else {
+            pair.relative_residual = std::scalbn(
+                numerator.mantissa / denominator.mantissa,
+                numerator.exponent - denominator.exponent);
         }
-        pair.relative_residual = denominator > 0.0 ? numerator / denominator : numerator;
         if (!std::isfinite(pair.relative_residual)) {
             throw std::overflow_error("Generalized Ritz residual is nonfinite.");
         }
