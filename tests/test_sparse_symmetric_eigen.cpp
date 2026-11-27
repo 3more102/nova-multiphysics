@@ -202,3 +202,26 @@ NOVA_TEST(sparse_generalized_eigen_explores_complement_of_invariant_start) {
     NOVA_REQUIRE_NEAR(mass_inner(result.eigenpairs[0].eigenvector,
         mass, result.eigenpairs[0].eigenvector), 1.0, 1e-12);
 }
+
+NOVA_TEST(sparse_generalized_eigen_certifies_residual_when_matrix_norm_overflows) {
+    // The Frobenius norm of K is 2e308 (outside double range),
+    // but lambda=10 and the M-normalized eigenvector are representable.
+    const auto stiffness = CsrMatrix::from_triplets(4, 4, {
+        {0,0,1e308}, {1,1,1e308}, {2,2,1e308}, {3,3,1e308}
+    });
+    const auto mass = CsrMatrix::from_triplets(4, 4, {
+        {0,0,1e307}, {1,1,1e307}, {2,2,1e307}, {3,3,1e307}
+    });
+    nova::linalg::SparseSymmetricEigenOptions options;
+    options.max_modes = 1;
+    options.max_subspace = 1;
+    const auto result = nova::linalg::solve_sparse_symmetric_generalized_eigen(
+        stiffness, mass, options);
+    NOVA_REQUIRE(result.converged);
+    NOVA_REQUIRE(result.eigenpairs.size() == 1);
+    NOVA_REQUIRE_NEAR(result.eigenpairs[0].eigenvalue, 10.0, 1e-10);
+    NOVA_REQUIRE(std::isfinite(result.eigenpairs[0].relative_residual));
+    NOVA_REQUIRE(result.eigenpairs[0].relative_residual < 1e-12);
+    NOVA_REQUIRE_NEAR(mass_inner(result.eigenpairs[0].eigenvector,
+        mass, result.eigenpairs[0].eigenvector), 1.0, 1e-12);
+}
